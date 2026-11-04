@@ -13,6 +13,9 @@ public sealed class SystemServiceControl : IServiceControl
     /// <summary><c>ERROR_SERVICE_NOT_ACTIVE</c>: the service stopped by itself between looking and asking it to.</summary>
     private const int ErrorServiceNotActive = 1062;
 
+    /// <summary><c>ERROR_SERVICE_ALREADY_RUNNING</c>: the service started between looking and asking it to.</summary>
+    private const int ErrorServiceAlreadyRunning = 1056;
+
     public bool Exists(string name)
     {
         var services = ServiceController.GetServices();
@@ -70,12 +73,30 @@ public sealed class SystemServiceControl : IServiceControl
         }
     }
 
-    public void Start(string name)
+    public void Start(string name, TimeSpan timeout)
     {
         using var service = new ServiceController(name);
         try
         {
-            service.Start();
+            if (service.Status == ServiceControllerStatus.StopPending)
+            {
+                // A stop that timed out may still finish; starting now would fail, and leaving it would leave it stopped.
+                service.WaitForStatus(ServiceControllerStatus.Stopped, timeout);
+            }
+
+            if (service.Status == ServiceControllerStatus.Stopped)
+            {
+                service.Start();
+            }
+        }
+        catch (System.ServiceProcess.TimeoutException e)
+        {
+            throw new InvalidOperationException(
+                $"The service {name} was still stopping after {timeout.TotalSeconds:0} seconds, so it wasn't started again. Start it in Services, or restart Windows.", e);
+        }
+        catch (InvalidOperationException e) when (e.InnerException is Win32Exception { NativeErrorCode: ErrorServiceAlreadyRunning })
+        {
+            // It started between looking and asking (Windows, or Pimax itself): that is what was wanted.
         }
         catch (InvalidOperationException e) when (e.InnerException is Win32Exception inner)
         {

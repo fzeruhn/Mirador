@@ -1,4 +1,4 @@
-#Requires -Version 7
+#Requires -Version 7.3
 <#
 .SYNOPSIS
     Installs the Mirador helper service from this checkout, for development. Run it as administrator.

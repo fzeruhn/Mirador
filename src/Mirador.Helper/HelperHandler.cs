@@ -15,8 +15,12 @@ public interface IServiceControl
     /// <summary>Stops the service and waits until it has stopped; throws a plain message when it doesn't in time.</summary>
     void Stop(string name, TimeSpan timeout);
 
-    /// <summary>Asks Windows to start the service.</summary>
-    void Start(string name);
+    /// <summary>
+    /// Makes sure the service runs: starts it when it is stopped, and first waits (at most <paramref name="timeout"/>)
+    /// for one that is still stopping; one that runs or is starting already is left as it is. Throws a plain message
+    /// when it can't.
+    /// </summary>
+    void Start(string name, TimeSpan timeout);
 }
 
 /// <summary>Processes on this machine, named without <c>.exe</c>.</summary>
@@ -54,7 +58,8 @@ public sealed class HelperHandler
 {
     private const string BundledMissing = "This Mirador has no bundled Monado.";
     private const string UnknownCommand = "Mirador's helper service doesn't know that command.";
-    private const int MaxErrorLength = 1000;
+    // A message goes into one protocol line, where JSON writes each character outside ASCII as six bytes (\uXXXX).
+    private const int MaxErrorLength = 600;
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(20);
 
     private readonly IServiceControl services;
@@ -86,6 +91,14 @@ public sealed class HelperHandler
     /// <summary>Carries out one request. Any failure comes back as an error reply, never as an exception.</summary>
     public Task<HelperReply> HandleAsync(HelperRequest request) => Task.Run(() => Handle(request.Command));
 
+    /// <summary>
+    /// For the uninstaller only (<c>--restore-runtime</c>), never over the pipe: puts back the OpenXR runtime that
+    /// <see cref="HelperCommand.SetRuntimeBundled"/> replaced, as long as Mirador's runtime is still the active one; if
+    /// another program has set its own since, that stays and the record is just dropped. Any failure comes back as an
+    /// error reply.
+    /// </summary>
+    public Task<HelperReply> RestoreRuntimeAsync() => Task.Run(() => Locked(RestoreRuntime));
+
     private HelperReply Handle(HelperCommand command)
     {
         // Ping touches nothing on the machine, so it never waits for a request that is (perhaps for a long time) changing it.
@@ -94,19 +107,24 @@ public sealed class HelperHandler
             return new HelperReply(true, Value: version);
         }
 
+        return Locked(() => command switch
+        {
+            HelperCommand.SetRuntimeBundled => SetRuntimeBundled(),
+            HelperCommand.StopPimax => StopPimax(),
+            HelperCommand.StartPimax => StartPimax(),
+            HelperCommand.GetPimaxEyeBlob => GetPimaxEyeBlob(),
+            _ => new HelperReply(false, UnknownCommand),
+        });
+    }
+
+    /// <summary>Runs one step that changes the machine, one at a time; an exception becomes an error reply.</summary>
+    private HelperReply Locked(Func<HelperReply> step)
+    {
         lock (gate)
         {
             try
             {
-                return command switch
-                {
-                    HelperCommand.SetRuntimeBundled => SetRuntimeBundled(),
-                    HelperCommand.RestoreRuntime => RestoreRuntime(),
-                    HelperCommand.StopPimax => StopPimax(),
-                    HelperCommand.StartPimax => StartPimax(),
-                    HelperCommand.GetPimaxEyeBlob => GetPimaxEyeBlob(),
-                    _ => new HelperReply(false, UnknownCommand),
-                };
+                return step();
             }
             catch (Exception e)
             {
@@ -134,8 +152,8 @@ public sealed class HelperHandler
 
     /// <summary>
     /// Puts the recorded runtime back, but only while the bundled one is still the active one: if another program has
-    /// made its own runtime active since, that choice stays, and the record is just forgotten. Any signed-in user can
-    /// ask for this, so it must never overwrite a runtime Mirador didn't set.
+    /// made its own runtime active since, that choice stays, and the record is just forgotten. It must never overwrite
+    /// a runtime Mirador didn't set.
     /// </summary>
     private HelperReply RestoreRuntime()
     {
@@ -187,11 +205,15 @@ public sealed class HelperHandler
         return new HelperReply(error is null, error, wasRunning);
     }
 
+    /// <summary>
+    /// Starts Pimax's service unless it runs. One that is still stopping (a stop that timed out) is waited for, then
+    /// started: left alone, it would finish stopping and stay stopped.
+    /// </summary>
     private HelperReply StartPimax()
     {
-        if (services.Exists(PimaxNames.Service) && !services.IsRunning(PimaxNames.Service))
+        if (services.Exists(PimaxNames.Service))
         {
-            services.Start(PimaxNames.Service);
+            services.Start(PimaxNames.Service, StopTimeout);
         }
 
         return new HelperReply(true);

@@ -5,6 +5,9 @@ internal sealed class FakeServiceControl : IServiceControl
 {
     public bool Installed { get; set; } = true;
     public bool Running { get; set; }
+
+    /// <summary>A stop that timed out and hasn't finished: not running, but not stopped either.</summary>
+    public bool Stopping { get; set; }
     public Exception? StopFails { get; set; }
 
     /// <summary>When set, <see cref="Stop"/> waits for it (after raising <see cref="StopEntered"/>).</summary>
@@ -17,7 +20,7 @@ internal sealed class FakeServiceControl : IServiceControl
 
     public bool Exists(string name) => Installed;
 
-    public bool IsRunning(string name) => Installed && Running;
+    public bool IsRunning(string name) => Installed && (Running || Stopping);
 
     public void Stop(string name, TimeSpan timeout)
     {
@@ -33,10 +36,18 @@ internal sealed class FakeServiceControl : IServiceControl
         Running = false;
     }
 
-    public void Start(string name)
+    public List<TimeSpan> StartTimeouts { get; } = [];
+
+    /// <summary>Like the real one: a service that runs already is left alone; one still stopping is waited for, then started.</summary>
+    public void Start(string name, TimeSpan timeout)
     {
-        Started.Add(name);
-        Running = true;
+        StartTimeouts.Add(timeout);
+        if (!Running)
+        {
+            Stopping = false;
+            Started.Add(name);
+            Running = true;
+        }
     }
 }
 

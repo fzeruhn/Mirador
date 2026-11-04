@@ -20,6 +20,10 @@ namespace Mirador.Helper;
 /// replacement listener is therefore created while the instance it replaces still exists, and at most three callers are
 /// served at once, so that a fourth instance is always available for the next listener.
 /// </para>
+/// <para>
+/// Every connection is disconnected before it is closed. Closing alone would keep the instance in being for as long as
+/// the caller keeps its end open, so a caller that held four connections would leave no instance to listen with.
+/// </para>
 /// </summary>
 public sealed class HelperPipeServer : BackgroundService
 {
@@ -30,6 +34,9 @@ public sealed class HelperPipeServer : BackgroundService
 
     /// <summary>How often a replacement listener is tried before the helper gives up and stops.</summary>
     private const int MaxReplacementAttempts = 3;
+
+    /// <summary><c>ERROR_PIPE_BUSY</c> as the HRESULT of an <see cref="IOException"/>: every instance the name may have exists.</summary>
+    private const int PipeBusy = unchecked((int)0x800700E7);
 
     // Room for a whole request and a whole reply. With no buffer (0) a pipe hands data over only while the other side is
     // reading, so a caller that sent more than the helper read, or never reads its reply, would block both for good.
@@ -158,7 +165,13 @@ public sealed class HelperPipeServer : BackgroundService
         }
         finally
         {
-            listening?.Dispose();
+            // It may hold a caller that was accepted but never served (stopping, or no replacement listener).
+            if (listening is not null)
+            {
+                Disconnect(listening);
+                listening.Dispose();
+            }
+
             await Task.WhenAll(serving.Keys).ConfigureAwait(false);
         }
     }
@@ -175,11 +188,25 @@ public sealed class HelperPipeServer : BackgroundService
         await instances.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            var busyReported = false;
             for (var attempt = 1; ; attempt++)
             {
                 try
                 {
                     return NewPipe(firstInstance: false);
+                }
+                catch (IOException e) when (e.HResult == PipeBusy)
+                {
+                    // Every instance exists, so nobody else can take the name meanwhile; one frees up when its caller
+                    // has been served or dropped. Not counted as a failure: a caller must not be able to stop the helper.
+                    if (!busyReported)
+                    {
+                        logger.LogWarning("Every instance of the helper's pipe is in use; waiting for one to be free.");
+                        busyReported = true;
+                    }
+
+                    attempt--;
+                    await Task.Delay(RetryDelay, ct).ConfigureAwait(false);
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                 {
@@ -247,6 +274,7 @@ public sealed class HelperPipeServer : BackgroundService
             using var writeLimit = CancellationTokenSource.CreateLinkedTokenSource(stop);
             writeLimit.CancelAfter(ReadLimit);
             await LineCodec.WriteAsync(pipe, reply, writeLimit.Token).ConfigureAwait(false);
+            await WaitForHangUpAsync(pipe, stop).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -262,8 +290,47 @@ public sealed class HelperPipeServer : BackgroundService
         }
         finally
         {
+            Disconnect(pipe);
             pipe.Dispose();
             instances.Release();
+        }
+    }
+
+    /// <summary>
+    /// Waits, at most <see cref="ReadLimit"/>, for the caller to close its end once it has the reply: disconnecting
+    /// first would throw away a reply it hasn't read yet. Whatever it sends meanwhile is read and dropped.
+    /// </summary>
+    private async Task WaitForHangUpAsync(NamedPipeServerStream pipe, CancellationToken stop)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        limit.CancelAfter(ReadLimit);
+        var buffer = new byte[256];
+        try
+        {
+            while (await pipe.ReadAsync(buffer, limit.Token).ConfigureAwait(false) > 0)
+            {
+            }
+        }
+        catch (OperationCanceledException) when (!stop.IsCancellationRequested)
+        {
+            // It kept its end open; it is disconnected now.
+        }
+        catch (IOException)
+        {
+            // It has gone.
+        }
+    }
+
+    /// <summary>Ends a connection on the helper's side, so that the instance goes when the helper closes it, whatever the caller does.</summary>
+    private static void Disconnect(NamedPipeServerStream pipe)
+    {
+        try
+        {
+            pipe.Disconnect();
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or ObjectDisposedException)
+        {
+            // Not connected, or the caller has already gone: nothing keeps the instance.
         }
     }
 

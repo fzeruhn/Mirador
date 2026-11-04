@@ -42,7 +42,10 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
     private HelperPipeServer NewServer(string name, TimeSpan? readLimit = null) =>
         new(NewHandler(), logger, lifetime, name) { ReadLimit = readLimit ?? TimeSpan.FromSeconds(5) };
 
-    /// <summary>Connects with a bare pipe, writes <paramref name="request"/> as given and reads until the helper closes.</summary>
+    /// <summary>
+    /// Connects with a bare pipe, writes <paramref name="request"/> as given and reads until the end of the helper's
+    /// reply line, or until the helper closes when it doesn't answer.
+    /// </summary>
     private async Task<string> RawAsync(byte[] request)
     {
         await using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -59,9 +62,18 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
 
         using var answer = new MemoryStream();
+        var buffer = new byte[256];
         try
         {
-            await client.CopyToAsync(answer, timeout.Token);
+            int read;
+            while ((read = await client.ReadAsync(buffer, timeout.Token)) > 0)
+            {
+                answer.Write(buffer, 0, read);
+                if (buffer[read - 1] == (byte)'\n')
+                {
+                    break; // the helper waits for us to hang up after a reply
+                }
+            }
         }
         catch (IOException)
         {
@@ -166,6 +178,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
     [InlineData("{}")]
     [InlineData("[\"StopPimax\"]")]
     [InlineData("{\"command\":\"Ping\"")]
+    [InlineData("{\"command\":\"RestoreRuntime\"}")]
     public async Task A_request_that_is_not_one_of_the_commands_is_dropped_without_a_reply_and_without_effect(string line)
     {
         var text = await RawAsync(line + "\n");
@@ -296,6 +309,102 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         finally
         {
             await flaky.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task A_replacement_refused_because_every_instance_is_in_use_is_waited_for_not_given_up()
+    {
+        var name = pipeName + "-busy";
+        var attempts = 0;
+        using var busy = ServerWithReplacements(name, () =>
+            Interlocked.Increment(ref attempts) <= 5
+                ? throw new IOException("All pipe instances are busy.", unchecked((int)0x800700E7))
+                : HelperPipeServer.CreatePipe(name, firstInstance: false));
+        await busy.StartAsync(CancellationToken.None);
+        try
+        {
+            var reply = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None);
+            var second = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None);
+
+            Assert.True(reply.Ok);
+            Assert.True(second.Ok);
+            Assert.Equal(0, lifetime.StopRequests);
+            Assert.True(attempts > 5);
+            Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        }
+        finally
+        {
+            await busy.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Callers_that_keep_their_connections_open_cannot_stop_the_helper()
+    {
+        var name = pipeName + "-held";
+        using var service = NewServer(name, readLimit: TimeSpan.FromMilliseconds(200));
+        await service.StartAsync(CancellationToken.None);
+        var held = new List<NamedPipeClientStream>();
+        try
+        {
+            // Twice as many connections as the pipe has instances, each kept open without a word. Each is dropped after
+            // the read limit; if a dropped one kept its instance, the helper would run out of instances and stop.
+            for (var i = 0; i < 8; i++)
+            {
+                var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+                held.Add(client);
+                await client.ConnectAsync(5000);
+            }
+
+            var reply = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None);
+
+            Assert.True(reply.Ok);
+            Assert.Equal(0, lifetime.StopRequests);
+        }
+        finally
+        {
+            foreach (var client in held)
+            {
+                await client.DisposeAsync();
+            }
+
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task A_caller_that_keeps_its_connection_open_after_the_reply_is_let_go()
+    {
+        var name = pipeName + "-lingering";
+        using var service = NewServer(name, readLimit: TimeSpan.FromMilliseconds(200));
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await client.ConnectAsync(2000);
+            await LineCodec.WriteAsync(client, new HelperRequest(HelperCommand.Ping), CancellationToken.None);
+            var reply = await LineCodec.ReadAsync<HelperReply>(client, CancellationToken.None);
+
+            // The reply came, and the helper doesn't wait for ever for the caller to hang up.
+            Assert.Equal(new HelperReply(true, Value: "9.9.9"), reply);
+            var buffer = new byte[1];
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            int read;
+            try
+            {
+                read = await client.ReadAsync(buffer, limit.Token);
+            }
+            catch (IOException)
+            {
+                read = 0;
+            }
+
+            Assert.Equal(0, read);
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
         }
     }
 

@@ -156,6 +156,20 @@ public sealed class HelperHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task StartPimax_starts_a_service_that_is_still_stopping_after_giving_it_time_to_stop()
+    {
+        // A StopPimax whose 20 s ran out leaves the service stopping. Left alone it would end up stopped for good.
+        var handler = Handler(serviceRunning: false);
+        services.Stopping = true;
+
+        var r = await handler.HandleAsync(Request(HelperCommand.StartPimax));
+
+        Assert.True(r.Ok);
+        Assert.Equal(["PiServiceLauncher"], services.Started);
+        Assert.Equal([TimeSpan.FromSeconds(20)], services.StartTimeouts);
+    }
+
+    [Fact]
     public async Task StartPimax_without_pimax_is_ok()
     {
         services.Installed = false;
@@ -241,7 +255,7 @@ public sealed class HelperHandlerTests : IDisposable
         registry.Active = BundledManifest;
         registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
 
-        var r = await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+        var r = await Handler().RestoreRuntimeAsync();
 
         Assert.True(r.Ok);
         Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Active);
@@ -254,7 +268,7 @@ public sealed class HelperHandlerTests : IDisposable
         registry.Active = @"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json";
         registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
 
-        var r = await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+        var r = await Handler().RestoreRuntimeAsync();
 
         Assert.True(r.Ok);
         Assert.Equal(@"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json", registry.Active);
@@ -267,7 +281,7 @@ public sealed class HelperHandlerTests : IDisposable
         registry.Active = null;
         registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
 
-        var r = await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+        var r = await Handler().RestoreRuntimeAsync();
 
         Assert.True(r.Ok);
         Assert.Null(registry.Active);
@@ -280,7 +294,7 @@ public sealed class HelperHandlerTests : IDisposable
         registry.Active = BundledManifest.ToUpperInvariant();
         registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
 
-        await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+        await Handler().RestoreRuntimeAsync();
 
         Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Active);
     }
@@ -290,7 +304,7 @@ public sealed class HelperHandlerTests : IDisposable
     {
         registry.Active = @"C:\somewhere\runtime.json";
 
-        var r = await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+        var r = await Handler().RestoreRuntimeAsync();
 
         Assert.True(r.Ok);
         Assert.Equal(@"C:\somewhere\runtime.json", registry.Active);
@@ -304,7 +318,7 @@ public sealed class HelperHandlerTests : IDisposable
         var handler = Handler();
 
         await handler.HandleAsync(Request(HelperCommand.SetRuntimeBundled));
-        await handler.HandleAsync(Request(HelperCommand.RestoreRuntime));
+        await handler.RestoreRuntimeAsync();
 
         Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Active);
         Assert.Null(registry.Recorded);
@@ -378,6 +392,20 @@ public sealed class HelperHandlerTests : IDisposable
         Assert.False(r.Ok);
         Assert.InRange(r.Error!.Length, 1, 1000);
         Assert.StartsWith("xxx", r.Error);
+    }
+
+    [Fact]
+    public async Task A_very_long_error_message_outside_ascii_still_fits_one_line()
+    {
+        // JSON writes each of these as six bytes (\u00E9), so a cut by characters alone could overflow the line.
+        services.StopFails = new InvalidOperationException(new string('\u00e9', 10_000));
+
+        var r = await Handler(serviceRunning: true).HandleAsync(Request(HelperCommand.StopPimax));
+
+        using var line = new MemoryStream();
+        await LineCodec.WriteAsync(line, r, CancellationToken.None);
+        Assert.InRange(line.Length, 1, LineCodec.MaxLineBytes + 1);
+        Assert.StartsWith("\u00e9\u00e9", r.Error);
     }
 
     [Fact]

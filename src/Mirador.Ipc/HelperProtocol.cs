@@ -12,21 +12,19 @@ public enum HelperCommand
     /// <summary>Answers with the helper's version.</summary>
     Ping,
 
-    /// <summary>Makes the Monado that came with Mirador the active OpenXR runtime, remembering the one it replaces.</summary>
-    SetRuntimeBundled,
-
     /// <summary>
-    /// Puts back the OpenXR runtime that <see cref="SetRuntimeBundled"/> replaced, as long as Mirador's runtime is still
-    /// the active one; if another program has set its own since, that stays and the record is just dropped.
+    /// Makes the Monado that came with Mirador the active OpenXR runtime, remembering the one it replaces. Putting that
+    /// one back is not a command: only the uninstaller does it (<c>Mirador.Helper.exe --restore-runtime</c>), because
+    /// the remembered runtime may be one in a folder any user can change.
     /// </summary>
-    RestoreRuntime,
+    SetRuntimeBundled,
 
     /// <summary>
     /// Stops Pimax's service and ends its processes (also when the service would not stop; the reply then says why).
     /// </summary>
     StopPimax,
 
-    /// <summary>Starts Pimax's service again if it is stopped.</summary>
+    /// <summary>Starts Pimax's service again unless it runs; one that is still stopping is given 20 s to stop first.</summary>
     StartPimax,
 
     /// <summary>Reads which eye geometry file Pimax's eye tracking runtime was started with.</summary>
