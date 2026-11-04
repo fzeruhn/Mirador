@@ -195,6 +195,20 @@ public class ProfileStoreTests
         Assert.Equal(["profiles", "selectedId"], doc.RootElement.EnumerateObject().Select(p => p.Name));
     }
 
+    [Fact]
+    public void Names_are_written_as_they_read()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        var defaults = ProfileSet.Defaults();
+        var set = defaults with { Profiles = [defaults.Profiles[0] with { Name = "Zoë's builds" }, .. defaults.Profiles.Skip(1)] };
+
+        new ProfileStore(path).Save(set);
+
+        Assert.Contains("\"name\": \"Zoë's builds\"", File.ReadAllText(path));
+        Assert.Equal("Zoë's builds", new ProfileStore(path).Load().Profiles[0].Name);
+    }
+
     private static void AssertAreTheDefaults(ProfileSet loaded)
     {
         var defaults = ProfileSet.Defaults();
