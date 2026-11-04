@@ -81,11 +81,25 @@ public sealed partial class DiagnosticsPage : Page
         box.Text = text;
         if (viewer is null)
         {
+            // The page is still opening (the box has no scroll viewer yet): show the end once it is laid out.
+            box.Loaded += ToEnd;
             return;
         }
 
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            viewer.ChangeView(null, atEnd ? viewer.ScrollableHeight : offset, null, disableAnimation: true));
+        // Measured now, so that the end is that of the new text (a queued scroll could still see the old one).
+        box.UpdateLayout();
+        viewer.ChangeView(null, atEnd ? viewer.ScrollableHeight : offset, null, disableAnimation: true);
+    }
+
+    private static void ToEnd(object sender, RoutedEventArgs e)
+    {
+        var box = (TextBox)sender;
+        box.Loaded -= ToEnd;
+        box.UpdateLayout();
+        if (Find<ScrollViewer>(box) is { } viewer)
+        {
+            viewer.ChangeView(null, viewer.ScrollableHeight, null, disableAnimation: true);
+        }
     }
 
     private static T? Find<T>(DependencyObject parent)
