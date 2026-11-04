@@ -34,6 +34,12 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" />
     <PackageReference Include="H.NotifyIcon.WinUI" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <!-- The Windows App SDK's AI, machine learning (onnxruntime, DirectML), search and widgets parts: unused. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" ExcludeAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mirador.Core\Mirador.Core.csproj" />
