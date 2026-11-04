@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Mirador.Core.Monado;
 
 namespace Mirador.Core.Tests.Monado;
@@ -79,6 +80,56 @@ public class JobProcessLauncherTests
         await process.Exited.WaitAsync(Limit);
 
         Assert.Equal(["one", "two"], lines);
+    }
+
+    [Fact]
+    public async Task A_listener_that_throws_does_not_starve_the_next_listener_and_the_failure_is_reported()
+    {
+        using var launcher = new JobProcessLauncher();
+        await using var process = launcher.Start(Cmd("/c \"echo one& echo two\""));
+        var failures = new ConcurrentQueue<Exception>();
+        process.ListenerFailed += failures.Enqueue;
+        var bad = new ConcurrentQueue<string>();
+        var good = new ConcurrentQueue<string>();
+        Action<string> both = line =>
+        {
+            bad.Enqueue(line);
+            throw new InvalidOperationException("listener fault");
+        };
+        both += good.Enqueue; // one subscription holding both, so neither can miss a line to a timing gap
+
+        process.Line += both;
+        await process.Exited.WaitAsync(Limit);
+
+        Assert.Equal(["one", "two"], bad);
+        Assert.Equal(["one", "two"], good);
+        Assert.Equal(2, failures.Count); // once per failure
+        Assert.All(failures, f =>
+        {
+            Assert.IsType<InvalidOperationException>(f);
+            Assert.Equal("listener fault", f.Message);
+        });
+    }
+
+    [Fact]
+    public async Task A_failure_handler_that_throws_is_ignored()
+    {
+        using var launcher = new JobProcessLauncher();
+        await using var process = launcher.Start(Cmd("/c \"echo one& echo two\""));
+        var lines = new ConcurrentQueue<string>();
+        var reported = new ConcurrentQueue<Exception>();
+        process.ListenerFailed += _ => throw new InvalidOperationException("failure handler fault");
+        process.ListenerFailed += reported.Enqueue;
+
+        process.Line += line =>
+        {
+            lines.Enqueue(line);
+            throw new InvalidOperationException("listener fault");
+        };
+        await process.Exited.WaitAsync(Limit);
+
+        Assert.Equal(["one", "two"], lines); // the reading went on
+        Assert.Equal(2, reported.Count);      // and the later failure handler was still told
     }
 
     [Fact]
@@ -211,6 +262,26 @@ public class JobProcessLauncherTests
 
         await Task.WhenAll(first.Exited, second.Exited).WaitAsync(TimeSpan.FromSeconds(5));
     }
+
+    [Fact]
+    public async Task A_process_outlives_a_launcher_nobody_holds_any_more()
+    {
+        var process = StartAndForgetTheLauncher();
+
+        // The launcher is garbage now. Its job handle must not be closed by the finalizer while the process is running,
+        // or Windows ends the process (kill on close) at some random collection.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        await Task.Delay(500);
+        Assert.False(process.Exited.IsCompleted);
+
+        await process.DisposeAsync(); // disposing the process still ends it
+        Assert.True(process.Exited.IsCompleted);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IRunningProcess StartAndForgetTheLauncher() => new JobProcessLauncher().Start(LongPing());
 
     [Fact]
     public void A_launcher_can_be_disposed_twice_and_then_refuses_to_start()

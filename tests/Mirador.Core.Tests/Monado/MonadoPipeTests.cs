@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Mirador.Core.Monado;
 
 namespace Mirador.Core.Tests.Monado;
@@ -98,4 +100,36 @@ public class MonadoPipeTests
 
         Assert.True(pipe.Exists(full));
     }
+
+    [Fact]
+    public void A_pipe_created_under_the_literal_name_monado_uses_is_found()
+    {
+        // The usual case: no XDG variable, so the name has the temp path's trailing backslash followed by "/".
+        var pipe = new MonadoPipe();
+        var literal = pipe.NameFor(Env(("TMP", @"C:\mirador-test-" + Guid.NewGuid().ToString("N"))));
+        Assert.Contains(@"\/monado_comp_ipc", literal);
+
+        // Monado calls CreateNamedPipe with that string as it is. Windows files the pipe under the normalized name
+        // (the "/" becomes "\" and the doubled backslash collapses), and a wait on the literal string would not find it.
+        using var server = CreateNamedPipe(literal);
+        Assert.False(server.IsInvalid, "CreateNamedPipe failed: " + Marshal.GetLastWin32Error());
+
+        Assert.True(pipe.Exists(literal));
+    }
+
+    [Fact]
+    public void A_missing_pipe_with_a_monado_style_name_does_not_exist()
+    {
+        var pipe = new MonadoPipe();
+
+        Assert.False(pipe.Exists(pipe.NameFor(Env(("TMP", @"C:\mirador-test-" + Guid.NewGuid().ToString("N"))))));
+    }
+
+    /// <summary>What Monado does to open its pipe: the plain Win32 call, with the name untouched.</summary>
+    private static SafeFileHandle CreateNamedPipe(string name) =>
+        CreateNamedPipeW(name, 0x3 /* PIPE_ACCESS_DUPLEX */, 0 /* byte stream, blocking */, 1, 4096, 4096, 0, IntPtr.Zero);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateNamedPipeW(
+        string name, uint openMode, uint pipeMode, uint maxInstances, uint outBuffer, uint inBuffer, uint defaultTimeout, IntPtr security);
 }

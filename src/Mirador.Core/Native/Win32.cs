@@ -66,8 +66,25 @@ internal static class Win32
     /// times out with <see cref="ErrorSemTimeout"/> means every instance is busy. Any other failure (file not found
     /// above all) means no such pipe.
     /// </summary>
-    public static bool PipeExists(string name) =>
-        WaitNamedPipe(name, 1) || Marshal.GetLastPInvokeError() == ErrorSemTimeout;
+    /// <remarks>
+    /// The name is normalized first. <c>CreateNamedPipe</c> and <c>CreateFile</c> turn <c>/</c> into <c>\</c> and collapse
+    /// doubled backslashes, so Monado's <c>...\Temp\/monado_comp_ipc</c> is filed as <c>...\Temp\monado_comp_ipc</c>;
+    /// <c>WaitNamedPipe</c> only converts the slash, so given the literal name it looks for a pipe that doesn't exist.
+    /// </remarks>
+    public static bool PipeExists(string name)
+    {
+        string normalized;
+        try
+        {
+            normalized = Path.GetFullPath(name);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
+        {
+            return false; // a name Windows can't make sense of is no pipe
+        }
+
+        return WaitNamedPipe(normalized, 1) || Marshal.GetLastPInvokeError() == ErrorSemTimeout;
+    }
 
     // The x64 layout of JOBOBJECT_EXTENDED_LIMIT_INFORMATION (144 bytes); the project builds for x64 only.
 

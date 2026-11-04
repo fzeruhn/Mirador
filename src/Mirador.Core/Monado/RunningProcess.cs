@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Mirador.Core.Monado;
 
@@ -15,14 +16,27 @@ internal sealed class RunningProcess : IRunningProcess
     private static readonly TimeSpan DisposeLimit = TimeSpan.FromSeconds(5);
 
     private readonly Process process;
+    private readonly Action<Process> terminate;
+
+    /// <summary>
+    /// The launcher's job, held so that it stays open as long as this object is reachable. The launcher alone owning the
+    /// handle would let its finalizer close the job, and Windows end the process, when the launcher is no longer used.
+    /// </summary>
+    private readonly SafeHandle job;
+
     private readonly object gate = new();
+    private readonly object lifecycle = new();
     private Action<string>? listeners;
     private List<string>? early = [];
-    private int disposed;
+    private bool disposed;
 
     /// <param name="started">A process that was started with its standard output and error redirected.</param>
-    public RunningProcess(Process started)
+    /// <param name="job">The job the process is in.</param>
+    /// <param name="terminate">How to end the process and its children; the default ends the whole tree. Replaced in tests.</param>
+    public RunningProcess(Process started, SafeHandle job, Action<Process>? terminate = null)
     {
+        this.job = job;
+        this.terminate = terminate ?? (p => p.Kill(entireProcessTree: true));
         process = started;
         Id = started.Id;
         var output = Task.WhenAll(PumpAsync(started.StandardOutput), PumpAsync(started.StandardError));
@@ -33,6 +47,8 @@ internal sealed class RunningProcess : IRunningProcess
 
     public Task<int> Exited { get; }
 
+    public event Action<Exception>? ListenerFailed;
+
     public event Action<string>? Line
     {
         add
@@ -42,6 +58,7 @@ internal sealed class RunningProcess : IRunningProcess
                 return;
             }
 
+            List<Exception>? failures = null;
             lock (gate)
             {
                 listeners += value;
@@ -50,10 +67,12 @@ internal sealed class RunningProcess : IRunningProcess
                     early = null;
                     foreach (var text in missed)
                     {
-                        Deliver(value, text);
+                        Deliver(value, text, ref failures);
                     }
                 }
             }
+
+            Report(failures);
         }
         remove
         {
@@ -66,17 +85,26 @@ internal sealed class RunningProcess : IRunningProcess
 
     public void Kill()
     {
-        if (Volatile.Read(ref disposed) == 0)
+        // Under the lifecycle lock so that DisposeAsync can't release the process while a kill is using it.
+        lock (lifecycle)
         {
-            KillCore();
+            if (!disposed)
+            {
+                KillCore();
+            }
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
+        lock (lifecycle)
         {
-            return;
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
         }
 
         try
@@ -84,29 +112,53 @@ internal sealed class RunningProcess : IRunningProcess
             KillCore();
             await Exited.WaitAsync(DisposeLimit).ConfigureAwait(false);
         }
-        catch (Exception e) when (e is InvalidOperationException or Win32Exception or TimeoutException)
+        catch (Exception)
         {
-            // The process would not end; dispose must not throw, so release the handles anyway.
-            // The job still ends it when the launcher or Mirador goes away.
+            // Dispose must not throw, whatever went wrong while ending the process (a tree that couldn't be ended in
+            // full, a process that wouldn't end in time): release the handles anyway. The job still ends it when the
+            // launcher is disposed or Mirador goes away.
         }
 
-        process.Dispose();
+        lock (lifecycle)
+        {
+            process.Dispose(); // after any kill that is still under way
+        }
+
+        GC.KeepAlive(job);
     }
 
     private void KillCore()
     {
         try
         {
-            process.Kill(entireProcessTree: true);
+            terminate(process);
         }
-        catch (Exception e) when (e is InvalidOperationException or Win32Exception)
+        catch (Exception e) when (e is InvalidOperationException or Win32Exception or AggregateException or ObjectDisposedException)
         {
-            // Windows says "access denied" or "no such process" when the process ended a moment ago: that is a no-op.
-            // A process that is still running and can't be killed is a real failure.
-            if (!process.HasExited)
+            // Windows says "access denied" or "no such process" when the process ended a moment ago, and Process.Kill
+            // collects what it could not end in an AggregateException: when the process itself is gone that is a no-op.
+            // A process that is still running and can't be ended is a real failure.
+            if (!HasEnded())
             {
                 throw;
             }
+        }
+    }
+
+    /// <summary>Whether the process has ended; a process object that can't be asked any more counts as ended.</summary>
+    private bool HasEnded()
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (Exception e) when (e is InvalidOperationException or ObjectDisposedException)
+        {
+            return true;
+        }
+        catch (Win32Exception)
+        {
+            return false; // can't tell: report the failure that brought us here
         }
     }
 
@@ -143,28 +195,64 @@ internal sealed class RunningProcess : IRunningProcess
 
     private void Publish(string text)
     {
+        List<Exception>? failures = null;
         lock (gate)
         {
             if (listeners is { } handler)
             {
-                Deliver(handler, text);
+                Deliver(handler, text, ref failures);
             }
             else if (early is { Count: < MaxEarlyLines })
             {
                 early.Add(text);
             }
         }
+
+        Report(failures);
     }
 
-    /// <summary>A listener's failure is its own: it must not stop the reading, or the process would block on a full pipe.</summary>
-    private static void Deliver(Action<string> handler, string text)
+    /// <summary>
+    /// Gives the line to each listener on its own: one that throws must neither stop the reading (the process would block
+    /// on a full pipe) nor keep the listeners after it from the line. The failures are collected for <see cref="Report"/>.
+    /// </summary>
+    private static void Deliver(Action<string> handler, string text, ref List<Exception>? failures)
     {
-        try
+        foreach (var each in handler.GetInvocationList())
         {
-            handler(text);
+            try
+            {
+                ((Action<string>)each)(text);
+            }
+            catch (Exception e)
+            {
+                (failures ??= []).Add(e);
+            }
         }
-        catch (Exception)
+    }
+
+    /// <summary>
+    /// Raises <see cref="ListenerFailed"/> once per failure, after the lock for the listeners is released so that a failure
+    /// handler can't deadlock with them. A failure handler that throws has nobody left to tell and is ignored.
+    /// </summary>
+    private void Report(List<Exception>? failures)
+    {
+        if (failures is null || ListenerFailed is not { } handler)
         {
+            return;
+        }
+
+        foreach (var failure in failures)
+        {
+            foreach (var each in handler.GetInvocationList())
+            {
+                try
+                {
+                    ((Action<Exception>)each)(failure);
+                }
+                catch (Exception)
+                {
+                }
+            }
         }
     }
 }

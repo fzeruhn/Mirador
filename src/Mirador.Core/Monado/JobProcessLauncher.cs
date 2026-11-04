@@ -53,7 +53,7 @@ public sealed class JobProcessLauncher : IProcessLauncher, IDisposable
                         $"Couldn't start {spec.FileName}: Windows wouldn't put it in the group that stops it when Mirador closes ({Reason(new Win32Exception(error))}).");
                 }
 
-                return new RunningProcess(process);
+                return new RunningProcess(process, job);
             }
             catch
             {
