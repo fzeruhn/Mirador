@@ -21,6 +21,10 @@ The stand-in (`standin\`, C) needs Visual Studio's C++ x64 tools; `tools\build.p
 not a failure, when they're missing) into `artifacts\standin\monado-service.exe`, and `standin\build.ps1` builds it
 alone.
 
+The installer: `tools\build-bundle.ps1 -Monado <build> -Layer <layer build> -GazeWorld <dir>` puts the install layout
+in `artifacts\bundle`, then `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
+`artifacts\Mirador-<version>-setup.exe` from it.
+
 ## Layout
 
 | Project | What it is |
@@ -31,6 +35,7 @@ alone.
 | `src\Mirador.Ipc` | Messages between the app and the helper service |
 | `src\Mirador.Helper` | The helper Windows service, which does the steps that need admin rights |
 | `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for `monado-service.exe` and asks Mirador to start Monado |
+| `installer\` | The Inno Setup script |
 | `tests\` | xUnit tests, one project per source project |
 
 Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`.
