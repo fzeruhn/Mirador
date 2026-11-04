@@ -102,8 +102,12 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>Raised on the UI thread after the profiles or the selected one changed (Home, the Profiles page).</summary>
     public event Action? ProfilesChanged;
 
-    /// <summary>Says that the profiles changed; call on the UI thread.</summary>
-    public void NotifyProfilesChanged() => ProfilesChanged?.Invoke();
+    /// <summary>Says that the profiles changed, and puts the stand-in below the selected build; call on the UI thread.</summary>
+    public void NotifyProfilesChanged()
+    {
+        ProfilesChanged?.Invoke();
+        _ = Task.Run(Session.PlaceStandIn);
+    }
 
     /// <summary>Whether the selected profile is a Dream Air's; false when the profiles can't be read.</summary>
     public bool SelectedIsDreamAir()
