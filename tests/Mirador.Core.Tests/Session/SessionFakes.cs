@@ -290,7 +290,10 @@ internal sealed class FakeLauncher(Steps steps, string sessionFile) : IProcessLa
     }
 }
 
-/// <summary>Monado's pipe, there once the test says so. Names come from the real <see cref="MonadoPipe"/>.</summary>
+/// <summary>
+/// Monado's pipe, there once the test says so. Names come from the real <see cref="MonadoPipe"/>, without the trip
+/// through the ANSI code page (MonadoPipeTests cover that), so that they don't depend on the machine's code page.
+/// </summary>
 internal sealed class FakePipe(Steps steps) : IMonadoPipe
 {
     private readonly ConcurrentQueue<string> asked = new();
@@ -301,7 +304,7 @@ internal sealed class FakePipe(Steps steps) : IMonadoPipe
 
     public IReadOnlyCollection<string> Asked => asked;
 
-    public string NameFor(IReadOnlyDictionary<string, string> env) => new MonadoPipe().NameFor(env);
+    public string NameFor(IReadOnlyDictionary<string, string> env) => new MonadoPipe(folder => folder).NameFor(env);
 
     public bool Exists(string name)
     {

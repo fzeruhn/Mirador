@@ -22,6 +22,9 @@ internal static class Win32
     /// <summary><c>PROCESS_QUERY_LIMITED_INFORMATION</c>: the least access that reads a process's program file.</summary>
     private const uint ProcessQueryLimitedInformation = 0x1000;
 
+    /// <summary><c>CP_ACP</c>: the system's ANSI code page, the one Windows' narrow ("A") functions use.</summary>
+    private const uint CodePageAnsi = 0;
+
     /// <summary>Path buffer sizes to try, in characters: the usual, then the longest a Windows path can be.</summary>
     private static readonly int[] PathCapacities = [1024, 32768];
 
@@ -40,6 +43,15 @@ internal static class Win32
     [DllImport("kernel32.dll", EntryPoint = "WaitNamedPipeW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool WaitNamedPipe(string name, uint timeoutMs);
+
+    // CharSet.Unicode: under the default (Ansi) a char[] is marshalled as one byte per character.
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int WideCharToMultiByte(
+        uint codePage, uint flags, [MarshalAs(UnmanagedType.LPWStr)] string wide, int wideLength, [Out] byte[]? multi,
+        int multiLength, nint defaultChar, nint usedDefaultChar);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int MultiByteToWideChar(uint codePage, uint flags, byte[] multi, int multiLength, [Out] char[]? wide, int wideLength);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
@@ -76,6 +88,41 @@ internal static class Win32
     /// <summary>Puts <paramref name="process"/> into <paramref name="job"/>. Returns the Win32 error, or 0 when it worked.</summary>
     public static int AssignToJob(SafeFileHandle job, SafeHandle process) =>
         AssignProcessToJobObject(job, process) ? 0 : Marshal.GetLastPInvokeError();
+
+    /// <summary>
+    /// <paramref name="text"/> as a program that works through Windows' narrow ("A") functions sees it: converted to
+    /// the ANSI code page, as <c>getenv</c> and <c>GetTempPath2A</c> hand it over, and back, as <c>CreateNamedPipeA</c>
+    /// takes it. A character the code page lacks comes back as its best fit (<c>Ł</c> as <c>L</c> in code page 1252)
+    /// or <c>?</c>. Returns <paramref name="text"/> unchanged when Windows can't convert it.
+    /// </summary>
+    public static string ThroughAnsiCodePage(string text)
+    {
+        if (text.Length == 0)
+        {
+            return text;
+        }
+
+        var size = WideCharToMultiByte(CodePageAnsi, 0, text, text.Length, null, 0, 0, 0);
+        if (size <= 0)
+        {
+            return text;
+        }
+
+        var bytes = new byte[size];
+        if (WideCharToMultiByte(CodePageAnsi, 0, text, text.Length, bytes, size, 0, 0) != size)
+        {
+            return text;
+        }
+
+        var length = MultiByteToWideChar(CodePageAnsi, 0, bytes, size, null, 0);
+        if (length <= 0)
+        {
+            return text;
+        }
+
+        var chars = new char[length];
+        return MultiByteToWideChar(CodePageAnsi, 0, bytes, size, chars, length) == length ? new string(chars) : text;
+    }
 
     /// <summary>
     /// Whether a named pipe exists: a call that succeeds means an instance is waiting for a client, and one that
