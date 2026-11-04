@@ -4,7 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace Mirador.Core;
 
 /// <summary>Reading and writing the small JSON files Mirador keeps, so that no store ever loses or half-writes one.</summary>
-internal static class JsonFile
+public static class JsonFile
 {
     /// <summary>
     /// Reads <paramref name="path"/>. Returns null when the file is missing. A file that is not valid JSON of the

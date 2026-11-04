@@ -41,11 +41,11 @@ public sealed class HelperClient(string pipeName = "mirador-helper") : IHelperCl
         }
         catch (TimeoutException)
         {
-            return new HelperReply(false, NotRunning);
+            return new HelperReply(false, NotRunning) { NotDelivered = true };
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return new HelperReply(false, $"Mirador couldn't talk to its helper service ({e.Message.TrimEnd('.')}). Reinstall Mirador.");
+            return new HelperReply(false, $"Mirador couldn't talk to its helper service ({e.Message.TrimEnd('.')}). Reinstall Mirador.") { NotDelivered = true };
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
