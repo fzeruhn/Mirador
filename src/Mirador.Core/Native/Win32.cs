@@ -60,6 +60,34 @@ internal static class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, [Out] char[] name, ref uint size);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetThreadErrorMode(uint mode, out uint oldMode);
+
+    /// <summary><c>SEM_FAILCRITICALERRORS</c>: Windows hands the error back instead of showing its message box.</summary>
+    private const uint SemFailCriticalErrors = 0x0001;
+
+    /// <summary>
+    /// Runs <paramref name="action"/> with Windows' error message boxes off for this thread. Starting a file that isn't
+    /// a program otherwise shows "Unsupported 16-Bit Application" from inside the call, which then waits until someone
+    /// clicks OK; with them off the start fails at once with the error.
+    /// </summary>
+    public static T WithoutErrorBoxes<T>(Func<T> action)
+    {
+        var quiet = SetThreadErrorMode(SemFailCriticalErrors, out var old);
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            if (quiet)
+            {
+                SetThreadErrorMode(old, out _);
+            }
+        }
+    }
+
     /// <summary>Creates a job object that ends every process in it when its last handle closes.</summary>
     /// <returns>The job's handle. Closing it (dispose) ends the processes.</returns>
     /// <exception cref="Win32Exception">Windows refused; the message is its own wording.</exception>
