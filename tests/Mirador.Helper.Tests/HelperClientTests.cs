@@ -44,6 +44,7 @@ public class HelperClientTests
 
         Assert.InRange(watch.Elapsed, TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(6)); // gives up after the 2 s connect timeout
         Assert.False(reply.Ok);
+        Assert.True(reply.NotDelivered);
         Assert.StartsWith("Mirador's helper service isn't running", reply.Error);
         Assert.Equal(
             "Mirador's helper service isn't running. Reinstall Mirador; for a dev build, run tools\\dev-install-helper.ps1 as administrator.",
@@ -64,6 +65,7 @@ public class HelperClientTests
         var reply = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None);
 
         Assert.False(reply.Ok);
+        Assert.True(reply.NotDelivered);
         Assert.Equal("Mirador couldn't talk to its helper service (Access to the path is denied). Reinstall Mirador.", reply.Error);
     }
 
@@ -130,6 +132,7 @@ public class HelperClientTests
             async () => reply = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None));
 
         Assert.False(reply!.Ok);
+        Assert.False(reply.NotDelivered); // it was delivered: the helper may have acted on it
         Assert.StartsWith("Mirador's helper service sent an answer Mirador couldn't read", reply.Error);
     }
 
@@ -148,6 +151,7 @@ public class HelperClientTests
             async () => reply = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None));
 
         Assert.False(reply!.Ok);
+        Assert.False(reply.NotDelivered); // it was delivered: the helper may have acted on it
         Assert.StartsWith("Mirador's helper service sent an answer Mirador couldn't read", reply.Error);
     }
 }
