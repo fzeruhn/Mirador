@@ -171,14 +171,51 @@ static BOOL is_file(const wchar_t *path)
 }
 
 /*
- * Where Mirador is: MIRADOR_APP_PATH (as it is: tests use it), else HKCU\Software\Mirador AppPath, else
- * HKLM\SOFTWARE\Mirador AppPath. A registry path whose file is gone (a deleted build that ran once) is passed over.
+ * The Mirador this stand-in came with: installed, it sits in <app>\monado\runtime\service\, three folders below
+ * <app>\Mirador.exe. A copy in a build folder has no Mirador there.
+ */
+static BOOL own_app(wchar_t *path, DWORD count)
+{
+    DWORD length = GetModuleFileNameW(NULL, path, count);
+    int i;
+    if (length == 0 || length >= count)
+    {
+        return FALSE;
+    }
+
+    for (i = 0; i < 4; i++)
+    {
+        wchar_t *slash = wcsrchr(path, L'\\');
+        if (slash == NULL)
+        {
+            return FALSE;
+        }
+        *slash = L'\0';
+    }
+
+    if (wcslen(path) + wcslen(L"\\Mirador.exe") + 1 > count)
+    {
+        return FALSE;
+    }
+    wcscat(path, L"\\Mirador.exe");
+    return is_file(path);
+}
+
+/*
+ * Where Mirador is: MIRADOR_APP_PATH (as it is: tests use it), else the Mirador this stand-in came with, else
+ * HKCU\Software\Mirador AppPath (the one that ran last), else HKLM\SOFTWARE\Mirador AppPath. A registry path whose
+ * file is gone (a deleted build that ran once) is passed over.
  */
 static BOOL find_app(wchar_t *path, DWORD count)
 {
     DWORD size;
     DWORD length = GetEnvironmentVariableW(L"MIRADOR_APP_PATH", path, count);
     if (length > 0 && length < count)
+    {
+        return TRUE;
+    }
+
+    if (own_app(path, count))
     {
         return TRUE;
     }
