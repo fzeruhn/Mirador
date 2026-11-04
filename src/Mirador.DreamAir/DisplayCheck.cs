@@ -8,7 +8,11 @@ namespace Mirador.DreamAir;
 /// <param name="Message">What it found, from its last <c>PASS: …</c> or <c>FAIL: …</c> line.</param>
 /// <param name="WhatToDo">Its advice, from its <c>what to do: …</c> line; null when it gave none.</param>
 /// <param name="Output">Everything it wrote, for the diagnostics.</param>
-public sealed record DisplayCheckResult(bool Pass, string Message, string? WhatToDo, string Output);
+public sealed record DisplayCheckResult(bool Pass, string Message, string? WhatToDo, string Output)
+{
+    /// <summary>Whether the check ran to its end; false when it couldn't start or ran out of time (no verdict).</summary>
+    public bool Finished { get; init; } = true;
+}
 
 /// <summary>
 /// Runs <c>dreamair-display-check.exe</c>, which drives the Dream Air's panels through NVIDIA's private interface for
@@ -44,7 +48,7 @@ public static class DisplayCheck
             catch (TimeoutException)
             {
                 await KillAsync(process).ConfigureAwait(false);
-                return Result(false, $"The display check didn't finish within {Limit.TotalSeconds:0} s.", null, lines);
+                return Result(false, $"The display check didn't finish within {Limit.TotalSeconds:0} s.", null, lines) with { Finished = false };
             }
             catch (OperationCanceledException)
             {
@@ -54,7 +58,7 @@ public static class DisplayCheck
         }
         catch (Core.MiradorException e)
         {
-            return Result(false, e.Message, null, lines);
+            return Result(false, e.Message, null, lines) with { Finished = false };
         }
 
         List<string> output;

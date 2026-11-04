@@ -102,6 +102,20 @@ public class DreamAirLogParserTests
     }
 
     [Fact]
+    public void The_replaced_calibration_warning_stays_whatever_comes_after()
+    {
+        var parser = new DreamAirLogParser();
+
+        parser.Feed("Replaced the saved calibration in C:\\x\\eye_calibration_XR5DA-1.bin with the tracker's.");
+        parser.Feed("Eye calibration applied (from the tracker).");
+        parser.Feed("Gaze correction loaded from C:\\x\\eye_correction_XR5DA-1.json");
+
+        Assert.Equal(
+            new StatusLine("eye", "Eye tracker", StatusLevel.Warning, "Pimax Play's calibration replaced the one Mirador kept (a backup is in Eye tracking)."),
+            Line(parser, "eye"));
+    }
+
+    [Fact]
     public void A_lost_eye_tracker_is_a_warning()
     {
         var parser = new DreamAirLogParser();

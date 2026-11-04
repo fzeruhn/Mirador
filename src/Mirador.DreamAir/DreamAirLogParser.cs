@@ -17,6 +17,8 @@ public sealed partial class DreamAirLogParser
 
     private const string LostHeadset = "Lost the headset, the panels stay dark until Monado restarts.";
 
+    private const string Replaced = "Pimax Play's calibration replaced the one Mirador kept (a backup is in Eye tracking).";
+
     private readonly object gate = new();
     private readonly bool geometryMissing;
 
@@ -29,6 +31,7 @@ public sealed partial class DreamAirLogParser
     private StatusLine eye;
     private string? eyeState;
     private bool correction;
+    private bool replaced;
 
     /// <param name="upload">How the geometry upload before this run went; null when there was none.</param>
     public DreamAirLogParser(GeometryResult? upload = null)
@@ -112,11 +115,8 @@ public sealed partial class DreamAirLogParser
         }
         else if (line.Contains("Replaced the saved calibration in ", StringComparison.Ordinal))
         {
-            eye = eye with
-            {
-                Level = StatusLevel.Warning,
-                Text = "Pimax Play's calibration replaced the one Mirador kept (a backup is in Eye tracking).",
-            };
+            replaced = true;
+            eye = eye with { Level = StatusLevel.Warning, Text = Replaced };
         }
         else if (line.Contains("Lost the eye tracker (", StringComparison.Ordinal) && line.Contains("reconnecting", StringComparison.Ordinal))
         {
@@ -132,6 +132,13 @@ public sealed partial class DreamAirLogParser
     private void SetEye(string state, StatusLevel level)
     {
         eyeState = state;
+        if (replaced)
+        {
+            // Whatever the driver says after it (or before it, in another order), the owner must see this one.
+            eye = eye with { Level = StatusLevel.Warning, Text = Replaced };
+            return;
+        }
+
         var text = correction ? state + ", gaze correction on" : state;
         eye = geometryMissing
             ? eye with { Level = StatusLevel.Warning, Text = text + "; geometry not uploaded, gaze about 10° off" }

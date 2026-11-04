@@ -43,7 +43,16 @@ public sealed record HelperReply(
     [property: JsonRequired] bool Ok,
     string? Error = null,
     bool? WasRunning = null,
-    string? Value = null);
+    string? Value = null)
+{
+    /// <summary>
+    /// Set by the client, never sent: the request never reached the helper (it isn't running, or the pipe couldn't be
+    /// opened), so nothing was done. A reply that is merely missing (the helper took too long, or answered nonsense)
+    /// leaves this false: the command may still have been carried out.
+    /// </summary>
+    [JsonIgnore]
+    public bool NotDelivered { get; init; }
+}
 
 /// <summary>The command as its name, and nothing else: a number in a request is refused, not mapped to a command.</summary>
 internal sealed class HelperCommandConverter : JsonStringEnumConverter<HelperCommand>

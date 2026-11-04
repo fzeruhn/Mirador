@@ -64,7 +64,11 @@ public sealed class DreamAirSession : ModuleSession, IDisposable
         }
     }
 
-    /// <summary>Stops the watch and starts Pimax's service again if it ran; a failure becomes a warning.</summary>
+    /// <summary>
+    /// Stops the watch and starts Pimax's service again if it ran. A failure is thrown, so that Mirador shows it as a
+    /// warning and keeps <c>session.json</c>: recovery then tries again at the next launch or Start.
+    /// </summary>
+    /// <exception cref="MiradorException">Pimax's service couldn't be started again.</exception>
     public override async Task EndAsync(CancellationToken ct)
     {
         StopWatching();
@@ -76,7 +80,7 @@ public sealed class DreamAirSession : ModuleSession, IDisposable
         var reply = await ctx.Helper.SendAsync(HelperCommand.StartPimax, ct).ConfigureAwait(false);
         if (!reply.Ok)
         {
-            RaiseWarning(new SessionWarning("pimax", $"Mirador couldn't start Pimax's service again: {reply.Error}"));
+            throw new MiradorException($"Mirador couldn't start Pimax's service again: {reply.Error} Mirador tries again the next time it starts.");
         }
     }
 

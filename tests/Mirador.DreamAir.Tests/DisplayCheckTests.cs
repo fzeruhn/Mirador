@@ -72,7 +72,7 @@ public class DisplayCheckTests
 
         var result = await DisplayCheck.RunAsync(Exe, starter.Start, CancellationToken.None).WaitAsync(Limit);
 
-        Assert.Equal(new DisplayCheckResult(false, "Couldn't start dreamair-display-check.exe: not found.", null, ""), result);
+        Assert.Equal(new DisplayCheckResult(false, "Couldn't start dreamair-display-check.exe: not found.", null, "") { Finished = false }, result);
     }
 
     [Fact]

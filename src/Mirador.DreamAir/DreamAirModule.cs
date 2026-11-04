@@ -83,11 +83,21 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         var pimax = PimaxInstall.Locate(deps.Registry)
             ?? throw new MiradorException("Pimax Play isn't installed. Install Pimax Play: Mirador uses its eye tracking runtime.");
 
+        ct.ThrowIfCancellationRequested();
         progress.Report("Stopping Pimax's software…");
+
+        // Saved before asking: Mirador may be killed, or hear no answer, while the helper stops the service.
+        var seenRunning = ctx.Processes.Snapshot().Any(p => string.Equals(p.Name, PimaxNames.Service, StringComparison.OrdinalIgnoreCase));
+        if (seenRunning)
+        {
+            saveRecovery(DreamAirSession.Recovery(true));
+        }
 
         // Not cancelled by Stop: Mirador must hear whether Pimax ran to start it again (the helper's own limit applies).
         var stop = await ctx.Helper.SendAsync(HelperCommand.StopPimax, CancellationToken.None).ConfigureAwait(false);
-        var wasRunning = stop.WasRunning == true;
+
+        // An answer says; a request that never arrived changed nothing; with no answer, what was seen running decides.
+        var wasRunning = stop.WasRunning ?? (!stop.NotDelivered && seenRunning);
         try
         {
             if (wasRunning)
@@ -111,8 +121,9 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
                 SaveCheckOutput(ctx, check);
                 if (!check.Pass)
                 {
-                    throw new MiradorException(
-                        $"Direct mode doesn't work with NVIDIA driver {driver}: {Sentence(check.Message)}{(check.WhatToDo is null ? "" : " " + Sentence(Capitalized(check.WhatToDo)))}");
+                    throw new MiradorException(check.Finished
+                        ? $"Direct mode doesn't work with NVIDIA driver {driver}: {Sentence(check.Message)}{(check.WhatToDo is null ? "" : " " + Sentence(Capitalized(check.WhatToDo)))}"
+                        : $"Mirador couldn't check direct mode with the new NVIDIA driver {driver}: {Sentence(check.Message)} Try again.");
                 }
 
                 try
