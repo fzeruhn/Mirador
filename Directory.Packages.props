@@ -5,6 +5,12 @@
   <ItemGroup>
     <!-- App -->
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <!-- Parts of the Windows App SDK that Mirador doesn't use, left out of the app (Mirador.App.csproj): about 50 MB. -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.AI" Version="2.6.5" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.ML" Version="2.6.5" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Search" Version="2.6.5" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Widgets" Version="2.6.5" />
+    <PackageVersion Include="Microsoft.Windows.AI.MachineLearning" Version="2.4.89" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <PackageVersion Include="H.NotifyIcon.WinUI" Version="2.4.1" />
