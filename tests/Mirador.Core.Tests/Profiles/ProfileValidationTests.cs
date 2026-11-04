@@ -46,6 +46,14 @@ public class ProfileValidationTests
     }
 
     [Fact]
+    public void A_folder_that_isnt_a_full_path_says_so()
+    {
+        Assert.Equal(
+            ["The Monado build folder \"monado\\build\" isn't a full path. Pick the folder again in the profile."],
+            Problems(Custom() with { Monado = new BuildSource(SourceKind.Folder, @"monado\build") }));
+    }
+
+    [Fact]
     public void A_name_with_an_equals_sign()
     {
         Assert.Equal(["A variable's name can't contain \"=\": A=B."], Problems(Custom(new EnvVar("A=B", "1"))));

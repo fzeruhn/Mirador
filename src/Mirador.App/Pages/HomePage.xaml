@@ -2,7 +2,8 @@
     x:Class="Mirador.App.Pages.HomePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:vm="using:Mirador.App.ViewModels">
+    xmlns:vm="using:Mirador.App.ViewModels"
+    NavigationCacheMode="Required">
 
     <ScrollViewer>
         <StackPanel MaxWidth="900" Padding="36,24,36,36" HorizontalAlignment="Stretch" Spacing="16">
@@ -31,6 +32,7 @@
 
             <InfoBar
                 Title="Monado didn't start"
+                Closed="OnFailureClosed"
                 IsClosable="True"
                 IsOpen="{x:Bind ViewModel.HasFailure, Mode=OneWay}"
                 Message="{x:Bind ViewModel.LastFailure, Mode=OneWay}"
@@ -97,7 +99,8 @@
                         <InfoBar
                             Title="{x:Bind Title}"
                             Margin="0,0,0,8"
-                            IsClosable="False"
+                            Closed="OnNoticeClosed"
+                            IsClosable="True"
                             IsOpen="True"
                             Message="{x:Bind Message}"
                             Severity="{x:Bind Severity}" />

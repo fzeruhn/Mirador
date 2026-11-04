@@ -16,6 +16,7 @@ public sealed partial class MonadoSettingsViewModel : ObservableObject
     private readonly AppHost host;
     private readonly DispatcherQueueTimer saveSoon;
     private bool loading;
+    private bool loaded;
 
     public MonadoSettingsViewModel(AppHost host, DispatcherQueue ui)
     {
@@ -75,9 +76,9 @@ public sealed partial class MonadoSettingsViewModel : ObservableObject
     public void Save()
     {
         saveSoon.Stop();
-        if (loading)
+        if (loading || !loaded)
         {
-            return;
+            return; // what the controls show isn't the user's settings until they have been read
         }
 
         var settings = Current();
@@ -100,6 +101,7 @@ public sealed partial class MonadoSettingsViewModel : ObservableObject
     public void ResetToDefaults()
     {
         Show(new MonadoSettings());
+        loaded = true;
         Save();
     }
 
@@ -108,7 +110,8 @@ public sealed partial class MonadoSettingsViewModel : ObservableObject
     {
         Save();
         await host.Session.StopAsync(CancellationToken.None);
-        await App.Current.StartAsync(StartReason.Button);
+        var outcome = await App.Current.StartAsync(StartReason.Button);
+        Problem = outcome.Ok ? null : $"Monado didn't start again: {outcome.Message}";
     }
 
     partial void OnLighthouseWaitSecondsChanged(double value) => SaveSoon();
@@ -139,6 +142,7 @@ public sealed partial class MonadoSettingsViewModel : ObservableObject
         try
         {
             Show(host.MonadoSettings.Load());
+            loaded = true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

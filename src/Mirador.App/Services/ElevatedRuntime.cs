@@ -33,5 +33,10 @@ public static class ElevatedRuntime
         {
             return PromptCancelled;
         }
+        catch (Win32Exception e)
+        {
+            AppLog.Write("The elevated runtime switch couldn't be started", e);
+            return -1;
+        }
     }
 }

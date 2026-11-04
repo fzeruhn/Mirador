@@ -19,7 +19,12 @@ public static class ProfileValidation
             problems.Add("A profile needs a name.");
         }
 
-        if (p.Monado.Kind == SourceKind.Folder)
+        if (p.Monado.Kind == SourceKind.Folder && p.Monado.Folder is { } folder && !string.IsNullOrWhiteSpace(folder)
+            && !Path.IsPathFullyQualified(folder.Trim()))
+        {
+            problems.Add($"The Monado build folder \"{folder.Trim()}\" isn't a full path. Pick the folder again in the profile.");
+        }
+        else if (p.Monado.Kind == SourceKind.Folder)
         {
             try
             {

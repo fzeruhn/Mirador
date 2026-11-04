@@ -28,6 +28,8 @@ public sealed partial class ProfilesPage : Page
         base.OnNavigatedFrom(e);
     }
 
+    private void OnMessageClosed(InfoBar sender, InfoBarClosedEventArgs args) => ViewModel.DismissMessage();
+
     private async void OnBrowseMonado(object sender, RoutedEventArgs e)
     {
         if (await Pickers.FolderAsync() is { } folder)

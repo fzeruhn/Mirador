@@ -37,7 +37,13 @@ public sealed partial class HomeViewModel : ObservableObject
         host.Session.Changed += () => ui.TryEnqueue(OnSessionChanged);
         host.Session.StatusChanged += () => ui.TryEnqueue(RefreshStatus);
         host.Session.Warning += w => ui.TryEnqueue(() => AddWarning(w));
-        App.Current.StartFailed += message => LastFailure = message;
+        host.Session.Ended += text => ui.TryEnqueue(() => OnEnded(text));
+        App.Current.StartFailed += message =>
+        {
+            // Through null, so that the same message again opens the bar again after it was closed.
+            LastFailure = null;
+            LastFailure = message;
+        };
         LoadProfiles();
         OnSessionChanged();
     }
@@ -112,18 +118,32 @@ public sealed partial class HomeViewModel : ObservableObject
         UpdateUrl = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    [RelayCommand]
+    /// <summary>Takes a notice away when its bar is closed.</summary>
+    public void Dismiss(NoticeItem notice) => Notices.Remove(notice);
+
+    /// <summary>The failure bar was closed.</summary>
+    public void DismissFailure() => LastFailure = null;
+
+    // Concurrent: pressing "Starting…" must reach Stop while the Start it began still runs.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task StartStopAsync()
     {
-        if (host.Session.State == SessionState.Stopped)
+        try
         {
-            ClearWarnings();
-            LastFailure = null;
-            await App.Current.StartAsync(StartReason.Button);
+            if (host.Session.State == SessionState.Stopped)
+            {
+                LastFailure = null;
+                await App.Current.StartAsync(StartReason.Button);
+            }
+            else
+            {
+                await host.Session.StopAsync(CancellationToken.None);
+            }
         }
-        else
+        catch (Exception e)
         {
-            await host.Session.StopAsync(CancellationToken.None);
+            AppLog.Write("Start or Stop failed", e);
+            LastFailure = e.Message;
         }
     }
 
@@ -136,7 +156,7 @@ public sealed partial class HomeViewModel : ObservableObject
         {
             install = host.Session.CurrentInstall ?? host.Locator.Locate(SelectedSet().Selected.Monado);
         }
-        catch (MiradorException e)
+        catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
         {
             RuntimeProblem = e.Message;
             return;
@@ -153,6 +173,11 @@ public sealed partial class HomeViewModel : ObservableObject
         try
         {
             RuntimeProblem = await RuntimeSwitch.SetAsync(install, host.Helper, ElevatedRuntime.RunAsync, host.Runtime);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Setting the OpenXR runtime failed", e);
+            RuntimeProblem = $"Setting the OpenXR runtime failed ({e.Message.Trim().TrimEnd('.')}); the runtime is unchanged.";
         }
         finally
         {
@@ -177,7 +202,9 @@ public sealed partial class HomeViewModel : ObservableObject
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            LastFailure = $"Mirador couldn't save the profile choice ({e.Message.Trim().TrimEnd('.')}).";
+            // Back to the profile a Start would use, and say why.
+            ShowNotice("profiles", "Profiles", $"Mirador couldn't save the profile choice ({e.Message.Trim().TrimEnd('.')}).", InfoBarSeverity.Error);
+            LoadProfiles();
         }
 
         RefreshRuntime();
@@ -202,7 +229,7 @@ public sealed partial class HomeViewModel : ObservableObject
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            LastFailure = $"Mirador couldn't read its profiles ({e.Message.Trim().TrimEnd('.')}).";
+            ShowNotice("profiles", "Profiles", $"Mirador couldn't read its profiles ({e.Message.Trim().TrimEnd('.')}).", InfoBarSeverity.Error);
         }
         finally
         {
@@ -221,7 +248,13 @@ public sealed partial class HomeViewModel : ObservableObject
             SessionState.Stopping => ("Stopping…", false),
             _ => ("Start", true),
         };
-        RuntimeNotice = host.Session.RuntimeNotice;
+        if (State == SessionState.Starting && previous == SessionState.Stopped)
+        {
+            // A new session, however it was started: the last one's warnings and end are history.
+            ClearWarnings();
+            RemoveNotice("ended");
+        }
+
         RefreshStatus();
         RefreshRuntime();
         if (State == SessionState.Stopped && previous != SessionState.Stopped)
@@ -262,6 +295,7 @@ public sealed partial class HomeViewModel : ObservableObject
         var isActive = install is not null && host.Runtime.IsActive(install.Manifest);
         RuntimeText = RuntimeLine.Describe(active, install, isActive);
         CanSetRuntime = install is not null && !isActive;
+        RuntimeNotice = host.Session.RuntimeNotice;
     }
 
     /// <summary>Runs the selected profile's headset checks and shows those that need a look.</summary>
@@ -316,6 +350,33 @@ public sealed partial class HomeViewModel : ObservableObject
                 r.Label,
                 r.Fix is null ? r.Text : $"{r.Text} {r.Fix}",
                 r.Level == StatusLevel.Error ? InfoBarSeverity.Error : InfoBarSeverity.Warning));
+        }
+    }
+
+    /// <summary>Monado ended other than by Stop: by itself (a problem), or after the last app closed (as asked).</summary>
+    private void OnEnded(string text)
+    {
+        if (text != "Stopped.")
+        {
+            var problem = text.StartsWith("Monado stopped by itself", StringComparison.Ordinal);
+            ShowNotice("ended", "Monado stopped", text, problem ? InfoBarSeverity.Error : InfoBarSeverity.Informational);
+        }
+    }
+
+    private void ShowNotice(string key, string title, string message, InfoBarSeverity severity)
+    {
+        RemoveNotice(key);
+        Notices.Insert(0, new NoticeItem(key, title, message, severity));
+    }
+
+    private void RemoveNotice(string key)
+    {
+        for (var i = Notices.Count - 1; i >= 0; i--)
+        {
+            if (Notices[i].Key == key)
+            {
+                Notices.RemoveAt(i);
+            }
         }
     }
 

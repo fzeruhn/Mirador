@@ -31,7 +31,12 @@ public partial class App : Application
 
         // Mirador lives in the tray: only Quit ends it, never the window closing (nor a close during Quit).
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
-        UnhandledException += (_, e) => AppLog.Write("Unhandled", e.Exception);
+        UnhandledException += (_, e) =>
+        {
+            // A crash would take Monado down with it (and leave the headset's software stopped): log and go on.
+            AppLog.Write("Unhandled", e.Exception);
+            e.Handled = true;
+        };
         AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Write("Unhandled", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()));
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {

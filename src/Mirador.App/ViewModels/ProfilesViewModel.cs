@@ -128,11 +128,17 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     public bool HasMessage => Message is not null;
 
+    /// <summary>The message bar was closed.</summary>
+    public void DismissMessage() => Message = null;
+
     public void Attach()
     {
         host.Session.Changed += OnSessionChanged;
         IsRunning = host.Session.State != SessionState.Stopped;
-        LoadList(keep: Selected?.Id);
+        if (!IsDirty)
+        {
+            LoadList(keep: Selected?.Id); // unsaved edits stay as they were left
+        }
     }
 
     public void Detach() => host.Session.Changed -= OnSessionChanged;
@@ -254,6 +260,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>Applies <paramref name="change"/> to the saved profiles and saves them; a refusal is shown, not thrown.</summary>
     private bool Change(Func<ProfileSet, ProfileSet> change, string? keep)
     {
+        Message = null;
         try
         {
             var set = change(host.Profiles.Load());
@@ -369,7 +376,12 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     private bool Validate(Profile p)
     {
-        var problems = ProfileValidation.Problems(p, host.Locator, LayerProblem);
+        var problems = ProfileValidation.Problems(p, host.Locator, LayerProblem).ToList();
+        if (IsDreamAir && LayerFromFolder && string.IsNullOrWhiteSpace(LayerFolder))
+        {
+            problems.Add("Pick the layer folder, or choose the layer that comes with Mirador.");
+        }
+
         Problems.Clear();
         foreach (var problem in problems)
         {
