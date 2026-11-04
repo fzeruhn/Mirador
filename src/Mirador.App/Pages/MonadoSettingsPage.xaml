@@ -33,6 +33,7 @@
                     <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.LighthouseWaitText, Mode=OneWay}" TextAlignment="Right" />
                     <Slider
                         x:Name="LighthouseSlider"
+                        AutomationProperties.Name="Lighthouse wait time"
                         Width="240"
                         Maximum="30"
                         Minimum="1"
@@ -48,6 +49,7 @@
                     <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.RenderScaleText, Mode=OneWay}" TextAlignment="Right" />
                     <Slider
                         x:Name="ScaleSlider"
+                        AutomationProperties.Name="Render scale"
                         Width="240"
                         Maximum="200"
                         Minimum="50"
@@ -63,6 +65,7 @@
                     <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.CompositorBudgetText, Mode=OneWay}" TextAlignment="Right" />
                     <Slider
                         x:Name="BudgetSlider"
+                        AutomationProperties.Name="Compositor budget"
                         Width="240"
                         Maximum="20"
                         Minimum="1"
