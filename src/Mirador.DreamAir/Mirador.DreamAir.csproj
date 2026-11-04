@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Mirador.DreamAir</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Mirador.Core\Mirador.Core.csproj" />
+    <ProjectReference Include="..\Mirador.Ipc\Mirador.Ipc.csproj" />
+  </ItemGroup>
+</Project>
