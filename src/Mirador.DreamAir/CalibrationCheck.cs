@@ -21,9 +21,9 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
     public const double GoodWorstDotDeg = 2.5;
 
     /// <summary>
-    /// Runs the check: starts Monado when it doesn't run (and stops it again after), runs <c>gaze_world</c> against this
-    /// profile's Monado only (<c>XR_RUNTIME_JSON</c>, so it never reaches Pimax's runtime), reads its files from
-    /// <c>&lt;ChecksDir&gt;\&lt;yyyyMMdd-HHmmss&gt;</c>, and keeps the result.
+    /// Runs the check: starts Monado when it doesn't run (and leaves it running: a game or the user may have joined that
+    /// Start meanwhile), runs <c>gaze_world</c> against this profile's Monado only (<c>XR_RUNTIME_JSON</c>, so it never
+    /// reaches Pimax's runtime), reads its files from <c>&lt;ChecksDir&gt;\&lt;yyyyMMdd-HHmmss&gt;</c>, and keeps the result.
     /// </summary>
     /// <exception cref="MiradorException">The check couldn't run or gave nothing to measure; the message says why.</exception>
     public async Task<GazeAccuracyResult> RunAsync(
@@ -34,7 +34,6 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
             throw new MiradorException($"The gaze check program is missing ({gazeWorldExe}). Reinstall Mirador.");
         }
 
-        var startedHere = false;
         if (session.State != SessionState.Running)
         {
             progress.Report("Starting Monado…");
@@ -43,19 +42,27 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
             {
                 throw new MiradorException(outcome.Message);
             }
-
-            startedHere = true;
         }
 
-        try
         {
             var manifest = session.CurrentInstall?.Manifest
                 ?? throw new MiradorException("Monado stopped before the check could start. Start it again.");
             var outDir = Path.Combine(paths.ChecksDir, time.GetLocalNow().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
             Directory.CreateDirectory(outDir);
 
+            // gaze_world's last argument: a folder for its files, or the start of their names (its Linux recordings are
+            // gaze_world_<label>_*.csv). A folder of that name exists either way, and the files are looked for below
+            // the check's folder, so both work.
+            var target = Path.Combine(outDir, "gaze_world");
+            Directory.CreateDirectory(target);
+
             progress.Report("Put the headset on and look at each dot in turn…");
-            var lines = await RunGazeWorldAsync(gazeWorldExe, manifest, outDir, ct).ConfigureAwait(false);
+            var lines = await RunGazeWorldAsync(gazeWorldExe, manifest, target, ct).ConfigureAwait(false);
+
+            if (!HasResults(outDir))
+            {
+                throw new MiradorException($"The gaze check left no results in {outDir}.{Tail(lines)}");
+            }
 
             var result = Measure(outDir)
                 ?? throw new MiradorException(
@@ -70,13 +77,6 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
             }
 
             return result;
-        }
-        finally
-        {
-            if (startedHere)
-            {
-                await session.StopAsync(CancellationToken.None).ConfigureAwait(false);
-            }
         }
     }
 
@@ -94,20 +94,7 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
     /// </summary>
     public static GazeAccuracyResult? Measure(string outDir)
     {
-        string? gaze = null, dots = null;
-        foreach (var file in Directory.EnumerateFiles(outDir, "*.csv").Order(StringComparer.Ordinal))
-        {
-            var header = File.ReadLines(file).FirstOrDefault()?.Split(',').Select(c => c.Trim()).ToArray() ?? [];
-            if (header.Contains("g_qx"))
-            {
-                gaze ??= file;
-            }
-            else if (header.Contains("x") && header.Contains("y") && header.Contains("z"))
-            {
-                dots ??= file;
-            }
-        }
-
+        var (gaze, dots) = Find(outDir);
         if (gaze is null || dots is null)
         {
             return null;
@@ -116,6 +103,41 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
         using var gazeReader = File.OpenText(gaze);
         using var dotsReader = File.OpenText(dots);
         return GazeAccuracy.Compute(gazeReader, dotsReader);
+    }
+
+    /// <summary>Whether the check's two files are there (below <paramref name="outDir"/>, at any depth).</summary>
+    public static bool HasResults(string outDir) => Find(outDir) is ({ }, { });
+
+    /// <summary>
+    /// The gaze file (it has <c>g_qx</c>) and the dots' file (<c>x</c>, <c>y</c>, <c>z</c>) below <paramref name="outDir"/>;
+    /// among several dots' files, one named for targets or dots wins.
+    /// </summary>
+    private static (string? Gaze, string? Dots) Find(string outDir)
+    {
+        string? gaze = null;
+        var dots = new List<string>();
+        if (!Directory.Exists(outDir))
+        {
+            return (null, null);
+        }
+
+        foreach (var file in Directory.EnumerateFiles(outDir, "*.csv", SearchOption.AllDirectories).Order(StringComparer.Ordinal))
+        {
+            var header = File.ReadLines(file).FirstOrDefault()?.Split(',').Select(c => c.Trim()).ToArray() ?? [];
+            if (header.Contains("g_qx"))
+            {
+                gaze ??= file;
+            }
+            else if (header.Contains("x") && header.Contains("y") && header.Contains("z"))
+            {
+                dots.Add(file);
+            }
+        }
+
+        var named = dots.FirstOrDefault(f =>
+            Path.GetFileName(f).Contains("target", StringComparison.OrdinalIgnoreCase)
+            || Path.GetFileName(f).Contains("dot", StringComparison.OrdinalIgnoreCase));
+        return (gaze, named ?? dots.FirstOrDefault());
     }
 
     private async Task<List<string>> RunGazeWorldAsync(string exe, string manifest, string outDir, CancellationToken ct)

@@ -89,7 +89,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             ?? throw new MiradorException("Pimax Play isn't installed. Install Pimax Play: Mirador uses its eye tracking runtime.");
 
         ct.ThrowIfCancellationRequested();
-        SnapshotCalibrations(deps.Calibration);
+        var snapshotProblem = SnapshotCalibrations(deps.Calibration);
         progress.Report("Stopping Pimax's software…");
 
         // Saved before asking: Mirador may be killed, or hear no answer, while the helper stops the service.
@@ -145,6 +145,11 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             progress.Report("Uploading the eye geometry…");
             var upload = await deps.Geometry.UploadAsync(pimax, variant, ct).ConfigureAwait(false);
             var warnings = new List<SessionWarning>();
+            if (snapshotProblem is not null)
+            {
+                warnings.Add(new SessionWarning("calibration", snapshotProblem));
+            }
+
             if (RememberTracker(upload.TrackerSerial))
             {
                 warnings.Add(new SessionWarning("geometry", DifferentHeadset));
@@ -331,11 +336,12 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
     /// Keeps a copy of every tracker's calibration that changed (Monado may have replaced one with the tracker's own).
     /// Never fails a Start or a Stop: a copy that can't be made is only missing from the list.
     /// </summary>
-    internal static void SnapshotCalibrations(CalibrationStore? store)
+    /// <returns>Null, or what went wrong, for a warning: Monado may replace a calibration that has no copy then.</returns>
+    internal static string? SnapshotCalibrations(CalibrationStore? store)
     {
         if (store is null)
         {
-            return;
+            return null;
         }
 
         try
@@ -344,9 +350,12 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             {
                 store.SnapshotIfChanged(serial);
             }
+
+            return null;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            return $"Mirador couldn't keep a copy of the eye calibration ({e.Message.Trim().TrimEnd('.')}).";
         }
     }
 

@@ -56,7 +56,7 @@
                         ItemsSource="{x:Bind ViewModel.Serials}"
                         PlaceholderText="No calibration yet"
                         SelectedItem="{x:Bind ViewModel.SelectedSerial, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
-                    <Button Click="OnExport" Content="Export…" IsEnabled="{x:Bind ViewModel.HasSerials, Mode=OneWay}" />
+                    <Button Click="OnExport" Content="Export…" IsEnabled="{x:Bind ViewModel.CanExport, Mode=OneWay}" />
                     <Button Click="OnImport" Content="Import…" />
                 </StackPanel>
             </toolkit:SettingsCard>

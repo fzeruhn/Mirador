@@ -32,6 +32,31 @@ public class CalibrationCheckTests
     }
 
     [Fact]
+    public void Files_in_a_folder_below_count_and_the_targets_file_wins()
+    {
+        using var dir = new TempDir();
+        var below = Path.Combine(dir.Path, "gaze_world");
+        Directory.CreateDirectory(below);
+        File.WriteAllText(Path.Combine(below, "a_other.csv"), "x,y,z\n5,5,5\n");
+        File.WriteAllText(Path.Combine(below, "b_targets.csv"), "dot,x,y,z\n0,0,0,-2\n");
+        File.WriteAllText(
+            Path.Combine(below, "c_app.csv"),
+            "t,placed,g_flags,g_px,g_py,g_pz,g_qx,g_qy,g_qz,g_qw\n" + string.Concat(Enumerable.Repeat("0.1,1,3,0,0,0,0,0,0,1\n", 25)));
+
+        Assert.True(CalibrationCheck.HasResults(dir.Path));
+        Assert.Equal(1, CalibrationCheck.Measure(dir.Path)!.Dots);
+    }
+
+    [Fact]
+    public void An_empty_folder_has_no_results()
+    {
+        using var dir = new TempDir();
+
+        Assert.False(CalibrationCheck.HasResults(dir.Path));
+        Assert.False(CalibrationCheck.HasResults(Path.Combine(dir.Path, "gone")));
+    }
+
+    [Fact]
     public void Without_both_files_there_is_nothing_to_measure()
     {
         using var dir = new TempDir();

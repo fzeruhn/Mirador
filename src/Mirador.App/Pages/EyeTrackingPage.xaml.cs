@@ -19,7 +19,14 @@ public sealed partial class EyeTrackingPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        ViewModel.Attach();
         ViewModel.Refresh();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        ViewModel.Detach();
+        base.OnNavigatedFrom(e);
     }
 
     private void OnResultClosed(InfoBar sender, InfoBarClosedEventArgs args) => ViewModel.DismissResult();
@@ -44,7 +51,7 @@ public sealed partial class EyeTrackingPage : Page
         };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            ViewModel.Restore(item);
+            await ViewModel.RestoreAsync(item);
         }
     }
 
@@ -60,7 +67,7 @@ public sealed partial class EyeTrackingPage : Page
     {
         if (await Pickers.OpenFileAsync(".zip") is { } path)
         {
-            ViewModel.Import(path);
+            await ViewModel.ImportAsync(path);
         }
     }
 }

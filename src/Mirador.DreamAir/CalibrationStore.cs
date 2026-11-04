@@ -25,6 +25,12 @@ public sealed partial class CalibrationStore(string monadoDir, string backupsDir
 
     private const string StopFirst = "Stop Monado first.";
 
+    private const string PartialSuffix = ".partial";
+
+    /// <summary>Whether Monado has a calibration of this tracker now (a tracker may have only copies left).</summary>
+    public bool HasCalibration(string serial) =>
+        IsSerial(serial) && File.Exists(Path.Combine(monadoDir, CalibrationName(serial)));
+
     /// <summary>The default: <c>%LOCALAPPDATA%\monado\dreamair</c>.</summary>
     public static string DefaultMonadoDir { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "monado", "dreamair");
@@ -87,14 +93,22 @@ public sealed partial class CalibrationStore(string monadoDir, string backupsDir
             dir = Path.Combine(backupsDir, serial, $"{name}-{n}");
         }
 
-        Directory.CreateDirectory(dir);
-        File.Copy(calibration, Path.Combine(dir, CalibrationName(serial)));
+        // Made aside and moved into place whole: a copy cut short never shows in the list as one without its correction.
+        var partial = dir + PartialSuffix;
+        if (Directory.Exists(partial))
+        {
+            Directory.Delete(partial, recursive: true);
+        }
+
+        Directory.CreateDirectory(partial);
+        File.Copy(calibration, Path.Combine(partial, CalibrationName(serial)));
         var correction = Path.Combine(monadoDir, CorrectionName(serial));
         if (File.Exists(correction))
         {
-            File.Copy(correction, Path.Combine(dir, CorrectionName(serial)));
+            File.Copy(correction, Path.Combine(partial, CorrectionName(serial)));
         }
 
+        Directory.Move(partial, dir);
         return new CalibrationBackup(serial, now, dir);
     }
 
@@ -112,7 +126,7 @@ public sealed partial class CalibrationStore(string monadoDir, string backupsDir
         foreach (var dir in Directory.EnumerateDirectories(root))
         {
             var name = Path.GetFileName(dir);
-            if (name.Length >= 15
+            if (name.Length >= 15 && !name.EndsWith(PartialSuffix, StringComparison.Ordinal)
                 && DateTime.TryParseExact(name[..15], "yyyyMMdd-HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var taken)
                 && File.Exists(Path.Combine(dir, CalibrationName(serial))))
             {
@@ -188,11 +202,13 @@ public sealed partial class CalibrationStore(string monadoDir, string backupsDir
         {
             using var archive = ZipFile.OpenRead(zipPath);
             var entries = archive.Entries.ToList();
-            var calibrationEntry = entries.Count is 1 or 2 ? entries.SingleOrDefault(e => CalibrationFile().IsMatch(e.FullName)) : null;
-            if (calibrationEntry is null)
+            var calibrations = entries.Where(e => CalibrationFile().IsMatch(e.FullName)).ToList();
+            if (entries.Count is not (1 or 2) || calibrations.Count != 1)
             {
                 throw new MiradorException(NotAnExport);
             }
+
+            var calibrationEntry = calibrations[0];
 
             serial = CalibrationFile().Match(calibrationEntry.FullName).Groups[1].Value;
             if (!IsSerial(serial) || entries.Any(e => e != calibrationEntry && e.FullName != CorrectionName(serial)))

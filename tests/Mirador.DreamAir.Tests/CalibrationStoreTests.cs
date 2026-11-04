@@ -186,6 +186,36 @@ public sealed class CalibrationStoreTests : IDisposable
     }
 
     [Fact]
+    public void Import_refuses_two_calibrations()
+    {
+        var e = Assert.Throws<MiradorException>(() =>
+            Store().Import(Zip(("eye_calibration_ABC.bin", "x"), ("eye_calibration_DEF.bin", "y"))));
+
+        Assert.Equal(CalibrationStore.NotAnExport, e.Message);
+    }
+
+    [Fact]
+    public void A_copy_cut_short_isnt_listed()
+    {
+        Directory.CreateDirectory(Path.Combine(BackupsDir, Serial, "20261104-120000.partial"));
+        File.WriteAllText(Path.Combine(BackupsDir, Serial, "20261104-120000.partial", CalibrationStore.CalibrationName(Serial)), "half");
+
+        Assert.Empty(Store().Backups(Serial));
+    }
+
+    [Fact]
+    public void A_tracker_with_only_copies_has_no_calibration_to_export()
+    {
+        var store = Store();
+        Calibrate("mine");
+        store.SnapshotIfChanged(Serial);
+        File.Delete(Path.Combine(MonadoDir, CalibrationStore.CalibrationName(Serial)));
+
+        Assert.Equal([Serial], store.Serials());
+        Assert.False(store.HasCalibration(Serial));
+    }
+
+    [Fact]
     public void Import_refuses_mismatched_serials()
     {
         var e = Assert.Throws<MiradorException>(() =>

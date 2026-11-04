@@ -82,8 +82,19 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
 
     public void DismissBackupMessage() => BackupMessage = null;
 
-    /// <summary>Puts a copy back (the page asked first).</summary>
-    public void Restore(BackupItem item) => Do(() =>
+    [ObservableProperty]
+    public partial bool CanExport { get; set; }
+
+    /// <summary>Follows the session while the page is shown: a session that ended may have left a new copy.</summary>
+    public void Attach() => host.Session.Changed += OnSessionChanged;
+
+    public void Detach() => host.Session.Changed -= OnSessionChanged;
+
+    /// <summary>
+    /// Puts a copy back (the page asked first). Through the session, like Import: a Start waits until the files are
+    /// written, so Monado never reads half a pair.
+    /// </summary>
+    public Task RestoreAsync(BackupItem item) => DoWhileStoppedAsync(() =>
     {
         host.Calibrations.Restore(item.Backup);
         return $"The calibration from {item.Text} is back. The one it replaced is kept in the list.";
@@ -97,14 +108,48 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
     });
 
     /// <summary>Takes in an export from <paramref name="zipPath"/> (the page picked it).</summary>
-    public void Import(string zipPath) => Do(() =>
+    public Task ImportAsync(string zipPath) => DoWhileStoppedAsync(() =>
     {
         var serial = host.Calibrations.Import(zipPath);
-        SelectedSerial = serial;
+        App.Current.Ui.TryEnqueue(() => SelectedSerial = serial);
         return $"The calibration of eye tracker {serial} is in. The one it replaced is kept in the list.";
     });
 
-    partial void OnSelectedSerialChanged(string? value) => LoadBackups();
+    private async Task DoWhileStoppedAsync(Func<string> action)
+    {
+        try
+        {
+            BackupMessage = await host.Session.RunWhileStoppedAsync(
+                DreamAirModule.ModuleId, (_, _) => Task.Run(action), CancellationToken.None);
+            BackupSeverity = InfoBarSeverity.Success;
+        }
+        catch (MiradorException e)
+        {
+            BackupMessage = e.Message;
+            BackupSeverity = InfoBarSeverity.Error;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            BackupMessage = $"Mirador couldn't do that ({e.Message.Trim().TrimEnd('.')}).";
+            BackupSeverity = InfoBarSeverity.Error;
+        }
+
+        LoadSerials();
+    }
+
+    private void OnSessionChanged() => App.Current.Ui.TryEnqueue(() =>
+    {
+        if (host.Session.State == Core.Session.SessionState.Stopped)
+        {
+            LoadSerials();
+        }
+    });
+
+    partial void OnSelectedSerialChanged(string? value)
+    {
+        CanExport = value is not null && host.Calibrations.HasCalibration(value);
+        LoadBackups();
+    }
 
     /// <summary>The owner picked a variant: it is theirs from now on, until Pimax's software says otherwise.</summary>
     partial void OnSelectedVariantChanged(VariantItem? value)
