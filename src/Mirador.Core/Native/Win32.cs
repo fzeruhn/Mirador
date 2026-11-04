@@ -13,8 +13,17 @@ internal static class Win32
     /// <summary><c>ERROR_SEM_TIMEOUT</c>: <c>WaitNamedPipeW</c> gives up because every instance of the pipe is busy.</summary>
     private const int ErrorSemTimeout = 121;
 
+    /// <summary><c>ERROR_INSUFFICIENT_BUFFER</c>: the buffer was too small for the answer.</summary>
+    private const int ErrorInsufficientBuffer = 122;
+
     private const int JobObjectExtendedLimitInformation = 9;
     private const uint JobObjectLimitKillOnJobClose = 0x2000;
+
+    /// <summary><c>PROCESS_QUERY_LIMITED_INFORMATION</c>: the least access that reads a process's program file.</summary>
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+
+    /// <summary>Path buffer sizes to try, in characters: the usual, then the longest a Windows path can be.</summary>
+    private static readonly int[] PathCapacities = [1024, 32768];
 
     [DllImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true)]
     private static extern SafeFileHandle CreateJobObject(nint attributes, nint name);
@@ -31,6 +40,13 @@ internal static class Win32
     [DllImport("kernel32.dll", EntryPoint = "WaitNamedPipeW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool WaitNamedPipe(string name, uint timeoutMs);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, [Out] char[] name, ref uint size);
 
     /// <summary>Creates a job object that ends every process in it when its last handle closes.</summary>
     /// <returns>The job's handle. Closing it (dispose) ends the processes.</returns>
@@ -84,6 +100,36 @@ internal static class Win32
         }
 
         return WaitNamedPipe(normalized, 1) || Marshal.GetLastPInvokeError() == ErrorSemTimeout;
+    }
+
+    /// <summary>
+    /// The full path of the program file process <paramref name="id"/> runs, or null when Windows won't say: no such
+    /// process, or not one this user may ask about.
+    /// </summary>
+    public static string? ProcessImagePath(int id)
+    {
+        using var process = OpenProcess(ProcessQueryLimitedInformation, inheritHandle: false, unchecked((uint)id));
+        if (process.IsInvalid)
+        {
+            return null;
+        }
+
+        foreach (var capacity in PathCapacities)
+        {
+            var buffer = new char[capacity];
+            var size = (uint)capacity;
+            if (QueryFullProcessImageName(process, 0, buffer, ref size))
+            {
+                return new string(buffer, 0, (int)size);
+            }
+
+            if (Marshal.GetLastPInvokeError() != ErrorInsufficientBuffer)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     // The x64 layout of JOBOBJECT_EXTENDED_LIMIT_INFORMATION (144 bytes); the project builds for x64 only.

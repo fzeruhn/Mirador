@@ -16,6 +16,33 @@ public class ProcessesTests
     }
 
     [Fact]
+    public void The_program_file_of_a_process_can_be_read()
+    {
+        var list = new SystemProcessList();
+        using var child = Process.Start(new ProcessStartInfo(
+            Path.Combine(Environment.SystemDirectory, "ping.exe"), "-n 30 127.0.0.1") { CreateNoWindow = true, UseShellExecute = false })!;
+        try
+        {
+            Assert.Equal(Environment.ProcessPath, list.ImagePathOf(Environment.ProcessId), StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(Path.Combine(Environment.SystemDirectory, "PING.EXE"), list.ImagePathOf(child.Id), StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            child.Kill();
+            child.WaitForExit();
+        }
+    }
+
+    [Fact]
+    public void A_process_that_cannot_be_opened_has_no_program_file()
+    {
+        var list = new SystemProcessList();
+
+        Assert.Null(list.ImagePathOf(0)); // the idle process: never opened
+        Assert.Null(list.ImagePathOf(0x7FFFFFF0)); // no such process
+    }
+
+    [Fact]
     public void A_new_snapshot_is_taken_each_time()
     {
         var list = new SystemProcessList();

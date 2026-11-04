@@ -39,10 +39,24 @@ internal sealed class FakeProcessList(Steps steps) : IProcessList
 {
     public List<ProcInfo> Running { get; } = [];
 
+    /// <summary>The program file of each process whose file can be read; the others can't.</summary>
+    public Dictionary<int, string> Images { get; } = [];
+
     public IReadOnlyList<ProcInfo> Snapshot()
     {
         steps.Add("processes");
         return [.. Running];
+    }
+
+    public string? ImagePathOf(int id) => Images.GetValueOrDefault(id);
+
+    public void Add(string name, int id, string? image = null)
+    {
+        Running.Add(new ProcInfo(name, id));
+        if (image is not null)
+        {
+            Images[id] = image;
+        }
     }
 }
 
@@ -408,17 +422,19 @@ internal sealed class Harness : IAsyncDisposable
         Settings = new MonadoSettingsStore(Paths.MonadoSettingsFile);
         UseProfile(DreamAir);
 
-        Controller = new SessionController(new SessionDeps(
-            Profiles,
-            Settings,
-            new Dictionary<string, IHeadsetModule> { [Module.Id] = Module },
-            new ModuleContext(Paths, new FakeHelper(), Processes, new FakeUsb(), Time),
-            new MonadoLocator(bundledRoot),
-            Launcher,
-            Pipe,
-            new OpenXrRuntime(Runtime),
-            StandInExe,
-            Inherited));
+        Controller = new SessionController(
+            new SessionDeps(
+                Profiles,
+                Settings,
+                new Dictionary<string, IHeadsetModule> { [Module.Id] = Module },
+                new ModuleContext(Paths, new FakeHelper(), Processes, new FakeUsb(), Time),
+                new MonadoLocator(bundledRoot),
+                Launcher,
+                Pipe,
+                new OpenXrRuntime(Runtime),
+                StandInExe,
+                Inherited),
+            isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);
         Controller.Warning += w => Warnings.Enqueue(w);
@@ -432,6 +448,12 @@ internal sealed class Harness : IAsyncDisposable
 
     public static Profile DreamAir { get; } =
         new("p1", "Dream Air", "fake", BuildSource.Bundled, [], new Dictionary<string, string>());
+
+    /// <summary>Program files under this folder count as Mirador's stand-in, nothing else does.</summary>
+    public const string StandInImages = @"C:\Games\stand-ins\";
+
+    /// <summary>A real Monado's program file, outside Mirador.</summary>
+    public const string OtherMonado = @"C:\Users\Zoë\monado\build\src\xrt\targets\service\monado-service.exe";
 
     public static IReadOnlyDictionary<string, string> Inherited { get; } = new Dictionary<string, string>
     {

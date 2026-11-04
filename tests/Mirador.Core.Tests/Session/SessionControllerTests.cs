@@ -106,8 +106,8 @@ public class SessionControllerTests
     public async Task Start_refuses_when_monado_service_already_runs()
     {
         await using var h = new Harness();
-        h.Processes.Running.Add(new ProcInfo("explorer", 7));
-        h.Processes.Running.Add(new ProcInfo("monado-service", 1234));
+        h.Processes.Add("explorer", 7, @"C:\Windows\explorer.exe");
+        h.Processes.Add("monado-service", 1234, Harness.OtherMonado);
 
         var outcome = await Start(h).WaitAsync(Limit);
 
@@ -117,6 +117,51 @@ public class SessionControllerTests
         Assert.Equal(0, h.Module.BeforeStartCalls);
         Assert.Equal(0, h.Launcher.Starts);
         Assert.Equal(SessionState.Stopped, h.Controller.State);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)] // two games, each with its stand-in waiting
+    public async Task Stand_ins_are_not_a_monado(int standIns)
+    {
+        await using var h = new Harness();
+        for (var n = 1; n <= standIns; n++)
+        {
+            h.Processes.Add("monado-service", 500 + n, Harness.StandInImages + $@"game {n}\monado-service.exe");
+        }
+
+        await h.StartRunningAsync();
+
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task A_stand_in_next_to_a_real_monado_still_refuses_naming_the_real_one()
+    {
+        await using var h = new Harness();
+        h.Processes.Add("monado-service", 501, Harness.StandInImages + "monado-service.exe");
+        h.Processes.Add("monado-service", 1234, Harness.OtherMonado);
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.Equal(
+            new StartOutcome(false, "Monado is already running outside Mirador (monado-service, process 1234). Close it, then press Start."),
+            outcome);
+        Assert.Equal(0, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task A_monado_service_whose_file_cannot_be_read_counts_as_a_monado()
+    {
+        await using var h = new Harness();
+        h.Processes.Add("monado-service", 1234); // ended a moment ago, or not this user's to ask
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.Equal(
+            new StartOutcome(false, "Monado is already running outside Mirador (monado-service, process 1234). Close it, then press Start."),
+            outcome);
+        Assert.Equal(0, h.Launcher.Starts);
     }
 
     [Fact]
@@ -389,12 +434,26 @@ public class SessionControllerTests
     {
         await using var h = new Harness();
         new SessionFile(h.Paths.SessionFile).Write("p1", "fake", new Dictionary<string, string> { ["wasRunning"] = "true" });
-        h.Processes.Running.Add(new ProcInfo("monado-service", 1234));
+        h.Processes.Add("monado-service", 1234, Harness.OtherMonado);
 
         await h.Controller.RecoverAsync(CancellationToken.None).WaitAsync(Limit);
 
         Assert.Null(h.Module.Recovered);
         Assert.True(File.Exists(h.Paths.SessionFile));
+    }
+
+    [Fact]
+    public async Task Recover_goes_ahead_while_only_a_stand_in_runs()
+    {
+        await using var h = new Harness();
+        IReadOnlyDictionary<string, string> data = new Dictionary<string, string> { ["wasRunning"] = "true" };
+        new SessionFile(h.Paths.SessionFile).Write("p1", "fake", data);
+        h.Processes.Add("monado-service", 501, Harness.StandInImages + "monado-service.exe");
+
+        await h.Controller.RecoverAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(data, h.Module.Recovered);
+        Assert.False(File.Exists(h.Paths.SessionFile));
     }
 
     [Fact]

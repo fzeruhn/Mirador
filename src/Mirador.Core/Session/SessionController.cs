@@ -57,6 +57,7 @@ public sealed class SessionController(SessionDeps deps)
 
     private readonly SessionDeps deps = deps;
     private readonly SessionFile sessionFile = new(deps.Context.Paths.SessionFile);
+    private readonly Func<string, bool> isStandIn = StandIn.IsStandIn;
 
     private readonly object gate = new();
     private SessionState state = SessionState.Stopped;
@@ -68,6 +69,9 @@ public sealed class SessionController(SessionDeps deps)
     private MonadoInstall? currentInstall;
     private IReadOnlyDictionary<string, string>? lastMiradorEnvironment;
     private TextLog? lastLog;
+
+    /// <summary>For tests: <paramref name="isStandIn"/> stands in for <see cref="StandIn.IsStandIn"/>.</summary>
+    internal SessionController(SessionDeps deps, Func<string, bool> isStandIn) : this(deps) => this.isStandIn = isStandIn;
 
     /// <summary>Raised when <see cref="State"/>, <see cref="CurrentInstall"/>, <see cref="RuntimeNotice"/> or <see cref="LastMiradorEnvironment"/> may be different.</summary>
     public event Action? Changed;
@@ -188,8 +192,8 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>
-    /// Starts Monado with the selected profile: refuses while another <c>monado-service</c> runs, or while a program
-    /// holds the Lighthouse receiver the profile needs; runs the headset module's steps; starts the service and waits
+    /// Starts Monado with the selected profile: refuses while another Monado runs (a <c>monado-service</c> that isn't
+    /// Mirador's stand-in), or while a program holds the Lighthouse receiver the profile needs; runs the headset module's steps; starts the service and waits
     /// until it is ready for apps (at most <see cref="StartTimeout"/>). Callers during a Start share its outcome; a Start
     /// while Monado runs succeeds at once; a Start while stopping waits for the stop, then starts.
     /// </summary>
@@ -281,8 +285,8 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>
-    /// When Mirador went away mid-session (killed or crashed), <c>session.json</c> was left behind: once no
-    /// <c>monado-service</c> runs, hands its data to the module's <see cref="IHeadsetModule.RecoverAsync"/>, then deletes
+    /// When Mirador went away mid-session (killed or crashed), <c>session.json</c> was left behind: once no Monado
+    /// runs (stand-ins don't count), hands its data to the module's <see cref="IHeadsetModule.RecoverAsync"/>, then deletes
     /// it. Meant for Mirador's start; a Start that comes in meanwhile waits for it. A failure becomes a
     /// <see cref="Warning"/> and the file stays for the next launch.
     /// </summary>
@@ -485,7 +489,7 @@ public sealed class SessionController(SessionDeps deps)
         var moduleEnvironment = run.Session?.Environment ?? [];
         var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
         var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
-        var standIn = install.IsBundled ? null : StandIn.Place(deps.StandInExe, install.StandInDir);
+        var standIn = install.IsBundled ? null : StandInCopy.Place(deps.StandInExe, install.StandInDir);
 
         var logPath = deps.Context.Paths.NewMonadoLogFile(deps.Context.Time.GetLocalNow().DateTime);
         MonadoLogs.Prune(deps.Context.Paths.LogsDir, logPath, KeptLogs);
@@ -791,8 +795,15 @@ public sealed class SessionController(SessionDeps deps)
         return new StatusLine("tracking", "Tracking", StatusLevel.Ok, $"HMD {hmd}{more}");
     }
 
-    private static ProcInfo? FindService(IReadOnlyList<ProcInfo> running) =>
-        running.FirstOrDefault(p => string.Equals(p.Name, ServiceName, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// The first real Monado among <paramref name="running"/>: a <c>monado-service</c> whose program file isn't Mirador's
+    /// stand-in, which runs under the same name while it waits for a Start (one per game). One whose file can't be read
+    /// counts as a Monado: when Mirador can't tell, it doesn't start a second service.
+    /// </summary>
+    private ProcInfo? FindService(IReadOnlyList<ProcInfo> running) =>
+        running.FirstOrDefault(p => string.Equals(p.Name, ServiceName, StringComparison.OrdinalIgnoreCase) && !RunsStandIn(p.Id));
+
+    private bool RunsStandIn(int id) => deps.Context.Processes.ImagePathOf(id) is { } path && isStandIn(path);
 
     private static StartOutcome Fail(string message) => new(false, message);
 

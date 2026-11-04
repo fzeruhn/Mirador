@@ -4,10 +4,10 @@ using Mirador.Core.Modules;
 namespace Mirador.Core.Session;
 
 /// <summary>
-/// The stand-in: a small <c>monado-service.exe</c> that Monado's runtime DLL starts when a game finds no service
-/// running, and that asks Mirador to Start. A build folder needs Mirador's copy of it in its stand-in folder.
+/// Puts Mirador's stand-in (<see cref="Monado.StandIn"/>) into a build folder, where Monado's runtime DLL looks for
+/// <c>monado-service.exe</c> when a game finds no service running.
 /// </summary>
-internal static class StandIn
+internal static class StandInCopy
 {
     private const string FileName = "monado-service.exe";
 
