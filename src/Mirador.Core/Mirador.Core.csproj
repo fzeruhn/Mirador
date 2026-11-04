@@ -4,6 +4,9 @@
     <RootNamespace>Mirador.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Mirador.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Mirador.Ipc\Mirador.Ipc.csproj" />
   </ItemGroup>
 </Project>
