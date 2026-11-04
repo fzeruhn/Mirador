@@ -192,6 +192,8 @@ public sealed partial class HomeViewModel : ObservableObject
             return;
         }
 
+        // A failed Start was about the profile picked before.
+        LastFailure = null;
         try
         {
             var set = host.Profiles.Load();
