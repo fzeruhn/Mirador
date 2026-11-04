@@ -119,12 +119,26 @@ internal sealed class RunningProcess : IRunningProcess
             // launcher is disposed or Mirador goes away.
         }
 
+        if (Exited.IsCompleted)
+        {
+            ReleaseProcess();
+        }
+        else
+        {
+            // Still running after all: releasing the process now would stop .NET watching for its exit, and Exited would
+            // never complete. Release it once it has ended; the job ends it when the launcher goes, at the latest.
+            _ = Exited.ContinueWith(_ => ReleaseProcess(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        }
+
+        GC.KeepAlive(job);
+    }
+
+    private void ReleaseProcess()
+    {
         lock (lifecycle)
         {
             process.Dispose(); // after any kill that is still under way
         }
-
-        GC.KeepAlive(job);
     }
 
     private void KillCore()

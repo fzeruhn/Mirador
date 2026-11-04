@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using Mirador.Core.Native;
 
 namespace Mirador.Core;
 
@@ -10,6 +11,12 @@ public sealed record ProcInfo(string Name, int Id);
 public interface IProcessList
 {
     IReadOnlyList<ProcInfo> Snapshot();
+
+    /// <summary>
+    /// The full path of the program file process <paramref name="id"/> runs, or null when it can't be read: the
+    /// process has ended, or Windows won't tell this user. A list that can't read any (this default) returns null.
+    /// </summary>
+    string? ImagePathOf(int id) => null;
 }
 
 /// <summary>The real list, taken from Windows each time.</summary>
@@ -35,4 +42,6 @@ public sealed class SystemProcessList : IProcessList
 
         return found;
     }
+
+    public string? ImagePathOf(int id) => Win32.ProcessImagePath(id);
 }

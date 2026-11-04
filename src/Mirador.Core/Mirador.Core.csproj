@@ -7,6 +7,9 @@
     <InternalsVisibleTo Include="Mirador.Core.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="System.Management" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Mirador.Ipc\Mirador.Ipc.csproj" />
   </ItemGroup>
 </Project>

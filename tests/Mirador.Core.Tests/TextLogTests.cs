@@ -101,6 +101,27 @@ public class TextLogTests
     }
 
     [Fact]
+    public void A_log_that_another_program_keeps_from_rolling_over_keeps_its_lines()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("a.log");
+        using var log = new TextLog(path, maxBytes: 100);
+        log.Write(new string('a', 60));
+
+        // Like Get-Content -Wait: open for reading, sharing read and write but not delete, so it can't be renamed.
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            log.Write(new string('b', 60)); // over the limit, but the roll fails: the line goes to the same file
+            Assert.Equal([new string('a', 60), new string('b', 60)], ReadLines(path));
+            Assert.False(File.Exists(path + ".1"));
+        }
+
+        log.Write(new string('c', 60)); // grown by more than a tenth of the limit since: rolls, now that it can
+        Assert.Equal([new string('c', 60)], ReadLines(path));
+        Assert.Equal([new string('a', 60), new string('b', 60)], ReadLines(path + ".1"));
+    }
+
+    [Fact]
     public void A_line_longer_than_the_limit_is_written_whole()
     {
         using var dir = new TempDir();
