@@ -133,6 +133,7 @@ public sealed class GeometryUploaderTests : IDisposable
     [Theory]
     [InlineData("pi_server")]
     [InlineData("vrss_gaze_provider")]
+    [InlineData("platform_runtime_XR5EYECHIP_WIN10_x64")] // Pimax's own copy of the runtime
     public async Task A_program_holding_the_tracker_refuses(string holder)
     {
         processes.Add(holder);
