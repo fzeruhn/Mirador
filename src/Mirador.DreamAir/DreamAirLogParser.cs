@@ -31,6 +31,9 @@ public sealed partial class DreamAirLogParser
     private StatusLine eye;
     private string? eyeState;
     private bool correction;
+
+    /// <summary>Why a gaze correction file was found but not used; null when there was none or it was used.</summary>
+    private string? unusedCorrection;
     private bool replaced;
 
     /// <param name="upload">How the geometry upload before this run went; null when there was none.</param>
@@ -95,7 +98,11 @@ public sealed partial class DreamAirLogParser
         }
         else if (line.Contains("Eye tracker connected.", StringComparison.Ordinal))
         {
-            SetEye("Connected", StatusLevel.Info);
+            // The driver applies the calibration before it says it's connected: that state stays.
+            if (eyeState is null)
+            {
+                SetEye("Connected", StatusLevel.Info);
+            }
         }
         else if (line.Contains("Eye calibration applied (from the tracker).", StringComparison.Ordinal))
         {
@@ -108,10 +115,19 @@ public sealed partial class DreamAirLogParser
         else if (line.Contains("Gaze correction loaded from ", StringComparison.Ordinal))
         {
             correction = true;
+            unusedCorrection = null;
             if (eyeState is not null)
             {
                 SetEye(eyeState, eye.Level);
             }
+        }
+        else if (line.Contains("is for another calibration, not used.", StringComparison.Ordinal))
+        {
+            NoteUnusedCorrection("gaze correction not used: it was made for another calibration");
+        }
+        else if (line.Contains("has no combined table, not used.", StringComparison.Ordinal))
+        {
+            NoteUnusedCorrection("gaze correction not used: its file is incomplete");
         }
         else if (line.Contains("Replaced the saved calibration in ", StringComparison.Ordinal))
         {
@@ -122,6 +138,16 @@ public sealed partial class DreamAirLogParser
         {
             eyeState = null;
             eye = eye with { Level = StatusLevel.Warning, Text = "Lost the eye tracker; reconnecting" };
+        }
+    }
+
+    private void NoteUnusedCorrection(string why)
+    {
+        correction = false;
+        unusedCorrection = why;
+        if (eyeState is not null)
+        {
+            SetEye(eyeState, eye.Level);
         }
     }
 
@@ -139,7 +165,7 @@ public sealed partial class DreamAirLogParser
             return;
         }
 
-        var text = correction ? state + ", gaze correction on" : state;
+        var text = correction ? state + ", gaze correction on" : unusedCorrection is null ? state : $"{state}; {unusedCorrection}";
         eye = geometryMissing
             ? eye with { Level = StatusLevel.Warning, Text = text + "; geometry not uploaded, gaze about 10° off" }
             : eye with { Level = level, Text = text };
