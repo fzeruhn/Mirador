@@ -49,7 +49,7 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
         }
 
         zip.AddFile("mirador.log", paths.AppLogFile);
-        zip.AddText("profile.json", System.Text.Json.JsonSerializer.Serialize(profile, DiagnosticsJsonContext.Default.Profile));
+        zip.AddText("profile.json", JsonFile.Text(profile, DiagnosticsJsonContext.Default.Profile));
         zip.AddFile("monado-settings.json", paths.MonadoSettingsFile);
         zip.AddText(
             "environment.txt",

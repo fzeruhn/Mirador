@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
@@ -63,10 +64,33 @@ public static class JsonFile
         var temp = path + ".tmp";
         using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
         {
-            JsonSerializer.Serialize(stream, value, typeInfo);
+            Write(stream, value, typeInfo);
             stream.Flush(flushToDisk: true);
         }
 
         File.Move(temp, path, overwrite: true);
+    }
+
+    /// <summary><paramref name="value"/> as the JSON <see cref="Save"/> writes.</summary>
+    public static string Text<T>(T value, JsonTypeInfo<T> typeInfo)
+    {
+        using var stream = new MemoryStream();
+        Write(stream, value, typeInfo);
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    /// <summary>
+    /// Writes the JSON for people to read too: "Finn's builds" and "Zoë" stay as they are instead of becoming
+    /// escaped character codes (only quotes, backslashes and control characters are escaped). The files are Mirador's own, never
+    /// put into a web page.
+    /// </summary>
+    private static void Write<T>(Stream stream, T value, JsonTypeInfo<T> typeInfo)
+    {
+        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions
+        {
+            Indented = typeInfo.Options.WriteIndented,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        });
+        JsonSerializer.Serialize(writer, value, typeInfo);
     }
 }
