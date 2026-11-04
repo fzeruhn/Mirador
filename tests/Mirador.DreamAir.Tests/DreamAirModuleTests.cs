@@ -475,11 +475,15 @@ public sealed class DreamAirModuleTests : IDisposable
         state.Save(new DreamAirState());
         helper.Replies[HelperCommand.StopPimax] = new HelperReply(true, WasRunning: true);
 
-        var (check, problem) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), CancellationToken.None);
+        processes.Add("PiServiceLauncher");
+
+        var (check, problem) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), Save, CancellationToken.None);
 
         Assert.True(check.Pass);
         Assert.Null(problem);
-        Assert.Equal(["StopPimax", "display check", "StartPimax"], steps);
+        Assert.Equal(
+            ["save pimaxWasRunning=true", "StopPimax", "save pimaxWasRunning=true", "display check", "StartPimax", "save "],
+            steps);
         Assert.Equal("621.01", state.Load().LastGoodDriver);
     }
 
@@ -490,11 +494,12 @@ public sealed class DreamAirModuleTests : IDisposable
         helper.Replies[HelperCommand.StartPimax] = new HelperReply(false, "Pimax's service is disabled.");
         check = (["FAIL: no flips"], 1);
 
-        var (result, problem) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), CancellationToken.None);
+        var (result, problem) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), Save, CancellationToken.None);
 
         Assert.False(result.Pass);
         Assert.Equal("no flips", result.Message);
-        Assert.Equal("Mirador couldn't start Pimax's service again: Pimax's service is disabled.", problem);
+        Assert.Equal("Mirador couldn't start Pimax's service again: Pimax's service is disabled. Mirador tries again the next time it starts.", problem);
+        Assert.Equal("true", saves[^1]["pimaxWasRunning"]); // left for recovery
         Assert.Equal("621.01", state.Load().LastGoodDriver); // unchanged by a fail
     }
 
@@ -503,10 +508,22 @@ public sealed class DreamAirModuleTests : IDisposable
     {
         helper.Replies[HelperCommand.StopPimax] = new HelperReply(false, "Mirador's helper service isn't running.") { NotDelivered = true };
 
-        var (result, _) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), CancellationToken.None);
+        var (result, _) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), Save, CancellationToken.None);
 
         Assert.Equal(new DisplayCheckResult(false, "Mirador's helper service isn't running.", null, "") { Finished = false }, result);
         Assert.DoesNotContain("display check", steps);
+    }
+
+    [Fact]
+    public async Task Check_display_with_no_answer_from_the_helper_starts_pimax_again_when_it_was_seen()
+    {
+        helper.Replies[HelperCommand.StopPimax] = new HelperReply(false, "Mirador's helper service didn't answer in time.");
+        processes.Add("PiServiceLauncher");
+
+        await Module().CheckDisplayAsync(Context, DreamAirProfile(), Save, CancellationToken.None);
+
+        Assert.Equal([HelperCommand.StopPimax, HelperCommand.StartPimax], helper.Sent);
+        Assert.Empty(saves[^1]);
     }
 
     [Fact]

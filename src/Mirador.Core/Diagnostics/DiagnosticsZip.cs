@@ -14,13 +14,19 @@ namespace Mirador.Core.Diagnostics;
 public sealed class DiagnosticsZip : IDiagnosticsSink
 {
     private readonly List<(string Entry, string? File, string? Text)> entries = [];
+    private readonly List<string> refused = [];
 
     /// <summary>The entries added so far, in order.</summary>
     public IReadOnlyList<string> EntryNames => entries.Select(e => e.Entry).ToList();
 
-    public void AddFile(string entryName, string path) => entries.Add((entryName, path, null));
+    /// <summary>Adds a file; a name that isn't a plain relative one, or is taken already, is left out and noted.</summary>
+    public void AddFile(string entryName, string path) => Add(entryName, path, null);
 
-    public void AddText(string entryName, string text) => entries.Add((entryName, null, text));
+    /// <summary>Adds a text; a name that isn't a plain relative one, or is taken already, is left out and noted.</summary>
+    public void AddText(string entryName, string text) => Add(entryName, null, text);
+
+    /// <summary>Notes, in <c>missing.txt</c>, something that couldn't be added, such as a log that doesn't exist yet.</summary>
+    public void AddMissing(string entryName, string why) => refused.Add($"{entryName}: {why}");
 
     /// <summary>
     /// Gathers the usual entries: the newest <c>monado.log</c>, <c>mirador.log</c>, <c>profile.json</c> (the selected
@@ -33,7 +39,15 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
         AppPaths paths, Profile profile, IReadOnlyDictionary<string, string>? lastEnvironment, string versions, IHeadsetModule? module, ModuleContext ctx)
     {
         var zip = new DiagnosticsZip();
-        zip.AddFile("monado.log", NewestMonadoLog(paths.LogsDir) ?? Path.Combine(paths.LogsDir, "monado-*.log"));
+        if (NewestMonadoLog(paths.LogsDir) is { } monadoLog)
+        {
+            zip.AddFile("monado.log", monadoLog);
+        }
+        else
+        {
+            zip.AddMissing("monado.log", $"no Monado log yet in {paths.LogsDir}");
+        }
+
         zip.AddFile("mirador.log", paths.AppLogFile);
         zip.AddText("profile.json", System.Text.Json.JsonSerializer.Serialize(profile, DiagnosticsJsonContext.Default.Profile));
         zip.AddFile("monado-settings.json", paths.MonadoSettingsFile);
@@ -47,49 +61,93 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
         return zip;
     }
 
-    /// <summary>Writes the zip to <paramref name="zipPath"/>, replacing a file there.</summary>
+    /// <summary>Writes the zip to <paramref name="zipPath"/>, replacing a file there; nothing is left behind when it fails.</summary>
     /// <exception cref="IOException">The zip couldn't be written.</exception>
     /// <exception cref="UnauthorizedAccessException">The zip couldn't be written there.</exception>
     public void Save(string zipPath)
     {
         var missing = new StringBuilder();
-        var temp = zipPath + ".tmp";
-        using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
-        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+        foreach (var line in refused)
         {
-            foreach (var (entry, file, text) in entries)
-            {
-                if (text is not null)
-                {
-                    using var writer = new StreamWriter(archive.CreateEntry(entry).Open(), new UTF8Encoding(false));
-                    writer.Write(text);
-                    continue;
-                }
-
-                try
-                {
-                    using var source = new FileStream(file!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                    using var target = archive.CreateEntry(entry).Open();
-                    source.CopyTo(target);
-                }
-                catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
-                {
-                    missing.Append(entry).Append(": ").Append(file).Append(" isn't there\n");
-                }
-                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-                {
-                    missing.Append(entry).Append(": ").Append(file).Append(" couldn't be read (").Append(e.Message.Trim()).Append(")\n");
-                }
-            }
-
-            if (missing.Length > 0)
-            {
-                using var writer = new StreamWriter(archive.CreateEntry("missing.txt").Open(), new UTF8Encoding(false));
-                writer.Write(missing.ToString());
-            }
+            missing.Append(line).Append('\n');
         }
 
-        File.Move(temp, zipPath, overwrite: true);
+        var temp = zipPath + ".tmp";
+        try
+        {
+            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                foreach (var (entry, file, text) in entries)
+                {
+                    if (text is not null)
+                    {
+                        using var writer = new StreamWriter(archive.CreateEntry(entry).Open(), new UTF8Encoding(false));
+                        writer.Write(text);
+                        continue;
+                    }
+
+                    // Opening the source is the part that may fail for the source's reasons; writing failures are the zip's.
+                    FileStream source;
+                    try
+                    {
+                        source = new FileStream(file!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    }
+                    catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+                    {
+                        missing.Append(entry).Append(": ").Append(file).Append(" isn't there\n");
+                        continue;
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        missing.Append(entry).Append(": ").Append(file).Append(" couldn't be read (").Append(e.Message.Trim()).Append(")\n");
+                        continue;
+                    }
+
+                    using (source)
+                    using (var target = archive.CreateEntry(entry).Open())
+                    {
+                        source.CopyTo(target);
+                    }
+                }
+
+                if (missing.Length > 0)
+                {
+                    using var writer = new StreamWriter(archive.CreateEntry("missing.txt").Open(), new UTF8Encoding(false));
+                    writer.Write(missing.ToString());
+                }
+            }
+
+            File.Move(temp, zipPath, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            throw;
+        }
+    }
+
+    private void Add(string entryName, string? file, string? text)
+    {
+        var name = entryName.Replace('\\', '/');
+        var plain = name.Length > 0
+            && !Path.IsPathRooted(name)
+            && !name.Contains(':')
+            && name.Split('/').All(part => part.Length > 0 && part != "." && part != "..");
+        if (!plain || name == "missing.txt" || entries.Any(e => string.Equals(e.Entry, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            refused.Add($"{entryName}: left out (not a plain relative name, or taken already)");
+            return;
+        }
+
+        entries.Add((name, file, text));
     }
 
     /// <summary>The newest <c>monado-yyyyMMdd-HHmmss.log</c> (their names sort by time); null when there is none.</summary>
@@ -99,6 +157,10 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
             : null;
 }
 
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    UseStringEnumConverter = true,
+    WriteIndented = true)]
 [JsonSerializable(typeof(Profile))]
 internal sealed partial class DiagnosticsJsonContext : JsonSerializerContext;

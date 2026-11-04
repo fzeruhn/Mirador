@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Mirador.App.Services;
+using Mirador.Core;
 using Mirador.Core.Diagnostics;
 using Mirador.Core.Profiles;
 using Mirador.Core.Session;
@@ -12,7 +13,7 @@ namespace Mirador.App.ViewModels;
 
 /// <summary>
 /// Diagnostics: Monado's and Mirador's logs as they grow, the versions, the display check for a Dream Air, and the
-/// zip to send with a problem.
+/// zip to send with a problem. The page is kept while Mirador runs, so a check under way survives leaving it.
 /// </summary>
 public sealed partial class DiagnosticsViewModel : ObservableObject
 {
@@ -21,6 +22,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
 
     private readonly AppHost host;
     private readonly DispatcherQueue ui;
+    private readonly object gate = new();
     private readonly Queue<string> monado = new();
     private readonly Queue<string> mirador = new();
     private readonly DispatcherQueueTimer flush;
@@ -36,14 +38,11 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         flush.Tick += (_, _) => Flush();
     }
 
-    /// <summary>Raised on the UI thread after a log box got new lines, so the page can scroll it to the end.</summary>
-    public event Action? LogsGrew;
-
-    [ObservableProperty]
-    public partial string MonadoLog { get; set; } = "";
-
-    [ObservableProperty]
-    public partial string MiradorLog { get; set; } = "";
+    /// <summary>
+    /// Raised on the UI thread with the new text of the boxes that changed (null for one that didn't): the page puts
+    /// it in, unless the user is selecting there, and follows the end only of a box that was at its end.
+    /// </summary>
+    public event Action<string?, string?>? LogsChanged;
 
     [ObservableProperty]
     public partial string Versions { get; set; } = "";
@@ -63,28 +62,42 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     public partial bool CheckPassed { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSaved))]
+    public partial string? Saved { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMessage))]
     public partial string? Message { get; set; }
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckDisplayCommand))]
     public partial bool IsBusy { get; set; }
 
     public bool HasCheckResult => CheckResult is not null;
+
+    public bool HasSaved => Saved is not null;
 
     public bool HasMessage => Message is not null;
 
     public void Attach()
     {
-        lock (monado)
+        host.Session.LogLine += OnMonadoLine;
+        host.Session.Changed += OnSessionChanged;
+        AppLog.LineWritten += OnMiradorLine;
+
+        // What is on disk first (2,000 lines rather than the 200 kept in memory); lines from now on come as events.
+        var monadoLines = ReadTail(DiagnosticsZip.NewestMonadoLog(host.Paths.LogsDir));
+        var miradorLines = ReadTail(host.Paths.AppLogFile);
+        lock (gate)
         {
             monado.Clear();
-            foreach (var line in host.Session.LogTail)
+            foreach (var line in monadoLines)
             {
                 Add(monado, line);
             }
 
             mirador.Clear();
-            foreach (var line in AppLog.Tail)
+            foreach (var line in miradorLines)
             {
                 Add(mirador, line);
             }
@@ -92,9 +105,6 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             monadoChanged = miradorChanged = true;
         }
 
-        host.Session.LogLine += OnMonadoLine;
-        host.Session.Changed += OnSessionChanged;
-        AppLog.LineWritten += OnMiradorLine;
         flush.Start();
         Flush();
         Refresh();
@@ -107,6 +117,12 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         AppLog.LineWritten -= OnMiradorLine;
         flush.Stop();
     }
+
+    public void DismissMessage() => Message = null;
+
+    public void DismissCheck() => CheckResult = null;
+
+    public void DismissSaved() => Saved = null;
 
     [RelayCommand]
     private void OpenLogFolder()
@@ -122,7 +138,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanCheckDisplay))]
+    [RelayCommand(CanExecute = nameof(CanRunCheck))]
     private async Task CheckDisplayAsync()
     {
         if (Profile() is not { } profile || host.Modules.GetValueOrDefault(DreamAirModule.ModuleId) is not DreamAirModule module)
@@ -131,18 +147,24 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         }
 
         IsBusy = true;
-        CanCheckDisplay = false;
         CheckResult = null;
         try
         {
-            var (check, pimaxProblem) = await module.CheckDisplayAsync(host.Context, profile, CancellationToken.None);
+            // Through the session: a Start waits for the check, and recovery restarts Pimax if Mirador goes away meanwhile.
+            var (check, pimaxProblem) = await host.Session.RunWhileStoppedAsync(
+                DreamAirModule.ModuleId, (save, ct) => module.CheckDisplayAsync(host.Context, profile, save, ct), CancellationToken.None);
             CheckPassed = check.Pass;
             var verdict = check.Pass
-                ? $"Direct mode works: {check.Message}"
+                ? (check.Message == "Direct mode works." ? check.Message : $"Direct mode works: {Sentence(check.Message)}")
                 : check.Finished
-                    ? $"Direct mode doesn't work: {check.Message}{(check.WhatToDo is null ? "" : " What to do: " + check.WhatToDo)}"
-                    : check.Message;
+                    ? $"Direct mode doesn't work: {Sentence(check.Message)}{(check.WhatToDo is null ? "" : " What to do: " + Sentence(check.WhatToDo))}"
+                    : Sentence(check.Message);
             CheckResult = pimaxProblem is null ? verdict : $"{verdict} {pimaxProblem}";
+        }
+        catch (MiradorException e)
+        {
+            CheckPassed = false;
+            CheckResult = e.Message;
         }
         finally
         {
@@ -150,6 +172,8 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             Refresh();
         }
     }
+
+    private bool CanRunCheck() => CanCheckDisplay && !IsBusy;
 
     [RelayCommand]
     private async Task SaveDiagnosticsAsync()
@@ -165,25 +189,51 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
+        Saved = null;
+        Message = null;
         try
         {
             var module = profile.ModuleId is { } id ? host.Modules.GetValueOrDefault(id) : null;
             var versions = AppInfo.Versions(profile, host.AppDir);
             var environment = host.Session.LastMiradorEnvironment;
             await Task.Run(() => DiagnosticsZip.Collect(host.Paths, profile, environment, versions, module, host.Context).Save(path));
-            Message = null;
-            CheckResult = $"Saved {path}.";
-            CheckPassed = true;
+            Saved = $"Saved {path}.";
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             Message = $"Mirador couldn't save {path} ({e.Message.Trim().TrimEnd('.')}).";
         }
-        finally
+    }
+
+    private static string Sentence(string s) => s.EndsWith('.') || s.EndsWith('!') || s.EndsWith('?') ? s : s + ".";
+
+    /// <summary>The last <see cref="MaxLines"/> lines of a file that may be being written; none when it can't be read.</summary>
+    private static List<string> ReadTail(string? path)
+    {
+        var lines = new Queue<string>();
+        if (path is null)
         {
-            IsBusy = false;
+            return [];
         }
+
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                lines.Enqueue(line);
+                if (lines.Count > MaxLines)
+                {
+                    lines.Dequeue();
+                }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        return [.. lines];
     }
 
     private Profile? Profile()
@@ -203,7 +253,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     {
         var profile = Profile();
         IsDreamAir = profile?.ModuleId == DreamAirModule.ModuleId;
-        CanCheckDisplay = IsDreamAir && !IsBusy && host.Session.State == SessionState.Stopped;
+        CanCheckDisplay = IsDreamAir && host.Session.State == SessionState.Stopped;
         Versions = profile is null ? $"Mirador {AppInfo.Version}" : AppInfo.Versions(profile, host.AppDir).TrimEnd();
     }
 
@@ -211,7 +261,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
 
     private void OnMonadoLine(string line)
     {
-        lock (monado)
+        lock (gate)
         {
             Add(monado, line);
             monadoChanged = true;
@@ -220,7 +270,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
 
     private void OnMiradorLine(string line)
     {
-        lock (monado)
+        lock (gate)
         {
             Add(mirador, line);
             miradorChanged = true;
@@ -236,11 +286,11 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Puts new lines into the boxes, at most four times a second: a busy log doesn't redraw at every line.</summary>
+    /// <summary>Hands new lines to the page, at most four times a second: a busy log doesn't redraw at every line.</summary>
     private void Flush()
     {
         string? monadoText = null, miradorText = null;
-        lock (monado)
+        lock (gate)
         {
             if (monadoChanged)
             {
@@ -255,19 +305,9 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             }
         }
 
-        if (monadoText is not null)
-        {
-            MonadoLog = monadoText;
-        }
-
-        if (miradorText is not null)
-        {
-            MiradorLog = miradorText;
-        }
-
         if (monadoText is not null || miradorText is not null)
         {
-            LogsGrew?.Invoke();
+            LogsChanged?.Invoke(monadoText, miradorText);
         }
     }
 }

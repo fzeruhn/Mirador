@@ -45,6 +45,7 @@ public class DiagnosticsZipTests
         Assert.Contains("XRT_COMPOSITOR_SCALE_PERCENTAGE=120\n", entries["environment.txt"]);
         Assert.DoesNotContain("USERPROFILE", entries["environment.txt"]); // only what Mirador set
         Assert.Contains("\"name\": \"Dream Air\"", entries["profile.json"]);
+        Assert.Contains("\"kind\": \"Bundled\"", entries["profile.json"]);
         Assert.Equal("Mirador 0.1.0\n", entries["versions.txt"]);
         Assert.Contains("120", entries["monado-settings.json"]);
         Assert.Contains("Monado service starting", entries["monado.log"]);
@@ -59,7 +60,9 @@ public class DiagnosticsZipTests
         var entries = Read(Collect(h, Context(h)));
 
         Assert.False(entries.ContainsKey("monado.log"));
-        Assert.Contains("monado.log: ", entries["missing.txt"]);
+        Assert.Contains("monado.log: no Monado log yet in ", entries["missing.txt"]);
+        Assert.Contains("mirador.log: ", entries["missing.txt"]);
+        Assert.Contains(" isn't there", entries["missing.txt"]);
         Assert.Contains("mirador.log: ", entries["missing.txt"]);
         Assert.Equal("Monado hasn't been started since Mirador started.\n", entries["environment.txt"]);
     }
@@ -88,5 +91,40 @@ public class DiagnosticsZipTests
         zip.Save(dir.File("d.zip"));
 
         Assert.Equal($"first line{Environment.NewLine}", Read(dir.File("d.zip"))["mirador.log"]);
+    }
+
+    [Theory]
+    [InlineData("../evil.txt")]
+    [InlineData("..\\evil.txt")]
+    [InlineData("C:\\evil.txt")]
+    [InlineData("/evil.txt")]
+    [InlineData("missing.txt")]
+    [InlineData("")]
+    public void Entry_names_that_arent_plain_are_left_out_and_noted(string name)
+    {
+        using var dir = new TempDir();
+        var zip = new DiagnosticsZip();
+        zip.AddText(name, "x");
+        zip.AddText("ok.txt", "1");
+        zip.AddText("OK.TXT", "2");
+
+        zip.Save(dir.File("d.zip"));
+
+        var entries = Read(dir.File("d.zip"));
+        Assert.Equal(["missing.txt", "ok.txt"], entries.Keys.Order());
+        Assert.Contains("left out", entries["missing.txt"]);
+    }
+
+    [Fact]
+    public void A_zip_that_cant_be_written_leaves_nothing_behind()
+    {
+        using var dir = new TempDir();
+        var zip = new DiagnosticsZip();
+        zip.AddText("a.txt", "x");
+        Directory.CreateDirectory(dir.File("d.zip")); // a folder where the zip should go: the final move fails
+
+        var e = Assert.ThrowsAny<Exception>(() => zip.Save(dir.File("d.zip")));
+        Assert.True(e is IOException or UnauthorizedAccessException, e.ToString());
+        Assert.False(File.Exists(dir.File("d.zip.tmp")));
     }
 }

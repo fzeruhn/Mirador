@@ -152,7 +152,12 @@ public partial class App : Application
         }
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        var found = await UpdateCheck.CheckAsync(http, AppInfo.Version, CancellationToken.None);
+        var (answered, found) = await UpdateCheck.CheckAsync(http, AppInfo.Version, CancellationToken.None);
+        if (!answered)
+        {
+            return; // offline or refused: the next launch asks again
+        }
+
         try
         {
             Host.Settings.Save(Host.Settings.Load() with { LastUpdateCheck = now });
@@ -197,6 +202,8 @@ public partial class App : Application
         AppLog.Write("Quitting");
         try
         {
+            // A display check (or recovery) under way has Pimax's software stopped: it puts it back first.
+            await Host.Session.WhenSettledAsync();
             await Host.DisposeAsync();
         }
         catch (Exception ex)

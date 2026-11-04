@@ -35,8 +35,11 @@ public static class UpdateCheck
     public static bool IsNewer(string current, string tag) =>
         Parse(current) is { } mine && Parse(tag) is { } theirs && theirs > mine;
 
-    /// <summary>The latest release when it is newer than <paramref name="current"/>; null otherwise, and for any failure.</summary>
-    public static async Task<(string Tag, string Url)?> CheckAsync(HttpClient http, string current, CancellationToken ct)
+    /// <summary>
+    /// Asks GitHub. <c>Answered</c> is false when it couldn't be asked (offline, refused, too slow), so that the caller
+    /// tries again soon rather than in a day; <c>Newer</c> is the latest release when it is newer than <paramref name="current"/>.
+    /// </summary>
+    public static async Task<(bool Answered, (string Tag, string Url)? Newer)> CheckAsync(HttpClient http, string current, CancellationToken ct)
     {
         try
         {
@@ -44,17 +47,22 @@ public static class UpdateCheck
             request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mirador", Parse(current)?.ToString() ?? "0"));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return (true, null); // no release yet
+            }
+
             if (!response.IsSuccessStatusCode)
             {
-                return null;
+                return (false, null);
             }
 
             var latest = ParseLatest(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
-            return latest is { } l && IsNewer(current, l.Tag) ? latest : null;
+            return (true, latest is { } l && IsNewer(current, l.Tag) ? latest : null);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException)
         {
-            return null;
+            return (false, null);
         }
     }
 

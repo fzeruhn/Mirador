@@ -55,19 +55,26 @@ public class UpdateCheckTests
     {
         var handler = new Answer(HttpStatusCode.OK, Latest);
 
-        var found = await UpdateCheck.CheckAsync(new HttpClient(handler), "0.1.0", CancellationToken.None);
+        var (answered, newer) = await UpdateCheck.CheckAsync(new HttpClient(handler), "0.1.0", CancellationToken.None);
 
-        Assert.Equal(("v0.2.0", "https://github.com/fzeruhn/mirador/releases/tag/v0.2.0"), found);
+        Assert.True(answered);
+        Assert.Equal(("v0.2.0", "https://github.com/fzeruhn/mirador/releases/tag/v0.2.0"), newer);
         Assert.Equal(UpdateCheck.Url, handler.Asked!.RequestUri!.ToString());
         Assert.Equal("Mirador/0.1.0", handler.Asked.Headers.UserAgent.ToString());
     }
 
     [Fact]
-    public async Task Check_is_null_for_the_same_version_and_for_failures()
+    public async Task Nothing_newer_and_no_release_yet_are_answers()
     {
-        Assert.Null(await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.OK, Latest)), "0.2.0", CancellationToken.None));
-        Assert.Null(await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.NotFound, "{}")), "0.1.0", CancellationToken.None));
-        Assert.Null(await UpdateCheck.CheckAsync(new HttpClient(new Answer(null, "")), "0.1.0", CancellationToken.None));
+        Assert.Equal((true, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.OK, Latest)), "0.2.0", CancellationToken.None));
+        Assert.Equal((true, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.NotFound, "{}")), "0.1.0", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Failures_arent_answers()
+    {
+        Assert.Equal((false, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.Forbidden, "{}")), "0.1.0", CancellationToken.None));
+        Assert.Equal((false, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(null, "")), "0.1.0", CancellationToken.None));
     }
 
     private sealed class Answer(HttpStatusCode? status, string body) : HttpMessageHandler
