@@ -61,6 +61,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
     /// <summary>The checks of <see cref="DreamAirChecks"/>, then the layer's.</summary>
     public async Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct)
     {
+        await DetectVariantAsync(ctx, ct).ConfigureAwait(false);
         var variant = deps.BlobVariant(LoadState());
         return await Task.Run<IReadOnlyList<CheckResult>>(
             () => [.. Checks(ctx).Run(variant), LayerCheck(profile)], ct).ConfigureAwait(false);
@@ -69,6 +70,8 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
     public async Task<ModuleSession> BeforeStartAsync(
         ModuleContext ctx, Profile profile, IProgress<string> progress, Action<IReadOnlyDictionary<string, string>> saveRecovery, CancellationToken ct)
     {
+        // Pimax's software still runs now: the last moment to read which geometry it uses.
+        await DetectVariantAsync(ctx, ct).ConfigureAwait(false);
         var state = LoadState();
         var variant = deps.BlobVariant(state);
 
@@ -141,11 +144,16 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 
             progress.Report("Uploading the eye geometry…");
             var upload = await deps.Geometry.UploadAsync(pimax, variant, ct).ConfigureAwait(false);
+            var warnings = new List<SessionWarning>();
+            if (RememberTracker(upload.TrackerSerial))
+            {
+                warnings.Add(new SessionWarning("geometry", DifferentHeadset));
+            }
 
             var environment = layerFolder is null
                 ? FixedEnvironment
                 : [.. FixedEnvironment, new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", layer.ManifestDir)];
-            return new DreamAirSession(ctx, environment, wasRunning, upload, () => SnapshotCalibrations(deps.Calibration));
+            return new DreamAirSession(ctx, environment, wasRunning, upload, () => SnapshotCalibrations(deps.Calibration), warnings);
         }
         catch
         {
@@ -258,6 +266,65 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         }
 
         return (check, startProblem);
+    }
+
+    internal const string DifferentHeadset =
+        "This looks like a different headset. Mirador reads its eye geometry from Pimax Play the next time Pimax runs.";
+
+    /// <summary>
+    /// Reads the eye geometry variant Pimax's eye runtime runs with, when it runs, and remembers it. A helper that
+    /// can't answer leaves things as they were: the remembered or tested variant is used.
+    /// </summary>
+    private async Task DetectVariantAsync(ModuleContext ctx, CancellationToken ct)
+    {
+        IReadOnlyList<ProcInfo> running;
+        try
+        {
+            running = ctx.Processes.Snapshot();
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return;
+        }
+
+        if (!running.Any(p => string.Equals(p.Name, PimaxNames.EyeRuntimeProcess, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var reply = await ctx.Helper.SendAsync(HelperCommand.GetPimaxEyeBlob, ct).ConfigureAwait(false);
+        if (!reply.Ok || reply.Value is not { } detected)
+        {
+            return;
+        }
+
+        try
+        {
+            deps.State.Update(s => BlobChoice.Resolve(s, detected).State);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>Remembers the tracker's serial after an upload; whether that cleared a variant (a different headset).</summary>
+    private bool RememberTracker(string? serial)
+    {
+        try
+        {
+            var cleared = false;
+            deps.State.Update(s =>
+            {
+                var after = BlobChoice.AfterUpload(s, serial);
+                cleared = BlobChoice.Cleared(s, after);
+                return after;
+            });
+            return cleared;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

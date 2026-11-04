@@ -21,7 +21,14 @@ public interface IServiceControl
     /// when it can't.
     /// </summary>
     void Start(string name, TimeSpan timeout);
+
+    /// <summary>The service's <c>ImagePath</c> (variables expanded), or null when it isn't installed.</summary>
+    string? ImagePath(string name);
 }
+
+/// <summary>A running program's file and command line.</summary>
+/// <param name="ExecutablePath">Its program file; null when Windows doesn't say.</param>
+public sealed record ProcessCommandLine(string? ExecutablePath, string CommandLine);
 
 /// <summary>Processes on this machine, named without <c>.exe</c>.</summary>
 public interface IProcessControl
@@ -29,8 +36,8 @@ public interface IProcessControl
     /// <summary>Ends every process of each name. A process that is already gone is fine.</summary>
     void KillAll(IEnumerable<string> names);
 
-    /// <summary>The command lines of the running processes of this name; none when it isn't running.</summary>
-    IReadOnlyList<string> CommandLines(string processName);
+    /// <summary>The program files and command lines of the running processes of this name; none when it isn't running.</summary>
+    IReadOnlyList<ProcessCommandLine> CommandLines(string processName);
 }
 
 /// <summary>The two registry values the helper changes, in the 64-bit view of <c>HKEY_LOCAL_MACHINE</c>.</summary>
@@ -219,11 +226,26 @@ public sealed class HelperHandler
         return new HelperReply(true);
     }
 
+    /// <summary>
+    /// The variant Pimax's eye runtime was started with, read only from a runtime whose program file is inside Pimax's
+    /// own folder (where its service runs from): any program can be named like it, and the variant decides what Mirador
+    /// sends to the eye tracker.
+    /// </summary>
     private HelperReply GetPimaxEyeBlob()
     {
-        foreach (var commandLine in processes.CommandLines(PimaxNames.EyeRuntimeProcess))
+        if (PimaxFolder() is not { } folder)
         {
-            var variant = PimaxEyeBlob.Parse(commandLine);
+            return new HelperReply(true);
+        }
+
+        foreach (var process in processes.CommandLines(PimaxNames.EyeRuntimeProcess))
+        {
+            if (!IsInside(process.ExecutablePath, folder))
+            {
+                continue;
+            }
+
+            var variant = PimaxEyeBlob.Parse(process.CommandLine);
             if (variant is not null)
             {
                 return new HelperReply(true, Value: variant);
@@ -231,6 +253,36 @@ public sealed class HelperHandler
         }
 
         return new HelperReply(true);
+    }
+
+    /// <summary>Pimax's runtime folder, with a separator at the end: the folder its service's program is in.</summary>
+    private string? PimaxFolder()
+    {
+        var program = ServiceImage.ProgramOf(services.ImagePath(PimaxNames.Service));
+        try
+        {
+            var folder = program is null ? null : Path.GetDirectoryName(program);
+            return folder is null || !Path.IsPathFullyQualified(folder)
+                ? null
+                : Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsInside(string? file, string folder)
+    {
+        try
+        {
+            return file is not null && Path.IsPathFullyQualified(file)
+                && Path.GetFullPath(file).StartsWith(folder, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Whether <paramref name="manifest"/> is the bundled one: the same full path, ignoring case.</summary>

@@ -9,6 +9,12 @@ using Mirador.DreamAir;
 
 namespace Mirador.App.ViewModels;
 
+/// <summary>An eye geometry variant in the list; the tested one says so.</summary>
+public sealed record VariantItem(string Id)
+{
+    public override string ToString() => Id == EyeBlobVariants.Tested ? $"{Id} (tested)" : Id;
+}
+
 /// <summary>A calibration copy in the list, with when it was taken.</summary>
 public sealed record BackupItem(CalibrationBackup Backup)
 {
@@ -44,6 +50,14 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
     public partial string LastCheck { get; set; } = "";
 
     public bool HasResult => Result is not null;
+
+    public IReadOnlyList<VariantItem> Variants { get; } = [.. EyeBlobVariants.All.Select(v => new VariantItem(v))];
+
+    [ObservableProperty]
+    public partial VariantItem? SelectedVariant { get; set; }
+
+    [ObservableProperty]
+    public partial string VariantSource { get; set; } = "";
 
     public ObservableCollection<string> Serials { get; } = [];
 
@@ -91,6 +105,47 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
     });
 
     partial void OnSelectedSerialChanged(string? value) => LoadBackups();
+
+    /// <summary>The owner picked a variant: it is theirs from now on, until Pimax's software says otherwise.</summary>
+    partial void OnSelectedVariantChanged(VariantItem? value)
+    {
+        if (loadingVariant || value is null)
+        {
+            return;
+        }
+
+        try
+        {
+            host.DreamAirState.Update(s => s with { BlobVariant = value.Id, BlobSource = BlobChoice.FromOwner });
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            BackupMessage = $"Mirador couldn't save the variant ({e.Message.Trim().TrimEnd('.')}).";
+            BackupSeverity = InfoBarSeverity.Error;
+        }
+
+        ShowVariant(host.DreamAirState.Load());
+    }
+
+    private bool loadingVariant;
+
+    private void ShowVariant(DreamAirState state)
+    {
+        var decision = BlobChoice.Resolve(state, null);
+        loadingVariant = true;
+        try
+        {
+            SelectedVariant = Variants.FirstOrDefault(v => v.Id == decision.Variant);
+        }
+        finally
+        {
+            loadingVariant = false;
+        }
+
+        VariantSource = decision.NeedsOwner
+            ? "Not known yet: pick yours, or start Pimax Play once and Mirador reads it."
+            : state.BlobSource == BlobChoice.FromPimax ? "Read from Pimax Play" : "Chosen by you";
+    }
 
     private void Do(Func<string> action)
     {
@@ -171,6 +226,7 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         }
 
         LoadSerials();
+        ShowVariant(state);
         LastCheck = state.LastCheck is { } last
             ? $"Last check {last.When.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {CalibrationCheck.Describe(last.MedianDeg, last.WorstDotDeg, last.Dots).Text}"
             : "Not checked yet.";

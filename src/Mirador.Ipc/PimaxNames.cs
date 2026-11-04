@@ -19,4 +19,10 @@ public static class PimaxNames
 
     /// <summary>Pimax's eye tracking runtime, whose command line names the eye geometry file it was started with.</summary>
     public const string EyeRuntimeProcess = "platform_runtime_XR5EYECHIP_WIN10_x64";
+
+    /// <summary>
+    /// The eye geometry variants Pimax Play ships (<c>config_XR5PIMAXDA_&lt;variant&gt;.bin</c>): the only names that
+    /// ever go into a path or come back from the helper.
+    /// </summary>
+    public static IReadOnlyList<string> EyeBlobVariants { get; } = ["K10_RAWH", "K10_RAYH", "K11_RAWH", "K11_RAYH"];
 }

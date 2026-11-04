@@ -18,6 +18,11 @@ internal sealed class FakeServiceControl : IServiceControl
     public List<TimeSpan> StopTimeouts { get; } = [];
     public List<string> Started { get; } = [];
 
+    /// <summary>Pimax's service's <c>ImagePath</c>; its folder is where Pimax's eye runtime may run from.</summary>
+    public string? PimaxImagePath { get; set; } = $"\"{Path.Combine(HelperHandlerTests.PimaxRuntime, "PiServiceLauncher.exe")}\"";
+
+    public string? ImagePath(string name) => Installed ? PimaxImagePath : null;
+
     public bool Exists(string name) => Installed;
 
     public bool IsRunning(string name) => Installed && (Running || Stopping);
@@ -57,6 +62,9 @@ internal sealed class FakeProcessControl : IProcessControl
     public List<string> Killed { get; } = [];
     public Exception? KillFails { get; set; }
     public Dictionary<string, string[]> Lines { get; } = [];
+
+    /// <summary>The program file every listed process runs (Pimax's eye runtime in its own folder, unless a test says otherwise).</summary>
+    public string? ExecutablePath { get; set; } = HelperHandlerTests.EyeRuntimePath;
     public List<string> Queried { get; } = [];
 
     public void KillAll(IEnumerable<string> names)
@@ -68,10 +76,10 @@ internal sealed class FakeProcessControl : IProcessControl
         }
     }
 
-    public IReadOnlyList<string> CommandLines(string processName)
+    public IReadOnlyList<ProcessCommandLine> CommandLines(string processName)
     {
         Queried.Add(processName);
-        return Lines.TryGetValue(processName, out var lines) ? lines : [];
+        return Lines.TryGetValue(processName, out var lines) ? [.. lines.Select(l => new ProcessCommandLine(ExecutablePath, l))] : [];
     }
 }
 

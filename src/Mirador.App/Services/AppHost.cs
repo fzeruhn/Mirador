@@ -45,7 +45,7 @@ public sealed class AppHost : IAsyncDisposable
             Path.Combine(appDir, "layer"),
             NvidiaDriver.CurrentWindowsVersion,
             DreamAirChecks.FindSteamVr,
-            _ => EyeBlobVariants.Tested,
+            state => BlobChoice.Resolve(state, null).Variant,
             Calibrations));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
         CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);

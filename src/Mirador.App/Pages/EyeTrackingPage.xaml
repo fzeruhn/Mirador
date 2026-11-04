@@ -31,6 +31,18 @@
                 Message="{x:Bind ViewModel.Result, Mode=OneWay}"
                 Severity="{x:Bind ViewModel.ResultSeverity, Mode=OneWay}" />
 
+            <toolkit:SettingsCard Margin="0,16,0,0" Description="{x:Bind ViewModel.VariantSource, Mode=OneWay}" Header="Headset variant">
+                <ComboBox
+                    MinWidth="200"
+                    ItemsSource="{x:Bind ViewModel.Variants}"
+                    SelectedItem="{x:Bind ViewModel.SelectedVariant, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
+            </toolkit:SettingsCard>
+            <TextBlock
+                Margin="16,4,0,0"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="The eye tracker's geometry differs between variants; Mirador uploads the one for yours at every Start."
+                TextWrapping="Wrap" />
+
             <TextBlock Margin="0,24,0,4" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Calibration backups" />
             <TextBlock
                 Margin="0,0,0,8"
