@@ -99,6 +99,39 @@ public class RuntimeManifestTests
     }
 
     [Fact]
+    public void A_library_path_that_is_not_a_valid_path_is_a_problem_not_an_exception()
+    {
+        using var dir = new TempDir();
+        var manifest = dir.File("openxr_monado.json");
+        File.WriteAllText(manifest, TestManifest.Json("a\0b"));
+
+        var problem = RuntimeManifest.Validate(manifest);
+
+        Assert.NotNull(problem);
+        Assert.Contains(manifest, problem);
+        Assert.Contains("library_path", problem);
+        var ex = Assert.Throws<MiradorException>(() => RuntimeManifest.ReadLibraryPath(manifest));
+        Assert.Equal(problem, ex.Message);
+    }
+
+    [Fact]
+    public void A_manifest_that_cannot_be_read_is_a_problem_not_an_exception()
+    {
+        using var dir = new TempDir();
+        var manifest = dir.File("openxr_monado.json");
+        File.WriteAllText(manifest, TestManifest.Json("./openxr_monado.dll"));
+        using var lock_ = new FileStream(manifest, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var problem = RuntimeManifest.Validate(manifest);
+
+        Assert.NotNull(problem);
+        Assert.Contains(manifest, problem);
+        Assert.Contains("can't be read", problem);
+        var ex = Assert.Throws<MiradorException>(() => RuntimeManifest.ReadLibraryPath(manifest));
+        Assert.Equal(problem, ex.Message);
+    }
+
+    [Fact]
     public void Validate_reports_a_missing_manifest()
     {
         using var dir = new TempDir();

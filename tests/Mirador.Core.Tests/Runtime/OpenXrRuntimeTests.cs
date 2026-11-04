@@ -1,3 +1,4 @@
+using Microsoft.Win32;
 using Mirador.Core.Runtime;
 
 namespace Mirador.Core.Tests.Runtime;
@@ -100,12 +101,35 @@ public class OpenXrRuntimeTests
         Assert.False(runtime.IsActive("C:\\Monado\\open\0xr_monado.json"));
     }
 
-    [Fact]
-    public void The_real_reader_reads_the_registry_without_failing()
+    // The registry reader is tested through its lookup seam: these never open a real registry key.
+    private sealed class FakeRegistry(object? value)
     {
-        // Reads HKLM (never writes). Only that it answers is checked: the value depends on the machine.
-        var reader = new RegistryRuntimeReader();
+        public List<(RegistryView View, string KeyPath, string ValueName)> Asked { get; } = [];
 
-        Assert.Null(Record.Exception(() => reader.ActiveRuntime()));
+        public object? Read(RegistryView view, string keyPath, string valueName)
+        {
+            Asked.Add((view, keyPath, valueName));
+            return value;
+        }
+    }
+
+    [Fact]
+    public void The_registry_reader_asks_for_the_64_bit_active_runtime_value()
+    {
+        var registry = new FakeRegistry(@"C:\Monado\openxr_monado.json");
+
+        var value = new RegistryRuntimeReader(registry.Read).ActiveRuntime();
+
+        Assert.Equal(@"C:\Monado\openxr_monado.json", value);
+        Assert.Equal([(RegistryView.Registry64, @"SOFTWARE\Khronos\OpenXR\1", "ActiveRuntime")], registry.Asked);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(1)]
+    [InlineData(new byte[] { 1, 2 })]
+    public void The_registry_reader_gives_null_unless_the_value_is_text(object? stored)
+    {
+        Assert.Null(new RegistryRuntimeReader(new FakeRegistry(stored).Read).ActiveRuntime());
     }
 }

@@ -114,6 +114,38 @@ public class SetRuntimeCommandTests
     }
 
     [Fact]
+    public void A_library_path_that_is_not_a_valid_path_is_refused_and_nothing_is_written()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("openxr_monado.json"), TestManifest.Json("a\0b"));
+        var writer = new RecordingWriter();
+        var error = new StringWriter();
+
+        var code = SetRuntimeCommand.Run(dir.File("openxr_monado.json"), writer.Write, error);
+
+        Assert.Equal(1, code);
+        Assert.Empty(writer.Written);
+        Assert.Contains(dir.File("openxr_monado.json"), error.ToString());
+        Assert.Contains("library_path", error.ToString());
+    }
+
+    [Fact]
+    public void A_manifest_that_cannot_be_read_is_refused_and_nothing_is_written()
+    {
+        using var dir = new TempDir();
+        var manifest = GoodManifest(dir);
+        using var lock_ = new FileStream(manifest, FileMode.Open, FileAccess.Read, FileShare.None);
+        var writer = new RecordingWriter();
+        var error = new StringWriter();
+
+        var code = SetRuntimeCommand.Run(manifest, writer.Write, error);
+
+        Assert.Equal(1, code);
+        Assert.Empty(writer.Written);
+        Assert.Contains(manifest, error.ToString());
+    }
+
+    [Fact]
     public void A_file_that_is_not_a_runtime_manifest_at_all_is_refused()
     {
         using var dir = new TempDir();

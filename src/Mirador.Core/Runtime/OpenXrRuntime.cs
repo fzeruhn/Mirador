@@ -16,12 +16,24 @@ public interface IRuntimeRegistryReader
 public sealed class RegistryRuntimeReader : IRuntimeRegistryReader
 {
     private const string KeyPath = @"SOFTWARE\Khronos\OpenXR\1";
+    private const string ValueName = "ActiveRuntime";
 
-    public string? ActiveRuntime()
+    private readonly Func<RegistryView, string, string, object?> readValue;
+
+    public RegistryRuntimeReader() : this(ReadLocalMachine)
     {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using var key = machine.OpenSubKey(KeyPath);
-        return key?.GetValue("ActiveRuntime") as string;
+    }
+
+    /// <summary>For tests: <paramref name="readValue"/> stands in for the registry (view, key path, value name -> the stored value or null).</summary>
+    internal RegistryRuntimeReader(Func<RegistryView, string, string, object?> readValue) => this.readValue = readValue;
+
+    public string? ActiveRuntime() => readValue(RegistryView.Registry64, KeyPath, ValueName) as string;
+
+    private static object? ReadLocalMachine(RegistryView view, string keyPath, string valueName)
+    {
+        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+        using var key = machine.OpenSubKey(keyPath);
+        return key?.GetValue(valueName);
     }
 }
 
