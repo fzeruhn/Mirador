@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <wctype.h>
 
 enum
 {
@@ -64,6 +65,26 @@ static void say_error(const char *what, DWORD error)
 {
     fprintf(stderr, "Mirador stand-in: %s (Windows error %lu).\n", what, (unsigned long)error);
     fflush(stderr);
+}
+
+/* Whether the name is a test's pipe: mirador-standin-test- and 12 hex digits. */
+static BOOL is_test_pipe(const wchar_t *name)
+{
+    static const wchar_t prefix[] = L"mirador-standin-test-";
+    const size_t prefix_length = sizeof prefix / sizeof prefix[0] - 1;
+    size_t i;
+    if (wcsncmp(name, prefix, prefix_length) != 0 || wcslen(name) != prefix_length + 12)
+    {
+        return FALSE;
+    }
+    for (i = prefix_length; i < prefix_length + 12; i++)
+    {
+        if (!iswxdigit(name[i]))
+        {
+            return FALSE;
+        }
+    }
+    return TRUE;
 }
 
 /* Whether this process runs elevated. */
@@ -143,7 +164,16 @@ static HANDLE open_pipe(const wchar_t *name, DWORD *error)
     }
 }
 
-/* Where Mirador is: MIRADOR_APP_PATH, else HKCU\Software\Mirador AppPath, else HKLM\SOFTWARE\Mirador AppPath. */
+static BOOL is_file(const wchar_t *path)
+{
+    DWORD attributes = GetFileAttributesW(path);
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+/*
+ * Where Mirador is: MIRADOR_APP_PATH (as it is: tests use it), else HKCU\Software\Mirador AppPath, else
+ * HKLM\SOFTWARE\Mirador AppPath. A registry path whose file is gone (a deleted build that ran once) is passed over.
+ */
 static BOOL find_app(wchar_t *path, DWORD count)
 {
     DWORD size;
@@ -153,21 +183,23 @@ static BOOL find_app(wchar_t *path, DWORD count)
         return TRUE;
     }
 
-    size = count * sizeof(wchar_t);
-    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Mirador", L"AppPath", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY, NULL, path, &size) == ERROR_SUCCESS)
+    size = count * (DWORD)sizeof(wchar_t);
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Mirador", L"AppPath", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY, NULL, path, &size) == ERROR_SUCCESS
+        && is_file(path))
     {
         return TRUE;
     }
 
-    size = count * sizeof(wchar_t);
-    return RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Mirador", L"AppPath", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY, NULL, path, &size) == ERROR_SUCCESS;
+    size = count * (DWORD)sizeof(wchar_t);
+    return RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Mirador", L"AppPath", RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY, NULL, path, &size) == ERROR_SUCCESS
+        && is_file(path);
 }
 
 /*
  * Starts Mirador hidden (--background). It must outlive the game: outside the game's job when the job allows that, and
  * with the user's default environment rather than the game's.
  */
-static BOOL start_app(const wchar_t *exe)
+static BOOL start_app(const wchar_t *exe, HANDLE *app)
 {
     wchar_t command[MAX_PATH + 32];
     wchar_t folder[MAX_PATH];
@@ -223,7 +255,7 @@ static BOOL start_app(const wchar_t *exe)
     if (ok)
     {
         CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
+        *app = process.hProcess;
     }
     return ok;
 }
@@ -296,14 +328,19 @@ int main(void)
     DWORD written = 0;
     DWORD override;
     HANDLE pipe;
+    HANDLE started_app = NULL;
     int result;
     static const char request[] = "START\n";
 
     started = GetTickCount64();
 
-    /* MIRADOR_STANDIN_PIPE is for tests, so that they can run beside a real Mirador. The owner check still applies. */
+    /*
+     * MIRADOR_STANDIN_PIPE is for tests, so that they can run beside a real Mirador: only a test's own name
+     * (mirador-standin-test- and 12 hex digits), so it can't lead anywhere but to a pipe, and never when elevated.
+     * The owner check still applies.
+     */
     override = GetEnvironmentVariableW(L"MIRADOR_STANDIN_PIPE", app, MAX_PATH);
-    if (override > 0 && override < 40)
+    if (override > 0 && override < MAX_PATH && is_test_pipe(app) && !is_elevated())
     {
         swprintf(name, 64, L"\\\\.\\pipe\\%ls", app);
     }
@@ -331,7 +368,7 @@ int main(void)
             return EXIT_NO_APP;
         }
 
-        if (!start_app(app))
+        if (!start_app(app, &started_app))
         {
             say_error("Mirador isn't running and couldn't be started", GetLastError());
             return EXIT_NO_APP;
@@ -339,6 +376,7 @@ int main(void)
 
         {
             ULONGLONG asked = elapsed();
+            DWORD app_exit = 0;
             for (;;)
             {
                 Sleep(RETRY_MS);
@@ -347,12 +385,24 @@ int main(void)
                 {
                     break;
                 }
+
+                /* A Mirador that ended with an error won't answer (one that ended well handed over to another). */
+                if (WaitForSingleObject(started_app, 0) == WAIT_OBJECT_0 && GetExitCodeProcess(started_app, &app_exit) && app_exit != 0)
+                {
+                    CloseHandle(started_app);
+                    fprintf(stderr, "Mirador stand-in: Mirador was started but closed at once (exit code %lu).\n", (unsigned long)app_exit);
+                    return EXIT_NO_APP;
+                }
+
                 if (elapsed() - asked >= APP_WAIT_MS)
                 {
+                    CloseHandle(started_app);
                     say("Mirador was started but didn't answer within 15 s.");
                     return EXIT_APP_SILENT;
                 }
             }
+
+            CloseHandle(started_app);
         }
     }
 

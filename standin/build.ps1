@@ -31,11 +31,14 @@ New-Item -ItemType Directory -Force -Path $obj | Out-Null
 Push-Location $PSScriptRoot
 try {
     rc.exe /nologo /fo (Join-Path $obj 'standin.res') standin.rc
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if ($LASTEXITCODE -ne 0) { throw "rc.exe failed (exit code $LASTEXITCODE)." }
 
+    # A windows-subsystem program: a game without a console starts it without a console window popping up. Its
+    # messages still reach a caller that redirects stderr.
     cl.exe /nologo /O2 /MT /W4 /WX /DUNICODE /D_UNICODE standin.c (Join-Path $obj 'standin.res') `
-        "/Fo$obj\" "/Fe:$(Join-Path $Out 'monado-service.exe')" advapi32.lib userenv.lib
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        "/Fo$(Join-Path $obj 'standin.obj')" "/Fe:$(Join-Path $Out 'monado-service.exe')" `
+        advapi32.lib userenv.lib /link /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup
+    if ($LASTEXITCODE -ne 0) { throw "cl.exe failed (exit code $LASTEXITCODE)." }
 }
 finally {
     Pop-Location
