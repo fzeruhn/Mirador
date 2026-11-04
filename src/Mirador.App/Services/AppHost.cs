@@ -45,6 +45,7 @@ public sealed class AppHost : IAsyncDisposable
             DreamAirChecks.FindSteamVr,
             _ => EyeBlobVariants.Tested));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
+        CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
 
         launcher = new JobProcessLauncher();
         Session = new SessionController(new SessionDeps(
@@ -85,6 +86,31 @@ public sealed class AppHost : IAsyncDisposable
     public ModuleContext Context { get; }
 
     public DreamAirStateStore DreamAirState { get; }
+
+    /// <summary>The Dream Air's gaze check ("Check my calibration").</summary>
+    public CalibrationCheck CalibrationCheck { get; }
+
+    /// <summary><c>gaze_world</c>, which shows the check's dots (<c>{app}\tools\gaze_world.exe</c>).</summary>
+    public string GazeWorldExe => Path.Combine(AppDir, "tools", "gaze_world.exe");
+
+    /// <summary>Raised on the UI thread after the profiles or the selected one changed (Home, the Profiles page).</summary>
+    public event Action? ProfilesChanged;
+
+    /// <summary>Says that the profiles changed; call on the UI thread.</summary>
+    public void NotifyProfilesChanged() => ProfilesChanged?.Invoke();
+
+    /// <summary>Whether the selected profile is a Dream Air's; false when the profiles can't be read.</summary>
+    public bool SelectedIsDreamAir()
+    {
+        try
+        {
+            return Profiles.Load().Selected.ModuleId == DreamAirModule.ModuleId;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     public IReadOnlyDictionary<string, IHeadsetModule> Modules { get; }
 

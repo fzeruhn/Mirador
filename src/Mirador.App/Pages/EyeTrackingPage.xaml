@@ -1,6 +1,34 @@
 <Page
     x:Class="Mirador.App.Pages.EyeTrackingPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid />
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    NavigationCacheMode="Required">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="900" Padding="36,24,36,36" Spacing="4">
+            <TextBlock Margin="0,0,0,12" Style="{StaticResource TitleTextBlockStyle}" Text="Eye tracking" />
+
+            <toolkit:SettingsCard
+                Description="Put the headset on and look at each dot in turn. The check takes about a minute."
+                Header="Check my calibration">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IsChecking, Mode=OneWay}" />
+                    <Button Command="{x:Bind ViewModel.RunCheckCommand}" Content="Check" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <TextBlock
+                Margin="16,4,0,0"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.LastCheck, Mode=OneWay}" />
+            <TextBlock Margin="16,4,0,0" Text="{x:Bind ViewModel.Progress, Mode=OneWay}" TextWrapping="Wrap" />
+            <InfoBar
+                Margin="0,8,0,0"
+                Closed="OnResultClosed"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.HasResult, Mode=OneWay}"
+                Message="{x:Bind ViewModel.Result, Mode=OneWay}"
+                Severity="{x:Bind ViewModel.ResultSeverity, Mode=OneWay}" />
+        </StackPanel>
+    </ScrollViewer>
 </Page>
