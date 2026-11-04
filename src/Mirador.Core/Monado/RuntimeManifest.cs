@@ -57,7 +57,17 @@ public static class RuntimeManifest
 
         using (document)
         {
-            var libraryPath = LibraryPathOf(document.RootElement);
+            string? libraryPath;
+            try
+            {
+                libraryPath = LibraryPathOf(document.RootElement);
+            }
+            catch (InvalidOperationException)
+            {
+                // The JSON parses, but the string holds an invalid escape (a lone UTF-16 surrogate): reading it is what fails.
+                return (null, $"The file {manifestPath} has a runtime.library_path that isn't valid text.");
+            }
+
             if (string.IsNullOrWhiteSpace(libraryPath))
             {
                 return (null, $"The file {manifestPath} doesn't say where the runtime DLL is: it has no runtime.library_path.");

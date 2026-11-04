@@ -130,6 +130,39 @@ public class SetRuntimeCommandTests
     }
 
     [Fact]
+    public void A_library_path_that_is_not_valid_text_is_refused_and_nothing_is_written()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("openxr_monado.json"), """{"runtime": {"library_path": "a\ud800b"}}""");
+        var writer = new RecordingWriter();
+        var error = new StringWriter();
+
+        var code = SetRuntimeCommand.Run(dir.File("openxr_monado.json"), writer.Write, error);
+
+        Assert.Equal(1, code);
+        Assert.Empty(writer.Written);
+        Assert.Contains(dir.File("openxr_monado.json"), error.ToString());
+        Assert.Contains("library_path", error.ToString());
+    }
+
+    [Fact]
+    public void A_check_that_fails_in_a_way_nobody_expected_refuses_the_manifest_and_nothing_is_written()
+    {
+        using var dir = new TempDir();
+        var manifest = GoodManifest(dir);
+        var writer = new RecordingWriter();
+        var error = new StringWriter();
+
+        var code = SetRuntimeCommand.Run(manifest, writer.Write, error, _ => throw new InvalidOperationException("Something nobody planned for."));
+
+        Assert.Equal(1, code);
+        Assert.Empty(writer.Written);
+        Assert.Contains(manifest, error.ToString());
+        Assert.Contains("Something nobody planned for", error.ToString());
+        Assert.Contains("unchanged", error.ToString());
+    }
+
+    [Fact]
     public void A_manifest_that_cannot_be_read_is_refused_and_nothing_is_written()
     {
         using var dir = new TempDir();

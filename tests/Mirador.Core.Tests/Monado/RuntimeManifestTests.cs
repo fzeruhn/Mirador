@@ -114,6 +114,24 @@ public class RuntimeManifestTests
         Assert.Equal(problem, ex.Message);
     }
 
+    [Theory]
+    [InlineData("""{"runtime": {"library_path": "a\ud800b"}}""")]
+    [InlineData("""{"runtime": {"library_path": "a\udc00b"}}""")]
+    public void A_library_path_that_is_not_valid_text_is_a_problem_not_an_exception(string content)
+    {
+        using var dir = new TempDir();
+        var manifest = dir.File("openxr_monado.json");
+        File.WriteAllText(manifest, content);
+
+        var problem = RuntimeManifest.Validate(manifest);
+
+        Assert.NotNull(problem);
+        Assert.Contains(manifest, problem);
+        Assert.Contains("library_path", problem);
+        var ex = Assert.Throws<MiradorException>(() => RuntimeManifest.ReadLibraryPath(manifest));
+        Assert.Equal(problem, ex.Message);
+    }
+
     [Fact]
     public void A_manifest_that_cannot_be_read_is_a_problem_not_an_exception()
     {
