@@ -10,8 +10,17 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
+    <ApplicationIcon>Assets\Mirador.ico</ApplicationIcon>
+    <!-- Program.cs has Main: the elevated runtime switch and the second-instance hand-over come before any WinUI. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="Assets\*.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" />
+    <PackageReference Include="H.NotifyIcon.WinUI" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
   </ItemGroup>
   <ItemGroup>
