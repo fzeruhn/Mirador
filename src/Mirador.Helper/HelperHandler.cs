@@ -24,11 +24,16 @@ public interface IServiceControl
 
     /// <summary>The service's <c>ImagePath</c> (variables expanded), or null when it isn't installed.</summary>
     string? ImagePath(string name);
+
+    /// <summary>The running service's process id and start time; null when it doesn't run.</summary>
+    (int Id, DateTime Started)? Process(string name);
 }
 
-/// <summary>A running program's file and command line.</summary>
+/// <summary>A running program's file, command line, parent and start time.</summary>
 /// <param name="ExecutablePath">Its program file; null when Windows doesn't say.</param>
-public sealed record ProcessCommandLine(string? ExecutablePath, string CommandLine);
+/// <param name="ParentId">The process that started it; null when Windows doesn't say.</param>
+/// <param name="Started">When it started; null when Windows doesn't say.</param>
+public sealed record ProcessCommandLine(string? ExecutablePath, string CommandLine, int? ParentId = null, DateTime? Started = null);
 
 /// <summary>Processes on this machine, named without <c>.exe</c>.</summary>
 public interface IProcessControl
@@ -227,32 +232,26 @@ public sealed class HelperHandler
     }
 
     /// <summary>
-    /// The variant Pimax's eye runtime was started with, read only from a runtime whose program file is inside Pimax's
-    /// own folder (where its service runs from): any program can be named like it, and the variant decides what Mirador
-    /// sends to the eye tracker.
+    /// The variant Pimax's eye runtime was started with. Any user can start a program named like it, even Pimax's own
+    /// file with a made-up command line, and the variant decides what Mirador sends to the eye tracker: so only a
+    /// runtime that Pimax's service (a SYSTEM process no user can pose as) started, after the service itself started,
+    /// from its place in Pimax's folder counts, and runtimes that disagree count as none.
     /// </summary>
     private HelperReply GetPimaxEyeBlob()
     {
-        if (PimaxFolder() is not { } folder)
+        if (PimaxFolder() is not { } folder || services.Process(PimaxNames.Service) is not { } service)
         {
             return new HelperReply(true);
         }
 
-        foreach (var process in processes.CommandLines(PimaxNames.EyeRuntimeProcess))
-        {
-            if (!IsInside(process.ExecutablePath, folder))
-            {
-                continue;
-            }
-
-            var variant = PimaxEyeBlob.Parse(process.CommandLine);
-            if (variant is not null)
-            {
-                return new HelperReply(true, Value: variant);
-            }
-        }
-
-        return new HelperReply(true);
+        var expected = Path.Combine(folder, "EyeTrackingServer", "platform_runtime", PimaxNames.EyeRuntimeProcess + ".exe");
+        var variants = processes.CommandLines(PimaxNames.EyeRuntimeProcess)
+            .Where(p => p.ParentId == service.Id && p.Started >= service.Started && SameFile(p.ExecutablePath, expected))
+            .Select(p => PimaxEyeBlob.Parse(p.CommandLine))
+            .OfType<string>()
+            .Distinct()
+            .ToList();
+        return variants.Count == 1 ? new HelperReply(true, Value: variants[0]) : new HelperReply(true);
     }
 
     /// <summary>Pimax's runtime folder, with a separator at the end: the folder its service's program is in.</summary>
@@ -272,12 +271,12 @@ public sealed class HelperHandler
         }
     }
 
-    private static bool IsInside(string? file, string folder)
+    private static bool SameFile(string? file, string expected)
     {
         try
         {
             return file is not null && Path.IsPathFullyQualified(file)
-                && Path.GetFullPath(file).StartsWith(folder, StringComparison.OrdinalIgnoreCase);
+                && string.Equals(Path.GetFullPath(file), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
         {

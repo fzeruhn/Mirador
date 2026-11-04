@@ -112,7 +112,7 @@ public sealed class SystemControlsTests : IDisposable
 
         Assert.Equal(TimeSpan.FromSeconds(5), searcher.Options.Timeout);
         Assert.True(searcher.Options.ReturnImmediately);
-        Assert.Equal("SELECT CommandLine, ExecutablePath FROM Win32_Process WHERE Name = 'pi_server.exe'", searcher.Query.QueryString);
+        Assert.Equal("SELECT CommandLine, ExecutablePath, ParentProcessId, CreationDate FROM Win32_Process WHERE Name = 'pi_server.exe'", searcher.Query.QueryString);
     }
 
     [Fact]
@@ -129,10 +129,10 @@ public sealed class SystemControlsTests : IDisposable
     [Fact]
     public void Command_lines_that_wmi_leaves_empty_are_skipped()
     {
-        var processes = new SystemProcessControl(_ => [(@"C:\x.exe", "a b c"), (null, null), (null, ""), (null, "d")]);
+        var processes = new SystemProcessControl(_ => [(@"C:\x.exe", "a b c", 4, null), (null, null, null, null), (null, "", null, null), (null, "d", null, null)]);
 
         Assert.Equal(
-            [new ProcessCommandLine(@"C:\x.exe", "a b c"), new ProcessCommandLine(null, "d")],
+            [new ProcessCommandLine(@"C:\x.exe", "a b c", 4), new ProcessCommandLine(null, "d")],
             processes.CommandLines("pi_server"));
     }
 

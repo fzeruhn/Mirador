@@ -161,7 +161,7 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
 
         try
         {
-            host.DreamAirState.Update(s => s with { BlobVariant = value.Id, BlobSource = BlobChoice.FromOwner });
+            host.DreamAirState.Update(s => BlobChoice.Chosen(s, value.Id));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -180,7 +180,8 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         loadingVariant = true;
         try
         {
-            SelectedVariant = Variants.FirstOrDefault(v => v.Id == decision.Variant);
+            // Nothing picked while unknown: the owner can then pick the tested one too.
+            SelectedVariant = decision.NeedsOwner ? null : Variants.FirstOrDefault(v => v.Id == decision.Variant);
         }
         finally
         {

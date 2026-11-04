@@ -22,7 +22,8 @@ public static class BlobChoice
     {
         if (detected is not null && EyeBlobVariants.All.Contains(detected))
         {
-            return new BlobDecision(detected, false, s with { BlobVariant = detected, BlobSource = FromPimax });
+            // Read for the headset on now: the next upload stores its serial instead of taking it for another one.
+            return new BlobDecision(detected, false, s with { BlobVariant = detected, BlobSource = FromPimax, BlobTrackerSerial = null });
         }
 
         if (s.BlobVariant is { } remembered && EyeBlobVariants.All.Contains(remembered))
@@ -48,6 +49,10 @@ public static class BlobChoice
             ? s with { BlobTrackerSerial = trackerSerial }
             : s with { BlobTrackerSerial = trackerSerial, BlobVariant = null, BlobSource = null };
     }
+
+    /// <summary>The owner's pick, for the headset on now (the next upload stores its serial).</summary>
+    public static DreamAirState Chosen(DreamAirState s, string variant) =>
+        s with { BlobVariant = variant, BlobSource = FromOwner, BlobTrackerSerial = null };
 
     /// <summary>Whether <see cref="AfterUpload"/> cleared a remembered variant.</summary>
     public static bool Cleared(DreamAirState before, DreamAirState after) => before.BlobVariant is not null && after.BlobVariant is null;

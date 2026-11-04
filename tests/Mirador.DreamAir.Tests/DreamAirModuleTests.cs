@@ -466,10 +466,21 @@ public sealed class DreamAirModuleTests : IDisposable
         var results = await Module().CheckAsync(Context, DreamAirProfile(), CancellationToken.None);
 
         Assert.Equal(
-            ["NVIDIA GPU", "Pimax Play", "Eye geometry", "SteamVR", "Headset", "Vulkan layer"],
+            ["NVIDIA GPU", "Pimax Play", "Eye geometry", "SteamVR", "Headset", "Vulkan layer", "Headset variant"],
             results.Select(r => r.Label));
-        Assert.All(results, r => Assert.Equal(StatusLevel.Ok, r.Level));
-        Assert.Equal("Comes with Mirador", results[^1].Text);
+        Assert.All(results.SkipLast(1), r => Assert.Equal(StatusLevel.Ok, r.Level));
+        Assert.Equal("Comes with Mirador", results[^2].Text);
+        Assert.Equal(StatusLevel.Warning, results[^1].Level); // nothing known about the variant yet
+    }
+
+    [Fact]
+    public async Task A_known_variant_needs_no_warning()
+    {
+        state.Save(new DreamAirState(LastGoodDriver: "621.01", BlobVariant: "K11_RAWH", BlobSource: "owner"));
+
+        var results = await Module().CheckAsync(Context, DreamAirProfile(), CancellationToken.None);
+
+        Assert.DoesNotContain(results, r => r.Label == "Headset variant");
     }
 
     [Fact]

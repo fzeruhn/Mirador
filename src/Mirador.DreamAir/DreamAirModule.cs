@@ -59,13 +59,27 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         devices.Contains(DreamAirIds.Board) || devices.Contains(DreamAirIds.EyeTracker);
 
     /// <summary>The checks of <see cref="DreamAirChecks"/>, then the layer's.</summary>
-    public async Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct)
-    {
-        await DetectVariantAsync(ctx, ct).ConfigureAwait(false);
-        var variant = deps.BlobVariant(LoadState());
-        return await Task.Run<IReadOnlyList<CheckResult>>(
-            () => [.. Checks(ctx).Run(variant), LayerCheck(profile)], ct).ConfigureAwait(false);
-    }
+    /// <summary>The checks of <see cref="DreamAirChecks"/>, the layer's, and a warning while the headset's variant isn't known.</summary>
+    public Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct) =>
+        Task.Run<IReadOnlyList<CheckResult>>(
+            async () =>
+            {
+                await DetectVariantAsync(ctx, ct).ConfigureAwait(false);
+                var state = LoadState();
+                var variant = deps.BlobVariant(state);
+                List<CheckResult> results = [.. Checks(ctx).Run(variant), LayerCheck(profile)];
+                if (BlobChoice.Resolve(state, null).NeedsOwner)
+                {
+                    results.Add(new CheckResult(
+                        "Headset variant",
+                        StatusLevel.Warning,
+                        $"Not known yet: Mirador uploads the eye geometry of {variant}, the tested one.",
+                        "Pick yours in Eye tracking, or start Pimax Play once and Mirador reads it."));
+                }
+
+                return results;
+            },
+            ct);
 
     public async Task<ModuleSession> BeforeStartAsync(
         ModuleContext ctx, Profile profile, IProgress<string> progress, Action<IReadOnlyDictionary<string, string>> saveRecovery, CancellationToken ct)

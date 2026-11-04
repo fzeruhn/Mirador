@@ -23,6 +23,11 @@ internal sealed class FakeServiceControl : IServiceControl
 
     public string? ImagePath(string name) => Installed ? PimaxImagePath : null;
 
+    /// <summary>Pimax's service process: its id and start; null when it doesn't run.</summary>
+    public (int Id, DateTime Started)? PimaxProcess { get; set; } = (500, new DateTime(2026, 11, 4, 10, 0, 0));
+
+    public (int Id, DateTime Started)? Process(string name) => Installed ? PimaxProcess : null;
+
     public bool Exists(string name) => Installed;
 
     public bool IsRunning(string name) => Installed && (Running || Stopping);
@@ -65,6 +70,12 @@ internal sealed class FakeProcessControl : IProcessControl
 
     /// <summary>The program file every listed process runs (Pimax's eye runtime in its own folder, unless a test says otherwise).</summary>
     public string? ExecutablePath { get; set; } = HelperHandlerTests.EyeRuntimePath;
+
+    /// <summary>The parent of every listed process: Pimax's service unless a test says otherwise.</summary>
+    public int? ParentId { get; set; } = 500;
+
+    /// <summary>When every listed process started: after Pimax's service, unless a test says otherwise.</summary>
+    public DateTime? Started { get; set; } = new DateTime(2026, 11, 4, 10, 0, 5);
     public List<string> Queried { get; } = [];
 
     public void KillAll(IEnumerable<string> names)
@@ -79,7 +90,7 @@ internal sealed class FakeProcessControl : IProcessControl
     public IReadOnlyList<ProcessCommandLine> CommandLines(string processName)
     {
         Queried.Add(processName);
-        return Lines.TryGetValue(processName, out var lines) ? [.. lines.Select(l => new ProcessCommandLine(ExecutablePath, l))] : [];
+        return Lines.TryGetValue(processName, out var lines) ? [.. lines.Select(l => new ProcessCommandLine(ExecutablePath, l, ParentId, Started))] : [];
     }
 }
 
