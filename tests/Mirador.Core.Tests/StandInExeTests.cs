@@ -42,9 +42,9 @@ public class StandInExeTests
     private static string UniqueName() => "mirador-standin-test-" + Guid.NewGuid().ToString("N")[..12];
 
     /// <summary>Runs the stand-in against the test pipe <paramref name="pipe"/> (beside any real Mirador); its exit code, stderr and time taken.</summary>
-    private static async Task<(int Code, string Error, TimeSpan Took)> RunAsync(string pipe, string? appPath = null)
+    private static async Task<(int Code, string Error, TimeSpan Took)> RunAsync(string pipe, string? appPath = null, string? exe = null)
     {
-        var info = new ProcessStartInfo(Exe) { RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        var info = new ProcessStartInfo(exe ?? Exe) { RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
         info.Environment["MIRADOR_STANDIN_PIPE"] = pipe;
         if (appPath is not null)
         {
@@ -118,6 +118,26 @@ public class StandInExeTests
 
         Assert.Equal(4, code);
         Assert.Contains("couldn't be started", error);
+    }
+
+    [UnelevatedStandInFact]
+    public async Task An_installed_stand_in_starts_the_mirador_it_came_with()
+    {
+        using var dir = new TempDir();
+        var app = dir.File("Mirador App");
+        var service = Path.Combine(app, "monado", "runtime", "service");
+        Directory.CreateDirectory(service);
+        var standIn = Path.Combine(service, "monado-service.exe");
+        File.Copy(Exe, standIn);
+
+        // whoami.exe as that Mirador: it turns "--background" down (exit 1), which the stand-in reports, so it was the
+        // one beside the stand-in that started, not the Mirador in the registry.
+        File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), Path.Combine(app, "Mirador.exe"));
+
+        var (code, error, _) = await RunAsync(UniqueName(), exe: standIn);
+
+        Assert.Equal(4, code);
+        Assert.Contains("closed at once (exit code 1)", error);
     }
 
     [StandInFact]
