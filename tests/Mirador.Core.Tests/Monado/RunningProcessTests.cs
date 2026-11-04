@@ -37,6 +37,19 @@ public class RunningProcessTests
     }
 
     [Fact]
+    public async Task A_process_that_outlives_dispose_still_reports_its_exit()
+    {
+        var started = StartPing();
+        var process = Wrap(started, _ => throw new AggregateException(new Win32Exception(5))); // never ends it
+
+        await process.DisposeAsync(); // gives up after its limit, with the process still running
+        Assert.False(process.Exited.IsCompleted);
+        Process.GetProcessById(started.Id).Kill(); // the job would do this when the launcher goes
+
+        await process.Exited.WaitAsync(Limit);
+    }
+
+    [Fact]
     public async Task Kill_is_a_no_op_when_the_process_is_gone_even_if_part_of_its_tree_could_not_be_ended()
     {
         var process = Wrap(StartPing(), KillThenFailForTheRestOfTheTree);

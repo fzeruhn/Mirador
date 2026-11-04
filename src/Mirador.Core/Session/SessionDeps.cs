@@ -1,0 +1,29 @@
+using Mirador.Core.Modules;
+using Mirador.Core.Monado;
+using Mirador.Core.Profiles;
+using Mirador.Core.Runtime;
+
+namespace Mirador.Core.Session;
+
+/// <summary>What a <see cref="SessionController"/> works with.</summary>
+/// <param name="Profiles">The profiles; Start uses the selected one.</param>
+/// <param name="MonadoSettings">The Monado settings every profile shares.</param>
+/// <param name="Modules">The headset modules, by <see cref="IHeadsetModule.Id"/>.</param>
+/// <param name="Context">What the modules may use; its clock times every wait of the session too.</param>
+/// <param name="Locator">Finds the profile's Monado.</param>
+/// <param name="Launcher">Starts <c>monado-service</c>. The app owns it for its whole life; the controller never disposes it.</param>
+/// <param name="Pipe">Tells when Monado is ready for apps.</param>
+/// <param name="Runtime">Tells whether the profile's Monado is the active OpenXR runtime.</param>
+/// <param name="StandInExe">Mirador's own copy of the stand-in, copied into build folders.</param>
+/// <param name="InheritedEnvironment">The environment <c>monado-service</c> starts from (Mirador's own).</param>
+public sealed record SessionDeps(
+    ProfileStore Profiles,
+    MonadoSettingsStore MonadoSettings,
+    IReadOnlyDictionary<string, IHeadsetModule> Modules,
+    ModuleContext Context,
+    MonadoLocator Locator,
+    IProcessLauncher Launcher,
+    IMonadoPipe Pipe,
+    OpenXrRuntime Runtime,
+    string StandInExe,
+    IReadOnlyDictionary<string, string> InheritedEnvironment);

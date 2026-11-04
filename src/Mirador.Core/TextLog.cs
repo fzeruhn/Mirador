@@ -6,7 +6,9 @@ namespace Mirador.Core;
 /// A log file that takes one line at a time. Each line is flushed as it is written, so the file is current when someone
 /// opens it, and the last lines are kept in memory for showing in the app. When a line would take the file past
 /// <paramref name="maxBytes"/>, the file moves to <c>&lt;path&gt;.1</c> (replacing an older one) and a new file starts.
-/// Safe to use from several threads.
+/// When another program holds either file so that it can't be moved, the lines keep going to the same file and the
+/// move is tried again once the file has grown by another tenth of <paramref name="maxBytes"/>. Safe to use from
+/// several threads.
 /// </summary>
 /// <param name="path">The file. Its folder is created when the first line is written.</param>
 /// <param name="maxBytes">The size at which the file rolls over.</param>
@@ -20,6 +22,7 @@ public sealed class TextLog(string path, long maxBytes = 5_000_000) : IDisposabl
     private readonly Queue<string> tail = new();
     private FileStream? file;
     private long size;
+    private long rollAgainAt;
     private bool disposed;
 
     /// <summary>The last 200 lines written, oldest first: a copy that later writes don't change.</summary>
@@ -50,7 +53,7 @@ public sealed class TextLog(string path, long maxBytes = 5_000_000) : IDisposabl
             }
 
             Open();
-            if (size > 0 && size + bytes.Length > maxBytes)
+            if (size > 0 && size + bytes.Length > maxBytes && size >= rollAgainAt)
             {
                 Roll();
             }
@@ -92,7 +95,18 @@ public sealed class TextLog(string path, long maxBytes = 5_000_000) : IDisposabl
     {
         file!.Dispose();
         file = null;
-        File.Move(path, path + ".1", overwrite: true);
+        try
+        {
+            File.Move(path, path + ".1", overwrite: true);
+            rollAgainAt = 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A viewer that follows the log (or holds the .1) without letting it be renamed. Losing every line from now
+            // on would be worse than a log over its size: keep writing here, and try again a little later.
+            rollAgainAt = size + Math.Max(1, maxBytes / 10);
+        }
+
         Open();
     }
 }

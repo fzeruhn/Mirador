@@ -33,6 +33,44 @@ public class MonadoPipeTests
             new MonadoPipe().NameFor(Env(("XDG_RUNTIME_DIR", ""), ("XDG_CACHE_HOME", ""), ("TMP", @"C:\Temp"))));
 
     [Fact]
+    public void A_folder_outside_ascii_goes_through_the_ansi_code_page_as_in_monado()
+    {
+        // As on a Western Windows (code page 1252), which has no Ł and gives its best fit, L.
+        var pipe = new MonadoPipe(folder => folder.Replace('\u0141', 'L'));
+
+        Assert.Equal(@"\\.\pipe\C:\Users\Lukasz\AppData\Local\Temp\/monado_comp_ipc",
+            pipe.NameFor(Env(("TMP", "C:\\Users\\\u0141ukasz\\AppData\\Local\\Temp"))));
+    }
+
+    [Fact]
+    public void An_xdg_folder_outside_ascii_goes_through_the_ansi_code_page_too()
+    {
+        var pipe = new MonadoPipe(folder => folder.Replace('\u7fd4', '?'));
+
+        Assert.Equal(@"\\.\pipe\D:\?/monado_comp_ipc", pipe.NameFor(Env(("XDG_RUNTIME_DIR", "D:\\\u7fd4"))));
+    }
+
+    [Fact]
+    public void An_ascii_folder_is_used_as_it_is() =>
+        Assert.Equal(@"\\.\pipe\C:\Temp\/monado_comp_ipc",
+            new MonadoPipe(_ => throw new InvalidOperationException("no conversion needed")).NameFor(Env(("TMP", @"C:\Temp"))));
+
+    [Fact]
+    public void The_ansi_round_trip_keeps_ascii_and_loses_what_the_code_page_lacks()
+    {
+        Assert.Equal(@"C:\Users\finn\AppData\Local\Temp\", Native.Win32.ThroughAnsiCodePage(@"C:\Users\finn\AppData\Local\Temp\"));
+        Assert.Equal("", Native.Win32.ThroughAnsiCodePage(""));
+        if (GetACP() != 65001)
+        {
+            // No ANSI code page but UTF-8 has an emoji.
+            Assert.DoesNotContain("\U0001F600", Native.Win32.ThroughAnsiCodePage("C:\\Users\\\U0001F600\\Temp\\"));
+        }
+    }
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetACP();
+
+    [Fact]
     public void Variable_names_are_matched_ignoring_case() =>
         Assert.Equal(@"\\.\pipe\D:\rt/monado_comp_ipc",
             new MonadoPipe().NameFor(Env(("xdg_runtime_dir", @"D:\rt"))));
