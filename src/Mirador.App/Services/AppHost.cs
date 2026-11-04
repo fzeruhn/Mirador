@@ -34,6 +34,8 @@ public sealed class AppHost : IAsyncDisposable
         Processes = new SystemProcessList();
         Context = new ModuleContext(paths, Helper, Processes, Usb, TimeProvider.System);
         DreamAirState = new DreamAirStateStore(paths.DreamAirFile);
+        Calibrations = new CalibrationStore(
+            CalibrationStore.DefaultMonadoDir, paths.BackupsDir, TimeProvider.System, () => Session!.State != SessionState.Stopped);
 
         var dreamAir = new DreamAirModule(new DreamAirDeps(
             new WindowsRegistryReader(),
@@ -43,7 +45,8 @@ public sealed class AppHost : IAsyncDisposable
             Path.Combine(appDir, "layer"),
             NvidiaDriver.CurrentWindowsVersion,
             DreamAirChecks.FindSteamVr,
-            _ => EyeBlobVariants.Tested));
+            _ => EyeBlobVariants.Tested,
+            Calibrations));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
         CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
 
@@ -86,6 +89,9 @@ public sealed class AppHost : IAsyncDisposable
     public ModuleContext Context { get; }
 
     public DreamAirStateStore DreamAirState { get; }
+
+    /// <summary>The eye calibrations Monado uses, and Mirador's copies of them.</summary>
+    public CalibrationStore Calibrations { get; }
 
     /// <summary>The Dream Air's gaze check ("Check my calibration").</summary>
     public CalibrationCheck CalibrationCheck { get; }

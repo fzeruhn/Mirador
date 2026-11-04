@@ -17,6 +17,7 @@ namespace Mirador.DreamAir;
 /// <param name="NvidiaWindowsVersion">The NVIDIA driver's Windows version (<see cref="NvidiaDriver.CurrentWindowsVersion"/>).</param>
 /// <param name="SteamVrDir">SteamVR's folder (<see cref="DreamAirChecks.FindSteamVr"/>).</param>
 /// <param name="BlobVariant">The eye geometry variant to use for a state; <see cref="EyeBlobVariants.Tested"/> until Mirador can tell.</param>
+/// <param name="Calibration">The eye calibrations' copies, taken before each Start and after each session; null: none.</param>
 public sealed record DreamAirDeps(
     IRegistryReader Registry,
     Func<ProcessSpec, IConsoleProcess> StartConsole,
@@ -25,7 +26,8 @@ public sealed record DreamAirDeps(
     string BundledLayerDir,
     Func<string?> NvidiaWindowsVersion,
     Func<string?> SteamVrDir,
-    Func<DreamAirState, string> BlobVariant);
+    Func<DreamAirState, string> BlobVariant,
+    CalibrationStore? Calibration = null);
 
 /// <summary>
 /// The Pimax Dream Air: checks the PC, stops Pimax's software for the session and starts it again after, checks direct
@@ -84,6 +86,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             ?? throw new MiradorException("Pimax Play isn't installed. Install Pimax Play: Mirador uses its eye tracking runtime.");
 
         ct.ThrowIfCancellationRequested();
+        SnapshotCalibrations(deps.Calibration);
         progress.Report("Stopping Pimax's software…");
 
         // Saved before asking: Mirador may be killed, or hear no answer, while the helper stops the service.
@@ -142,7 +145,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             var environment = layerFolder is null
                 ? FixedEnvironment
                 : [.. FixedEnvironment, new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", layer.ManifestDir)];
-            return new DreamAirSession(ctx, environment, wasRunning, upload);
+            return new DreamAirSession(ctx, environment, wasRunning, upload, () => SnapshotCalibrations(deps.Calibration));
         }
         catch
         {
@@ -255,6 +258,29 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         }
 
         return (check, startProblem);
+    }
+
+    /// <summary>
+    /// Keeps a copy of every tracker's calibration that changed (Monado may have replaced one with the tracker's own).
+    /// Never fails a Start or a Stop: a copy that can't be made is only missing from the list.
+    /// </summary>
+    internal static void SnapshotCalibrations(CalibrationStore? store)
+    {
+        if (store is null)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var serial in store.Serials())
+            {
+                store.SnapshotIfChanged(serial);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>Where the last display check's output is kept, for the diagnostics.</summary>

@@ -72,6 +72,8 @@ public sealed class DreamAirModuleTests : IDisposable
 
     private ModuleContext Context => new(paths, helper, processes, usb, time);
 
+    private CalibrationStore? calibration;
+
     private DreamAirModule Module() => new(new DreamAirDeps(
         Registry,
         consoles.Start,
@@ -80,7 +82,8 @@ public sealed class DreamAirModuleTests : IDisposable
         bundledLayer,
         () => { duringChecks?.Invoke(); return nvidia; },
         () => Path.Combine(dir.Path, "SteamVR"),
-        _ => EyeBlobVariants.Tested));
+        _ => EyeBlobVariants.Tested,
+        calibration));
 
     private static Profile DreamAirProfile(string? layerFolder = null) => new(
         "p1", "Dream Air", DreamAirModule.ModuleId, BuildSource.Bundled, [],
@@ -524,6 +527,24 @@ public sealed class DreamAirModuleTests : IDisposable
 
         Assert.Equal([HelperCommand.StopPimax, HelperCommand.StartPimax], helper.Sent);
         Assert.Empty(saves[^1]);
+    }
+
+    [Fact]
+    public async Task Calibrations_are_kept_before_a_start_and_after_the_session()
+    {
+        var monadoDir = Path.Combine(dir.Path, "monado", "dreamair");
+        Directory.CreateDirectory(monadoDir);
+        File.WriteAllText(Path.Combine(monadoDir, "eye_calibration_XR5DA-1.bin"), "mine");
+        calibration = new CalibrationStore(monadoDir, Path.Combine(dir.Path, "backups"), TimeProvider.System);
+
+        var session = (DreamAirSession)await BeforeStart();
+        Assert.Single(calibration.Backups("XR5DA-1"));
+
+        File.WriteAllText(Path.Combine(monadoDir, "eye_calibration_XR5DA-1.bin"), "the tracker's"); // Monado replaced it
+        await session.EndAsync(CancellationToken.None);
+        session.Dispose();
+
+        Assert.Equal(2, calibration.Backups("XR5DA-1").Count);
     }
 
     [Fact]

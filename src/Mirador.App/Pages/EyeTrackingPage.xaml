@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Mirador.App.ViewModels"
     NavigationCacheMode="Required">
 
     <ScrollViewer>
@@ -29,6 +30,40 @@
                 IsOpen="{x:Bind ViewModel.HasResult, Mode=OneWay}"
                 Message="{x:Bind ViewModel.Result, Mode=OneWay}"
                 Severity="{x:Bind ViewModel.ResultSeverity, Mode=OneWay}" />
+
+            <TextBlock Margin="0,24,0,4" Style="{StaticResource BodyStrongTextBlockStyle}" Text="Calibration backups" />
+            <TextBlock
+                Margin="0,0,0,8"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Mirador keeps a copy of the eye calibration whenever it changes. Monado uses the restored calibration unless the eye tracker holds its own from Pimax Play; then it keeps the tracker's and says so."
+                TextWrapping="Wrap" />
+            <toolkit:SettingsCard Description="Save the calibration to a file, or take one in from another PC." Header="Export and import">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ComboBox
+                        MinWidth="200"
+                        ItemsSource="{x:Bind ViewModel.Serials}"
+                        PlaceholderText="No calibration yet"
+                        SelectedItem="{x:Bind ViewModel.SelectedSerial, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
+                    <Button Click="OnExport" Content="Export…" IsEnabled="{x:Bind ViewModel.HasSerials, Mode=OneWay}" />
+                    <Button Click="OnImport" Content="Import…" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <ItemsControl Margin="0,4,0,0" ItemsSource="{x:Bind ViewModel.Backups}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BackupItem">
+                        <toolkit:SettingsCard Margin="0,0,0,4" Header="{x:Bind Text}">
+                            <Button Click="OnRestore" Content="Restore" />
+                        </toolkit:SettingsCard>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <InfoBar
+                Margin="0,8,0,0"
+                Closed="OnBackupMessageClosed"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.HasBackupMessage, Mode=OneWay}"
+                Message="{x:Bind ViewModel.BackupMessage, Mode=OneWay}"
+                Severity="{x:Bind ViewModel.BackupSeverity, Mode=OneWay}" />
         </StackPanel>
     </ScrollViewer>
 </Page>
