@@ -333,6 +333,73 @@ public sealed class SessionController(SessionDeps deps)
         }
     }
 
+    /// <summary>
+    /// Runs a headset module's own work while Monado is stopped, such as the Dream Air's display check, the way recovery
+    /// runs: a Start (from any caller) waits until it is done, and what the work saves through its first argument goes
+    /// into <c>session.json</c> at once (an empty set deletes the file), so that recovery undoes the work's steps if
+    /// Mirador goes away meanwhile. A session left behind earlier is undone first. Works run one after another.
+    /// </summary>
+    /// <exception cref="MiradorException">Monado isn't stopped, or what an earlier session left behind couldn't be undone.</exception>
+    public async Task<T> RunWhileStoppedAsync<T>(
+        string moduleId, Func<Action<IReadOnlyDictionary<string, string>>, CancellationToken, Task<T>> work, CancellationToken ct)
+    {
+        Task before;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (gate)
+        {
+            if (state != SessionState.Stopped)
+            {
+                throw new MiradorException("Stop Monado first.");
+            }
+
+            before = recovering;
+            recovering = done.Task;
+        }
+
+        try
+        {
+            await before.WaitAsync(ct).ConfigureAwait(false);
+            if (sessionFile.Read() is { } left)
+            {
+                if (FindService(deps.Context.Processes.Snapshot()) is { } service)
+                {
+                    throw new MiradorException(
+                        $"Monado is running outside Mirador ({ServiceName}, process {service.Id}). Close it, then try again.");
+                }
+
+                await UndoLeftSessionAsync(left.ModuleId, left.Data, ct).ConfigureAwait(false);
+            }
+
+            var profileId = deps.Profiles.Load().SelectedId;
+            void Save(IReadOnlyDictionary<string, string> data)
+            {
+                if (data.Count == 0)
+                {
+                    sessionFile.Delete();
+                }
+                else
+                {
+                    sessionFile.Write(profileId, moduleId, data);
+                }
+            }
+
+            return await work(Save, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            done.SetResult();
+        }
+    }
+
+    /// <summary>Completes when no recovery and no module work (<see cref="RunWhileStoppedAsync"/>) is under way.</summary>
+    public Task WhenSettledAsync()
+    {
+        lock (gate)
+        {
+            return recovering;
+        }
+    }
+
     private async Task RecoverCoreAsync(CancellationToken ct)
     {
         try

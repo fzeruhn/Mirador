@@ -1,6 +1,123 @@
 <Page
     x:Class="Mirador.App.Pages.HomePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid />
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:Mirador.App.ViewModels"
+    NavigationCacheMode="Required">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="900" Padding="36,24,36,36" HorizontalAlignment="Stretch" Spacing="16">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Home" />
+
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox
+                    MinWidth="260"
+                    Header="Profile"
+                    IsEnabled="{x:Bind ViewModel.CanChangeProfile, Mode=OneWay}"
+                    ItemsSource="{x:Bind ViewModel.Profiles}"
+                    SelectedItem="{x:Bind ViewModel.SelectedProfile, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
+                <Button
+                    Grid.Column="1"
+                    MinWidth="140"
+                    VerticalAlignment="Bottom"
+                    Command="{x:Bind ViewModel.StartStopCommand}"
+                    Content="{x:Bind ViewModel.StartStopLabel, Mode=OneWay}"
+                    IsEnabled="{x:Bind ViewModel.CanStartStop, Mode=OneWay}"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
+
+            <InfoBar
+                Title="Monado didn't start"
+                Closed="OnFailureClosed"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.HasFailure, Mode=OneWay}"
+                Message="{x:Bind ViewModel.LastFailure, Mode=OneWay}"
+                Severity="Error" />
+
+            <Border
+                Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <ItemsControl ItemsSource="{x:Bind ViewModel.Status}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:StatusItem">
+                            <Grid Padding="0,4" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    FontSize="16"
+                                    Foreground="{x:Bind Brush}"
+                                    Glyph="{x:Bind Glyph}" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    Text="{x:Bind Label}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Text="{x:Bind Text}"
+                                    TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.RuntimeText, Mode=OneWay}" />
+                <Button
+                    Command="{x:Bind ViewModel.SetRuntimeCommand}"
+                    Content="Set Monado as OpenXR runtime"
+                    Visibility="{x:Bind ViewModel.CanSetRuntime, Mode=OneWay}" />
+            </StackPanel>
+
+            <InfoBar
+                Title="OpenXR runtime"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.HasRuntimeProblem, Mode=OneWay}"
+                Message="{x:Bind ViewModel.RuntimeProblem, Mode=OneWay}"
+                Severity="Error" />
+
+            <InfoBar
+                Title="OpenXR runtime"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasRuntimeNotice, Mode=OneWay}"
+                Message="{x:Bind ViewModel.RuntimeNotice, Mode=OneWay}"
+                Severity="Warning" />
+
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Notices}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:NoticeItem">
+                        <InfoBar
+                            Title="{x:Bind Title}"
+                            Margin="0,0,0,8"
+                            Closed="OnNoticeClosed"
+                            IsClosable="True"
+                            IsOpen="True"
+                            Message="{x:Bind Message}"
+                            Severity="{x:Bind Severity}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <InfoBar
+                Title="A new version"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.HasUpdate, Mode=OneWay}"
+                Message="{x:Bind ViewModel.UpdateText, Mode=OneWay}"
+                Severity="Informational">
+                <InfoBar.ActionButton>
+                    <HyperlinkButton Content="Release notes" NavigateUri="{x:Bind ViewModel.UpdateUrl, Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
+    </ScrollViewer>
 </Page>
