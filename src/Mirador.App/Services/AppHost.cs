@@ -57,7 +57,7 @@ public sealed class AppHost : IAsyncDisposable
             new MonadoPipe(),
             Runtime,
             StandInExe,
-            UserEnvironment.Default()));
+            UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e))));
     }
 
     /// <summary>The folder Mirador.exe is in.</summary>

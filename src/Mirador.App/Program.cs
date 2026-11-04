@@ -27,6 +27,12 @@ public static partial class Program
             return SetRuntimeCommand.Run(manifest, ActiveRuntimeWriter.Write);
         }
 
+        if (IsElevated())
+        {
+            MessageBox("Mirador doesn't run as administrator: Monado would then turn away every game that isn't elevated too. Start Mirador normally; it asks for administrator rights itself when it needs them.");
+            return 1;
+        }
+
         SingleInstance? instance;
         try
         {
@@ -61,6 +67,14 @@ public static partial class Program
     /// <summary>Hands a second start to the Mirador already running: start Monado, or show the window.</summary>
     private static int AskTheFirst(AppArgs parsed)
     {
+        if (parsed.Background && !parsed.Start)
+        {
+            return 0; // a stand-in raced another one to start Mirador: it runs, and nothing should pop up over the game
+        }
+
+        // The first Mirador may then bring its window to the front (Windows lets only the foreground program do that).
+        const uint AnyProcess = unchecked((uint)-1);
+        AllowSetForegroundWindow(AnyProcess);
         var request = parsed.Start ? AppPipe.Start : AppPipe.Show;
         var reply = AppPipeClient.SendAsync(AppPipe.CurrentName(), request, parsed.Start ? StartWait : ShowWait, CancellationToken.None)
             .GetAwaiter().GetResult();
@@ -77,7 +91,15 @@ public static partial class Program
         return reply == AppPipe.Ok ? 0 : 1;
     }
 
-    private static void MessageBox(string text)
+    /// <summary>Whether Mirador runs elevated (as administrator).</summary>
+    private static bool IsElevated()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+
+    /// <summary>A plain message box, for what must be said before (or without) a window.</summary>
+    internal static void MessageBox(string text)
     {
         const uint IconError = 0x10;
         _ = MessageBoxW(IntPtr.Zero, text, "Mirador", IconError);
@@ -86,6 +108,10 @@ public static partial class Program
     /// <summary>What WinUI's own Main calls first: it ends the process with a message when Windows is too old.</summary>
     [DllImport("Microsoft.ui.xaml.dll")]
     private static extern void XamlCheckProcessRequirements();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBoxW(IntPtr owner, string text, string caption, uint type);

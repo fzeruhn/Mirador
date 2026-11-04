@@ -13,7 +13,8 @@ public static class UserEnvironment
     /// The user's default environment (<c>CreateEnvironmentBlock</c> with this process's token, nothing inherited). When
     /// Windows won't build it, Mirador's own environment instead, so that Monado still gets one.
     /// </summary>
-    public static IReadOnlyDictionary<string, string> Default()
+    /// <param name="fellBack">Told why, when Mirador's own environment is used instead.</param>
+    public static IReadOnlyDictionary<string, string> Default(Action<Exception>? fellBack = null)
     {
         try
         {
@@ -21,6 +22,7 @@ public static class UserEnvironment
         }
         catch (Exception e) when (e is Win32Exception or DllNotFoundException or EntryPointNotFoundException)
         {
+            fellBack?.Invoke(e);
             return Current();
         }
     }

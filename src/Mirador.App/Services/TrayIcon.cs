@@ -22,7 +22,9 @@ public sealed class TrayIcon : IDisposable
 {
     private readonly TaskbarIcon icon;
     private readonly MenuFlyoutItem startStop;
-    private readonly string assets = Path.Combine(AppContext.BaseDirectory, "Assets");
+
+    // Kept for as long as the tray icon lives: the tray uses an icon's handle again when Explorer restarts.
+    private readonly Dictionary<TrayState, System.Drawing.Icon> icons;
     private TrayState? shown;
 
     /// <param name="open">Shows the window.</param>
@@ -30,7 +32,15 @@ public sealed class TrayIcon : IDisposable
     /// <param name="quit">Quits Mirador.</param>
     public TrayIcon(Action open, Func<Task> startOrStop, Func<Task> quit)
     {
-        startStop = new MenuFlyoutItem { Text = "Start", Command = new AsyncRelayCommand(startOrStop) };
+        icons = new Dictionary<TrayState, System.Drawing.Icon>
+        {
+            [TrayState.Stopped] = Load("TrayStopped.ico"),
+            [TrayState.Running] = Load("TrayRunning.ico"),
+            [TrayState.Problem] = Load("TrayProblem.ico"),
+        };
+
+        // Stop must work while a Start from the tray still runs.
+        startStop = new MenuFlyoutItem { Text = "Start", Command = new AsyncRelayCommand(startOrStop, AsyncRelayCommandOptions.AllowConcurrentExecutions) };
         var menu = new MenuFlyout();
         menu.Items.Add(startStop);
         menu.Items.Add(new MenuFlyoutItem { Text = "Open", Command = new RelayCommand(open) });
@@ -53,13 +63,7 @@ public sealed class TrayIcon : IDisposable
     {
         if (shown != state)
         {
-            var file = state switch
-            {
-                TrayState.Running => "TrayRunning.ico",
-                TrayState.Problem => "TrayProblem.ico",
-                _ => "TrayStopped.ico",
-            };
-            icon.UpdateIcon(new System.Drawing.Icon(Path.Combine(assets, file)));
+            icon.UpdateIcon(icons[state]);
             shown = state;
         }
 
@@ -67,5 +71,26 @@ public sealed class TrayIcon : IDisposable
         startStop.Text = startStopText;
     }
 
-    public void Dispose() => icon.Dispose();
+    public void Dispose()
+    {
+        icon.Dispose();
+        foreach (var i in icons.Values)
+        {
+            i.Dispose();
+        }
+    }
+
+    /// <summary>The icon file's image at the size Windows draws tray icons on this display, so it isn't scaled blurry.</summary>
+    private static System.Drawing.Icon Load(string file)
+    {
+        const int SmallIconWidth = 49; // SM_CXSMICON
+        var size = GetSystemMetricsForDpi(SmallIconWidth, GetDpiForSystem());
+        return new System.Drawing.Icon(Path.Combine(AppContext.BaseDirectory, "Assets", file), size > 0 ? size : 16, size > 0 ? size : 16);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetSystemMetricsForDpi(int index, uint dpi);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetDpiForSystem();
 }
