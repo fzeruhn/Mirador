@@ -3,4 +3,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>Mirador.Ipc</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mirador.Helper.Tests" />
+  </ItemGroup>
 </Project>

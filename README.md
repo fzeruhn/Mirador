@@ -30,12 +30,18 @@ dotnet run --project src\Mirador.App -p:Platform=x64
 
 Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`.
 
+The helper service is not part of a plain build. To try it on a development machine, run
+`tools\dev-install-helper.ps1` from an administrator PowerShell (it installs the service `MiradorHelper` from
+`%ProgramFiles%\Mirador\helper\`) and `tools\dev-uninstall-helper.ps1` to take it out again.
+
 ## Dependencies
 
 Every version is pinned in `Directory.Packages.props` (central package management); stable releases only.
 
 - .NET 10, `net10.0-windows10.0.26100.0`, minimum Windows version 10.0.19041.0.
 - Windows App SDK 2.6.5 (WinUI 3), self-contained.
+- The helper service uses `Microsoft.Extensions.Hosting` 10.0.14, `Microsoft.Extensions.Hosting.WindowsServices`
+  10.0.14 and `System.Management` 10.0.14 (the newest stable releases).
 - xUnit 2.9.3 with `xunit.runner.visualstudio` 4.0.1 and `Microsoft.NET.Test.Sdk` 18.11.0, on VSTest.
 - `CommunityToolkit.WinUI.Controls.SettingsControls` 8.2.251219 and `H.NotifyIcon.WinUI` 2.4.1: both declare only
   "Windows App SDK 1.6 or newer", so they were checked against 2.6.5. Both restored, compiled and ran there (a
