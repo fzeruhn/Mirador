@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
@@ -15,9 +16,16 @@ namespace Mirador.Ipc;
 /// replaces still holds the name, so no other program can take it while Mirador runs.
 /// </summary>
 /// <param name="name">The pipe's name, as <see cref="AppPipe.CurrentName"/> gives it.</param>
-/// <param name="handle">Answers one request line (without its newline) with one reply line; it may take as long as a Start.</param>
-public sealed class AppPipeServer(string name, Func<string, CancellationToken, Task<string>> handle) : IAsyncDisposable
+/// <param name="handle">Answers one request line (without its newline) with one reply line; it may take as long as a
+/// Start. It also gets the caller's process id, as Windows reports it for the pipe (null when it can't).</param>
+public sealed class AppPipeServer(string name, Func<string, int?, CancellationToken, Task<string>> handle) : IAsyncDisposable
 {
+    /// <summary>A server whose <paramref name="handle"/> doesn't need to know the caller.</summary>
+    public AppPipeServer(string name, Func<string, CancellationToken, Task<string>> handle)
+        : this(name, (line, _, ct) => handle(line, ct))
+    {
+    }
+
     /// <summary>Callers served at once; the rest wait to be accepted. Far below Windows' 255 instances of a name.</summary>
     public const int MaxServed = 16;
 
@@ -216,7 +224,7 @@ public sealed class AppPipeServer(string name, Func<string, CancellationToken, T
                 return;
             }
 
-            var reply = AppPipe.OneLine(await AnswerAsync(request, ct).ConfigureAwait(false));
+            var reply = AppPipe.OneLine(await AnswerAsync(request, CallerProcessId(pipe), ct).ConfigureAwait(false));
             await pipe.WriteAsync(Encoding.ASCII.GetBytes(reply + "\n"), ct).ConfigureAwait(false);
             await pipe.FlushAsync(ct).ConfigureAwait(false);
             await WaitForHangUpAsync(pipe, ct).ConfigureAwait(false);
@@ -244,11 +252,11 @@ public sealed class AppPipeServer(string name, Func<string, CancellationToken, T
     }
 
     /// <summary>The handler's reply; a handler that throws is answered with <c>FAIL</c> and its message, and reported.</summary>
-    private async Task<string> AnswerAsync(string request, CancellationToken ct)
+    private async Task<string> AnswerAsync(string request, int? caller, CancellationToken ct)
     {
         try
         {
-            return await handle(request, ct).ConfigureAwait(false) ?? AppPipe.FailPrefix + "Mirador had no answer.";
+            return await handle(request, caller, ct).ConfigureAwait(false) ?? AppPipe.FailPrefix + "Mirador had no answer.";
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -322,4 +330,22 @@ public sealed class AppPipeServer(string name, Func<string, CancellationToken, T
 
         return Encoding.UTF8.GetString(line, 0, count);
     }
+
+    /// <summary>The process at the other end of <paramref name="pipe"/>, as Windows reports it; null when it can't.</summary>
+    private static int? CallerProcessId(NamedPipeServerStream pipe)
+    {
+        try
+        {
+            return GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var id) ? unchecked((int)id) : null;
+        }
+        catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint clientProcessId);
 }

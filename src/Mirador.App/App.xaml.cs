@@ -6,6 +6,7 @@ using Mirador.App.ViewModels;
 using Mirador.Core;
 using Mirador.Core.Diagnostics;
 using Mirador.Core.Modules;
+using Mirador.Core.Monado;
 using Mirador.Core.Session;
 using Mirador.Ipc;
 
@@ -257,8 +258,8 @@ public partial class App : Application
         }
     }
 
-    /// <summary>Answers the stand-in (START) and a second Mirador (SHOW, START).</summary>
-    private async Task<string> AnswerPipeAsync(string request, CancellationToken ct)
+    /// <summary>Answers the stand-in (START) and a second Mirador (SHOW, START); <paramref name="caller"/> is the asking process.</summary>
+    private async Task<string> AnswerPipeAsync(string request, int? caller, CancellationToken ct)
     {
         switch (request)
         {
@@ -267,9 +268,11 @@ public partial class App : Application
                 return AppPipe.Ok;
 
             case AppPipe.Start:
-                AppLog.Write("A game asked for Monado");
+                // A stand-in sits beside the Monado runtime the game loaded: only that Monado may start for it.
+                var standIn = StandIn.ProgramOf(caller, Host.Processes.ImagePathOf);
+                AppLog.Write(standIn is null ? "A game asked for Monado" : $"A game asked for Monado ({standIn})");
                 var wasStopped = Host.Session.State == SessionState.Stopped;
-                var outcome = await Host.Session.StartAsync(StartReason.Game, ct);
+                var outcome = await Host.Session.StartAsync(StartReason.Game, standIn, ct);
                 Ui.TryEnqueue(() =>
                 {
                     Report(outcome, StartReason.Game);

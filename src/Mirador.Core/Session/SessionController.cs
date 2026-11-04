@@ -203,27 +203,38 @@ public sealed class SessionController(SessionDeps deps)
     /// <param name="reason">Who asked.</param>
     /// <param name="ct">Stops this caller's waiting only: a Start under way serves every caller, and only
     /// <see cref="StopAsync"/> breaks it off.</param>
-    public async Task<StartOutcome> StartAsync(StartReason reason, CancellationToken ct)
+    public Task<StartOutcome> StartAsync(StartReason reason, CancellationToken ct) => StartAsync(reason, null, ct);
+
+    /// <inheritdoc cref="StartAsync(StartReason, CancellationToken)"/>
+    /// <param name="gameStandIn">For a game's Start: the stand-in its Monado runtime DLL started
+    /// (<see cref="StandIn.ProgramOf"/>). Only that Monado may start for it, since the game's DLL then talks to the
+    /// service: a Start for another build than the selected profile's is refused before any step, and one that joins or
+    /// finds Monado of another build is refused too (that Monado stays).</param>
+    public async Task<StartOutcome> StartAsync(StartReason reason, string? gameStandIn, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         while (true)
         {
             Task? stopFirst = null;
             Task<StartOutcome>? shared = null;
+            var joined = false;
             lock (gate)
             {
                 switch (state)
                 {
                     case SessionState.Running:
-                        return new StartOutcome(true, "Monado is already running.");
+                        joined = true;
+                        shared = Task.FromResult(new StartOutcome(true, "Monado is already running."));
+                        break;
                     case SessionState.Starting:
+                        joined = true;
                         shared = starting;
                         break;
                     case SessionState.Stopping:
                         stopFirst = stopping;
                         break;
                     default:
-                        shared = BeginStart();
+                        shared = BeginStart(gameStandIn);
                         break;
                 }
             }
@@ -234,8 +245,34 @@ public sealed class SessionController(SessionDeps deps)
                 continue;
             }
 
-            return await shared!.WaitAsync(ct).ConfigureAwait(false);
+            var outcome = await shared!.WaitAsync(ct).ConfigureAwait(false);
+            if (joined && outcome.Ok && gameStandIn is not null)
+            {
+                MonadoInstall? install;
+                Profile? profile;
+                lock (gate)
+                {
+                    install = currentInstall;
+                    profile = current?.Profile;
+                }
+
+                if (install is not null && !StandIn.BelongsTo(gameStandIn, install))
+                {
+                    return Fail(OtherMonado(gameStandIn, install, profile));
+                }
+            }
+
+            return outcome;
         }
+    }
+
+    /// <summary>Why a game whose runtime is another Monado than <paramref name="install"/> doesn't get it.</summary>
+    private static string OtherMonado(string gameStandIn, MonadoInstall install, Profile? profile)
+    {
+        var games = Path.GetDirectoryName(Path.GetDirectoryName(gameStandIn)) ?? gameStandIn;
+        var ours = Path.GetDirectoryName(install.RuntimeDll) ?? install.Manifest;
+        var whose = profile is null ? "Mirador's profile" : $"the profile \"{profile.Name}\"";
+        return $"The game uses the Monado in {games}, but {whose} uses the one in {ours}. Pick the profile with the game's Monado in Mirador, or set this profile's Monado as the OpenXR runtime.";
     }
 
     /// <summary>
@@ -447,9 +484,9 @@ public sealed class SessionController(SessionDeps deps)
             : $"Mirador couldn't undo what its last session left behind ({Trimmed(e.Message)}). It tries again the next time Mirador starts.";
 
     /// <summary>Moves to Starting and sets the Start off. Called under the lock.</summary>
-    private Task<StartOutcome> BeginStart()
+    private Task<StartOutcome> BeginStart(string? gameStandIn)
     {
-        var run = new Run();
+        var run = new Run { GameStandIn = gameStandIn };
         var cancel = new CancellationTokenSource(); // not disposed: it has no timer, and a late Stop may still cancel it
         var done = new TaskCompletionSource<StartOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
         state = SessionState.Starting;
@@ -562,6 +599,11 @@ public sealed class SessionController(SessionDeps deps)
         }
 
         var install = deps.Locator.Locate(profile.Monado);
+        if (run.GameStandIn is { } gameStandIn && !StandIn.BelongsTo(gameStandIn, install))
+        {
+            return Fail(OtherMonado(gameStandIn, install, profile));
+        }
+
         var usesLighthouse = LighthouseConflicts.UsesLighthouse(profile, module?.UsesSteamVrLighthouse ?? false);
         lock (gate)
         {
@@ -1067,6 +1109,9 @@ public sealed class SessionController(SessionDeps deps)
     /// <summary>One Start and, if it succeeds, the session that follows it.</summary>
     private sealed class Run
     {
+        /// <summary>The stand-in of the game that asked for this Start; null when someone else did.</summary>
+        public string? GameStandIn { get; init; }
+
         // Shown in the status: written and read under the controller's lock.
         public Profile? Profile { get; set; }
 
