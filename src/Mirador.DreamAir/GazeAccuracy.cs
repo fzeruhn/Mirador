@@ -3,10 +3,10 @@ using System.Globalization;
 namespace Mirador.DreamAir;
 
 /// <summary>How well gaze hit the check's dots.</summary>
-/// <param name="Frames">Rows read from the gaze file.</param>
-/// <param name="ValidFrames">Rows with a placed dot, every column and a valid gaze (both eyes' flags set).</param>
-/// <param name="FixationFrames">Valid rows within <see cref="GazeAccuracy.FixationDeg"/> of a counted dot.</param>
-/// <param name="MedianDeg">The median angle between gaze and dot over the fixation rows.</param>
+/// <param name="Frames">Complete rows read from the gaze file once a dot was placed.</param>
+/// <param name="ValidFrames">Those rows with a valid gaze (both eyes' flags set).</param>
+/// <param name="FixationFrames">Valid rows within <see cref="GazeAccuracy.FixationDeg"/> of their dot, whatever the dot's count.</param>
+/// <param name="MedianDeg">The median angle between gaze and dot over all the fixation rows.</param>
 /// <param name="MedianOfDotMediansDeg">The median of the dots' own medians.</param>
 /// <param name="WorstDotDeg">The largest of the dots' medians.</param>
 /// <param name="Dots">Dots with at least <see cref="GazeAccuracy.MinFramesPerDot"/> fixation rows.</param>
@@ -16,7 +16,8 @@ public sealed record GazeAccuracyResult(
 /// <summary>
 /// The gaze check's maths, a port of <c>DreamAirWin\tools\gaze_world\gaze_world_accuracy.py</c> kept to its method:
 /// each valid row's gaze ray (forward <c>(0, 0, -1)</c> turned by the gaze orientation, from the gaze origin) goes to
-/// the dot it points nearest to; rows within 5° of their dot are fixations; a dot needs 20 of them to count.
+/// the dot it points nearest to; rows within 5° of their dot are fixations; a dot needs 20 of them for its own median.
+/// Checked against the script on two worn runs of 2026-11-02 (the same medians and worst dot, to the hundredth).
 /// </summary>
 public static class GazeAccuracy
 {
@@ -39,6 +40,7 @@ public static class GazeAccuracy
         }
 
         var header = Split(appCsv.ReadLine());
+        var width = header.Length;
         var at = GazeColumns.Select(name => Array.IndexOf(header, name)).ToArray();
         if (at.Any(i => i < 0))
         {
@@ -50,9 +52,15 @@ public static class GazeAccuracy
         var perDot = dots.Select(_ => new List<double>()).ToArray();
         while (appCsv.ReadLine() is { } line)
         {
-            frames++;
+            // The last row is incomplete while gaze_world still writes, and may end in a cut-off number.
             var cells = Split(line);
-            if (at.Any(i => i >= cells.Length || cells[i].Length == 0) || cells[at[0]] != "1")
+            if (cells.Length < width || cells[at[0]] != "1")
+            {
+                continue;
+            }
+
+            frames++;
+            if (at.Any(i => cells[i].Length == 0))
             {
                 continue;
             }
@@ -95,7 +103,7 @@ public static class GazeAccuracy
             return null;
         }
 
-        var all = counted.SelectMany(list => list).ToList();
+        var all = perDot.SelectMany(list => list).ToList();
         var dotMedians = counted.Select(Median).ToList();
         return new GazeAccuracyResult(frames, valid, all.Count, Median(all), Median(dotMedians), dotMedians.Max(), counted.Count);
     }
