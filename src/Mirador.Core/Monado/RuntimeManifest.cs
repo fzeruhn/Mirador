@@ -9,7 +9,7 @@ public static class RuntimeManifest
     /// The full path of the runtime DLL named by <c>runtime.library_path</c>; a relative path is taken from the folder
     /// of the manifest. Does not check that the DLL exists (see <see cref="Validate"/>).
     /// </summary>
-    /// <exception cref="MiradorException">The manifest is missing, not JSON, or does not name a library.</exception>
+    /// <exception cref="MiradorException">The manifest is missing, can't be read, is not JSON, or does not name a usable library path.</exception>
     public static string ReadLibraryPath(string manifestPath)
     {
         var (library, problem) = Read(manifestPath);
@@ -35,10 +35,20 @@ public static class RuntimeManifest
             return (null, $"The file {manifestPath} doesn't exist.");
         }
 
+        string text;
+        try
+        {
+            text = File.ReadAllText(manifestPath);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return (null, $"The file {manifestPath} can't be read ({e.Message.TrimEnd('.')}). Close any program that has it open, or check that you may read it.");
+        }
+
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            document = JsonDocument.Parse(text);
         }
         catch (JsonException)
         {
@@ -47,14 +57,31 @@ public static class RuntimeManifest
 
         using (document)
         {
-            var libraryPath = LibraryPathOf(document.RootElement);
+            string? libraryPath;
+            try
+            {
+                libraryPath = LibraryPathOf(document.RootElement);
+            }
+            catch (InvalidOperationException)
+            {
+                // The JSON parses, but the string holds an invalid escape (a lone UTF-16 surrogate): reading it is what fails.
+                return (null, $"The file {manifestPath} has a runtime.library_path that isn't valid text.");
+            }
+
             if (string.IsNullOrWhiteSpace(libraryPath))
             {
                 return (null, $"The file {manifestPath} doesn't say where the runtime DLL is: it has no runtime.library_path.");
             }
 
-            var manifestFolder = Path.GetDirectoryName(Path.GetFullPath(manifestPath))!;
-            return (Path.GetFullPath(libraryPath, manifestFolder), null);
+            try
+            {
+                var manifestFolder = Path.GetDirectoryName(Path.GetFullPath(manifestPath))!;
+                return (Path.GetFullPath(libraryPath, manifestFolder), null);
+            }
+            catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return (null, $"The file {manifestPath} has a runtime.library_path that isn't a valid path.");
+            }
         }
     }
 
