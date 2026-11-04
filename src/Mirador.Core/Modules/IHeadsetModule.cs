@@ -30,6 +30,8 @@ public interface IHeadsetModule
     /// </summary>
     /// <exception cref="MiradorException">Monado must not start; the message says why and what to do. The module has
     /// undone its own steps before throwing.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled (Stop was pressed while starting).
+    /// As with a refusal, the module undoes its own steps before letting it out: Mirador ends only a session it was given.</exception>
     Task<ModuleSession> BeforeStartAsync(ModuleContext ctx, Profile profile, IProgress<string> progress, CancellationToken ct);
 
     /// <summary>

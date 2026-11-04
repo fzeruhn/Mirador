@@ -9,6 +9,13 @@ public class SessionControllerTests
 {
     private static readonly TimeSpan Limit = Harness.Limit;
 
+    /// <summary>How often the controller looks for Monado's pipe.</summary>
+    private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(100);
+
+    private static readonly IReadOnlyDictionary<string, string> WasRunning = new Dictionary<string, string> { ["wasRunning"] = "true" };
+
+    private static readonly IReadOnlyDictionary<string, string> WasNotRunning = new Dictionary<string, string> { ["wasRunning"] = "false" };
+
     private static Task<StartOutcome> Start(Harness h) => h.Controller.StartAsync(StartReason.Button, CancellationToken.None);
 
     private static StatusLine MonadoLine(StatusLevel level, string text) => new("monado", "Monado", level, text);
@@ -240,6 +247,7 @@ public class SessionControllerTests
 
         var start = Start(h);
         await h.Pipe.FirstPoll.Task.WaitAsync(Limit);
+        await h.Timers.Set(Poll).WaitAsync(Limit); // the controller now waits 100 ms
         h.Time.Advance(TimeSpan.FromMilliseconds(99));
         Assert.Single(h.Pipe.Asked);
         Assert.False(start.IsCompleted);
@@ -290,6 +298,7 @@ public class SessionControllerTests
 
         var start = Start(h);
         await h.Pipe.FirstPoll.Task.WaitAsync(Limit);
+        await h.Timers.Set(Poll).WaitAsync(Limit);
         h.Time.Advance(TimeSpan.FromSeconds(44));
         Assert.False(start.IsCompleted);
         h.Time.Advance(TimeSpan.FromSeconds(1));
@@ -582,14 +591,30 @@ public class SessionControllerTests
     public async Task A_module_that_fails_on_its_lines_is_one_warning_and_the_log_goes_on()
     {
         await using var h = new Harness();
-        h.Module.SessionLineFailure = new InvalidOperationException("Bad line.");
+        h.Module.SessionLineFailure = line => new InvalidOperationException($"Bad line {line}."); // a new message each time
 
         await h.StartRunningAsync();
-        h.Launcher.Last!.Emit("one", "two");
+        h.Launcher.Last!.Emit("one", "two", "three");
 
-        Assert.Equal(new[] { new SessionWarning("log", "Mirador's Fake headset support couldn't read Monado's log: Bad line.") }, h.Warnings);
-        Assert.Equal(new[] { "one", "two" }, ReadWhileWritten(h.MonadoLog));
-        Assert.Equal(new[] { "one", "two" }, h.LogLines);
+        Assert.Equal(
+            new[] { new SessionWarning("module-log", "Mirador's Fake headset support couldn't read Monado's log: Bad line one.") },
+            h.Warnings);
+        Assert.Equal(new[] { "one", "two", "three" }, ReadWhileWritten(h.MonadoLog));
+        Assert.Equal(new[] { "one", "two", "three" }, h.LogLines);
+    }
+
+    [Fact]
+    public async Task Log_and_module_failures_are_one_warning_each_under_their_own_keys()
+    {
+        await using var h = new Harness();
+        Directory.CreateDirectory(h.MonadoLog); // every log write fails
+        h.Module.SessionLineFailure = line => new InvalidOperationException($"Bad line {line}.");
+
+        await h.StartRunningAsync();
+        h.Launcher.Last!.Emit("one", "two", "three");
+
+        Assert.Equal(new[] { "log", "module-log" }, h.Warnings.Select(w => w.Key).Order(StringComparer.Ordinal));
+        Assert.StartsWith("Mirador couldn't write Monado's log: ", h.Warnings.Single(w => w.Key == "log").Text);
     }
 
     [Fact]
@@ -605,5 +630,102 @@ public class SessionControllerTests
         Assert.Equal(new[] { "Stopped." }, h.EndedMessages);
         Assert.Equal(SessionState.Stopped, h.Controller.State);
         Assert.True(File.Exists(h.Paths.SessionFile)); // for the next launch's RecoverAsync
+    }
+
+    [Fact]
+    public async Task A_start_first_undoes_a_session_that_failed_to_end()
+    {
+        await using var h = new Harness();
+        h.Module.RecoveryData = WasRunning;
+        h.Module.SessionEndFailure = new MiradorException("Mirador couldn't start the headset's software again.");
+        await h.StartRunningAsync();
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        // The headset's software is still stopped, so the next session would record that it wasn't running.
+        h.Module.RecoveryData = WasNotRunning;
+        h.Module.SessionEndFailure = null;
+        await h.Controller.StartAsync(StartReason.Button, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(WasRunning, h.Module.Recovered);
+        var steps = h.Steps.All;
+        Assert.True(Array.IndexOf(steps, "recover") < Array.LastIndexOf(steps, "before-start"), string.Join(", ", steps));
+        Assert.Equal(WasNotRunning, new SessionFile(h.Paths.SessionFile).Read()?.Data);
+    }
+
+    [Fact]
+    public async Task A_start_before_recovery_undoes_the_session_left_behind()
+    {
+        await using var h = new Harness();
+        new SessionFile(h.Paths.SessionFile).Write("p1", "fake", WasRunning); // Mirador was killed mid-session
+        h.Module.RecoveryData = WasNotRunning;
+
+        await h.StartRunningAsync(); // a game's START, served before the app called RecoverAsync
+
+        Assert.Equal(WasRunning, h.Module.Recovered);
+        Assert.Equal(new[] { "processes", "recover", "before-start", "launch", "pipe" }, h.Steps.All);
+        Assert.Equal(WasNotRunning, new SessionFile(h.Paths.SessionFile).Read()?.Data);
+    }
+
+    [Fact]
+    public async Task A_start_refuses_when_the_session_left_behind_cannot_be_undone()
+    {
+        await using var h = new Harness();
+        new SessionFile(h.Paths.SessionFile).Write("p1", "fake", WasRunning);
+        h.Module.RecoverFailure = new MiradorException("Mirador's helper service isn't running.");
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(false, "Mirador's helper service isn't running."), outcome);
+        Assert.Equal(0, h.Module.BeforeStartCalls);
+        Assert.Equal(0, h.Launcher.Starts);
+        Assert.Equal(WasRunning, new SessionFile(h.Paths.SessionFile).Read()?.Data);
+    }
+
+    [Fact]
+    public async Task A_module_that_does_not_finish_stopping_is_given_60_seconds()
+    {
+        await using var h = new Harness();
+        h.Module.SessionEndHangs = true;
+        await h.StartRunningAsync();
+
+        var stop = h.Controller.StopAsync(CancellationToken.None);
+        await h.Module.Session!.HasEnded.Task.WaitAsync(Limit);
+        await h.Timers.Set(TimeSpan.FromSeconds(60)).WaitAsync(Limit);
+        h.Time.Advance(TimeSpan.FromSeconds(59));
+        Assert.False(stop.IsCompleted);
+        Assert.Equal(SessionState.Stopping, h.Controller.State);
+        h.Time.Advance(TimeSpan.FromSeconds(1));
+        await stop.WaitAsync(Limit);
+
+        Assert.Equal(SessionState.Stopped, h.Controller.State);
+        Assert.Equal(new[] { "Stopped." }, h.EndedMessages);
+        Assert.Equal(
+            new[] { new SessionWarning("headset", "Fake headset didn't finish stopping within 60 s; Mirador tries again the next time it starts.") },
+            h.Warnings);
+        Assert.True(File.Exists(h.Paths.SessionFile));
+    }
+
+    [Fact]
+    public async Task A_stop_breaks_off_a_start_that_waits_for_recovery()
+    {
+        await using var h = new Harness();
+        new SessionFile(h.Paths.SessionFile).Write("p1", "fake", WasRunning);
+        h.Module.RecoverGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var recovery = h.Controller.RecoverAsync(CancellationToken.None);
+        await h.Module.RecoverEntered.Task.WaitAsync(Limit);
+
+        var start = Start(h);
+        Assert.Equal(SessionState.Starting, h.Controller.State);
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+        var outcome = await start.WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(false, "Monado was stopped while it was starting."), outcome);
+        Assert.False(recovery.IsCompleted);
+        Assert.Equal(0, h.Module.BeforeStartCalls);
+        Assert.Equal(0, h.Launcher.Starts);
+
+        h.Module.RecoverGate.SetResult();
+        await recovery.WaitAsync(Limit);
+        Assert.Equal(WasRunning, h.Module.Recovered);
     }
 }

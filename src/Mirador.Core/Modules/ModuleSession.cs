@@ -36,7 +36,9 @@ public abstract class ModuleSession
 
     /// <summary>
     /// Undoes this session's steps once Monado has stopped (or failed to start). A failure should become a
-    /// <see cref="Warning"/>; one that is thrown is shown too, and <c>session.json</c> is then kept for the next launch.
+    /// <see cref="Warning"/>; one that is thrown is shown too. <paramref name="ct"/> is cancelled after 60 s, when Mirador
+    /// stops waiting. After a thrown failure or the limit, <c>session.json</c> is kept and its
+    /// <see cref="RecoveryData"/> goes to <see cref="IHeadsetModule.RecoverAsync"/> before Monado next starts.
     /// </summary>
     public abstract Task EndAsync(CancellationToken ct);
 

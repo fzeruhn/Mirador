@@ -53,6 +53,9 @@ public sealed class SessionController(SessionDeps deps)
     private const int LastLinesShown = 5;
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>How long a module's <see cref="ModuleSession.EndAsync"/> may take before Mirador stops waiting for it.</summary>
+    private static readonly TimeSpan EndLimit = TimeSpan.FromSeconds(60);
     private static readonly IReadOnlyDictionary<string, string> Nothing = new Dictionary<string, string>();
 
     private readonly SessionDeps deps = deps;
@@ -239,8 +242,9 @@ public sealed class SessionController(SessionDeps deps)
     /// Ends Monado and the headset module's session, and deletes <c>session.json</c>. During a Start, breaks it off.
     /// Does nothing when stopped.
     /// </summary>
-    /// <param name="ct">Stops this caller's waiting only: a stop, once begun, always runs to its end, since a half-done
-    /// one would leave the headset's software stopped.</param>
+    /// <param name="ct">Stops this caller's waiting only: a stop, once begun, runs to its end, since a half-done one
+    /// would leave the headset's software stopped. The module's part is given at most 60 s; after that the session is
+    /// over anyway, <c>session.json</c> stays and the module's steps are undone before Monado next starts.</param>
     public async Task StopAsync(CancellationToken ct)
     {
         while (true)
@@ -288,7 +292,8 @@ public sealed class SessionController(SessionDeps deps)
     /// When Mirador went away mid-session (killed or crashed), <c>session.json</c> was left behind: once no Monado
     /// runs (stand-ins don't count), hands its data to the module's <see cref="IHeadsetModule.RecoverAsync"/>, then deletes
     /// it. Meant for Mirador's start; a Start that comes in meanwhile waits for it. A failure becomes a
-    /// <see cref="Warning"/> and the file stays for the next launch.
+    /// <see cref="Warning"/> and the file stays. Every Start also undoes a session left behind before its own steps
+    /// (and refuses when that fails), so the file is never replaced while it still holds something to undo.
     /// </summary>
     public async Task RecoverAsync(CancellationToken ct)
     {
@@ -343,12 +348,7 @@ public sealed class SessionController(SessionDeps deps)
                 return;
             }
 
-            if (saved.ModuleId is { } moduleId && deps.Modules.TryGetValue(moduleId, out var module))
-            {
-                await module.RecoverAsync(deps.Context, saved.Data, ct).ConfigureAwait(false);
-            }
-
-            sessionFile.Delete();
+            await UndoLeftSessionAsync(saved.ModuleId, saved.Data, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -356,13 +356,28 @@ public sealed class SessionController(SessionDeps deps)
         }
         catch (Exception e)
         {
-            RaiseWarning(new SessionWarning(
-                "headset",
-                e is MiradorException
-                    ? e.Message
-                    : $"Mirador couldn't undo what its last session left behind ({Trimmed(e.Message)}). It tries again the next time Mirador starts."));
+            RaiseWarning(new SessionWarning("headset", LeftSessionProblem(e)));
         }
     }
+
+    /// <summary>
+    /// Hands what a session left in <c>session.json</c> to its module's <see cref="IHeadsetModule.RecoverAsync"/>, then
+    /// deletes the file. When the module fails, its exception comes out and the file stays.
+    /// </summary>
+    private async Task UndoLeftSessionAsync(string? moduleId, IReadOnlyDictionary<string, string> data, CancellationToken ct)
+    {
+        if (moduleId is not null && deps.Modules.TryGetValue(moduleId, out var module))
+        {
+            await module.RecoverAsync(deps.Context, data, ct).ConfigureAwait(false);
+        }
+
+        sessionFile.Delete();
+    }
+
+    private static string LeftSessionProblem(Exception e) =>
+        e is MiradorException
+            ? e.Message
+            : $"Mirador couldn't undo what its last session left behind ({Trimmed(e.Message)}). It tries again the next time Mirador starts.";
 
     /// <summary>Moves to Starting and sets the Start off. Called under the lock.</summary>
     private Task<StartOutcome> BeginStart()
@@ -391,61 +406,85 @@ public sealed class SessionController(SessionDeps deps)
 
     private async Task RunStartAsync(Run run, Task recovery, TaskCompletionSource<StartOutcome> done, CancellationToken ct)
     {
-        RaiseChanged();
-        RaiseStatusChanged();
-
-        StartOutcome outcome;
+        var outcome = Fail("Mirador couldn't start Monado.");
         try
         {
-            await recovery.ConfigureAwait(false);
-            outcome = await StartCoreAsync(run, ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            outcome = Fail("Monado was stopped while it was starting.");
-        }
-        catch (MiradorException e)
-        {
-            outcome = Fail(e.Message);
-        }
-        catch (Exception e)
-        {
-            outcome = Fail($"Mirador couldn't start Monado: {e.Message}");
-        }
+            RaiseChanged();
+            RaiseStatusChanged();
+            try
+            {
+                await recovery.WaitAsync(ct).ConfigureAwait(false);
+                outcome = await StartCoreAsync(run, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                outcome = Fail("Monado was stopped while it was starting.");
+            }
+            catch (MiradorException e)
+            {
+                outcome = Fail(e.Message);
+            }
+            catch (Exception e)
+            {
+                outcome = Fail($"Mirador couldn't start Monado: {e.Message}");
+            }
 
-        if (!outcome.Ok)
-        {
-            await EndRunAsync(run).ConfigureAwait(false);
-        }
-
-        lock (gate)
-        {
-            state = outcome.Ok ? SessionState.Running : SessionState.Stopped;
-            starting = null;
-            startCancel = null;
             if (!outcome.Ok)
             {
-                current = null;
-                currentInstall = null;
+                await EndRunAsync(run).ConfigureAwait(false);
             }
         }
-
-        RaiseChanged();
-        RaiseStatusChanged();
-        done.SetResult(outcome);
-        if (outcome.Ok)
+        finally
         {
-            _ = WatchAsync(run);
+            // Whatever happened above, the state moves on and every caller gets an outcome.
+            lock (gate)
+            {
+                state = outcome.Ok ? SessionState.Running : SessionState.Stopped;
+                starting = null;
+                startCancel = null;
+                if (!outcome.Ok)
+                {
+                    current = null;
+                    currentInstall = null;
+                }
+            }
+
+            RaiseChanged();
+            RaiseStatusChanged();
+            done.SetResult(outcome);
+            if (outcome.Ok)
+            {
+                _ = WatchAsync(run);
+            }
         }
     }
 
     /// <summary>The steps of a Start, in order. A refusal is returned; whatever was set up is ended by the caller.</summary>
     private async Task<StartOutcome> StartCoreAsync(Run run, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var running = deps.Context.Processes.Snapshot();
         if (FindService(running) is { } other)
         {
             return Fail($"Monado is already running outside Mirador ({ServiceName}, process {Number(other.Id)}). Close it, then press Start.");
+        }
+
+        // A session that wasn't undone (Mirador went away, or its module failed to end) is undone first: the new
+        // session's recovery data would otherwise replace what that one needs.
+        if (sessionFile.Read() is { } left)
+        {
+            try
+            {
+                await UndoLeftSessionAsync(left.ModuleId, left.Data, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                return Fail(LeftSessionProblem(e));
+            }
         }
 
         var profile = deps.Profiles.Load().Selected;
@@ -588,21 +627,28 @@ public sealed class SessionController(SessionDeps deps)
     /// <summary>Ends a running session (state Stopping), then moves to Stopped and raises <see cref="Ended"/>.</summary>
     private async Task FinishAsync(Run run, TaskCompletionSource done, string endedMessage)
     {
-        RaiseChanged();
-        RaiseStatusChanged();
-        await EndRunAsync(run).ConfigureAwait(false);
-        lock (gate)
+        try
         {
-            state = SessionState.Stopped;
-            current = null;
-            currentInstall = null;
-            stopping = null;
+            RaiseChanged();
+            RaiseStatusChanged();
+            await EndRunAsync(run).ConfigureAwait(false);
         }
+        finally
+        {
+            // Whatever happened above, the state moves on and every caller's wait ends.
+            lock (gate)
+            {
+                state = SessionState.Stopped;
+                current = null;
+                currentInstall = null;
+                stopping = null;
+            }
 
-        RaiseChanged();
-        RaiseStatusChanged();
-        Raise(Ended, endedMessage);
-        done.SetResult();
+            RaiseChanged();
+            RaiseStatusChanged();
+            Raise(Ended, endedMessage);
+            done.SetResult();
+        }
     }
 
     /// <summary>
@@ -632,13 +678,22 @@ public sealed class SessionController(SessionDeps deps)
         var keepSessionFile = false;
         if (run.Session is { } session)
         {
+            // The module gets a token that is cancelled at the limit, and Mirador stops waiting then either way.
+            using var limit = new CancellationTokenSource(EndLimit, deps.Context.Time);
             try
             {
-                await session.EndAsync(CancellationToken.None).ConfigureAwait(false);
+                await session.EndAsync(limit.Token).WaitAsync(limit.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (limit.IsCancellationRequested)
+            {
+                keepSessionFile = true; // undone through RecoverAsync before Monado next starts
+                RaiseWarning(new SessionWarning(
+                    "headset",
+                    $"{run.Module!.DisplayName} didn't finish stopping within {Number((int)EndLimit.TotalSeconds)} s; Mirador tries again the next time it starts."));
             }
             catch (Exception e)
             {
-                keepSessionFile = true; // the next launch's RecoverAsync tries again
+                keepSessionFile = true;
                 RaiseWarning(new SessionWarning(
                     "headset",
                     e is MiradorException
@@ -742,24 +797,27 @@ public sealed class SessionController(SessionDeps deps)
         }
     }
 
-    /// <summary>Warns about each distinct failure while following the output once, not on every line.</summary>
+    /// <summary>
+    /// Warns once per session about each kind of failure while following the output, with the first one's message: the
+    /// log that can't be written (key <c>log</c>), and the module that fails on a line (key <c>module-log</c>).
+    /// </summary>
     private void ReportListenerFailure(Run run, Exception failure)
     {
         IEnumerable<Exception> each = failure is AggregateException all ? all.InnerExceptions : [failure];
         foreach (var e in each)
         {
-            var text = e is LogWriteException
-                ? $"Mirador couldn't write Monado's log: {e.Message}"
-                : $"Mirador's {run.Module?.DisplayName ?? "headset"} support couldn't read Monado's log: {e.Message}";
-            bool first;
-            lock (run.ReportedFailures)
+            if (e is LogWriteException)
             {
-                first = run.ReportedFailures.Add(text);
+                if (Interlocked.Exchange(ref run.LogFailureReported, 1) == 0)
+                {
+                    RaiseWarning(new SessionWarning("log", $"Mirador couldn't write Monado's log: {e.Message}"));
+                }
             }
-
-            if (first)
+            else if (Interlocked.Exchange(ref run.ModuleFailureReported, 1) == 0)
             {
-                RaiseWarning(new SessionWarning("log", text));
+                RaiseWarning(new SessionWarning(
+                    "module-log",
+                    $"Mirador's {run.Module?.DisplayName ?? "headset"} support couldn't read Monado's log: {e.Message}"));
             }
         }
     }
@@ -894,7 +952,9 @@ public sealed class SessionController(SessionDeps deps)
 
         public LighthouseLogParser Lighthouse { get; } = new();
 
-        /// <summary>The listener failures already reported; locked on itself.</summary>
-        public HashSet<string> ReportedFailures { get; } = [];
+        // 1 once that kind of failure while following the output has been reported (Interlocked: two output streams).
+        public int LogFailureReported;
+
+        public int ModuleFailureReported;
     }
 }

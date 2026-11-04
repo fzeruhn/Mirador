@@ -35,6 +35,58 @@ internal sealed class Steps
     }
 }
 
+/// <summary>
+/// The fake clock, telling the test when a timer has been set, so that it moves the clock only once the controller
+/// waits on it (a timer set after the clock moved would be due later than the test means).
+/// </summary>
+internal sealed class TimerWatch(FakeTimeProvider clock) : TimeProvider
+{
+    private readonly List<TimeSpan> created = [];
+    private readonly List<(TimeSpan Due, int Count, TaskCompletionSource Done)> waiting = [];
+
+    public override TimeZoneInfo LocalTimeZone => clock.LocalTimeZone;
+
+    public override long TimestampFrequency => clock.TimestampFrequency;
+
+    public override DateTimeOffset GetUtcNow() => clock.GetUtcNow();
+
+    public override long GetTimestamp() => clock.GetTimestamp();
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = clock.CreateTimer(callback, state, dueTime, period);
+        lock (created)
+        {
+            created.Add(dueTime);
+            foreach (var w in waiting.Where(w => Count(w.Due) >= w.Count).ToList())
+            {
+                waiting.Remove(w);
+                w.Done.TrySetResult();
+            }
+        }
+
+        return timer;
+    }
+
+    /// <summary>Completes once <paramref name="count"/> timers due after <paramref name="dueTime"/> have been set.</summary>
+    public Task Set(TimeSpan dueTime, int count = 1)
+    {
+        lock (created)
+        {
+            if (Count(dueTime) >= count)
+            {
+                return Task.CompletedTask;
+            }
+
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            waiting.Add((dueTime, count, done));
+            return done.Task;
+        }
+    }
+
+    private int Count(TimeSpan dueTime) => created.Count(d => d == dueTime);
+}
+
 internal sealed class FakeProcessList(Steps steps) : IProcessList
 {
     public List<ProcInfo> Running { get; } = [];
@@ -277,15 +329,19 @@ internal sealed class FakeUsb : IUsbDevices
     public IReadOnlySet<UsbId> Present() => new HashSet<UsbId>();
 }
 
-internal sealed class FakeModuleSession(Steps steps, Exception? lineFailure, Exception? endFailure) : ModuleSession
+internal sealed class FakeModuleSession(
+    Steps steps,
+    IReadOnlyDictionary<string, string> recoveryData,
+    Func<string, Exception>? lineFailure,
+    Exception? endFailure,
+    bool endHangs) : ModuleSession
 {
     private readonly ConcurrentQueue<string> lines = new();
     private int ends;
 
     public override IReadOnlyList<EnvVar> Environment { get; } = [new("FAKE_HEADSET", "1")];
 
-    public override IReadOnlyDictionary<string, string> RecoveryData { get; } =
-        new Dictionary<string, string> { ["wasRunning"] = "true" };
+    public override IReadOnlyDictionary<string, string> RecoveryData => recoveryData;
 
     public override IReadOnlyList<StatusLine> Status => [new("fake", "Headset", StatusLevel.Ok, "Ready")];
 
@@ -300,7 +356,7 @@ internal sealed class FakeModuleSession(Steps steps, Exception? lineFailure, Exc
         lines.Enqueue(line);
         if (lineFailure is not null)
         {
-            throw lineFailure;
+            throw lineFailure(line);
         }
     }
 
@@ -309,6 +365,11 @@ internal sealed class FakeModuleSession(Steps steps, Exception? lineFailure, Exc
         steps.Add("end");
         Interlocked.Increment(ref ends);
         HasEnded.TrySetResult();
+        if (endHangs)
+        {
+            return new TaskCompletionSource().Task; // never finishes, and ignores ct: the worst case
+        }
+
         return endFailure is null ? Task.CompletedTask : Task.FromException(endFailure);
     }
 
@@ -334,11 +395,25 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
     /// <summary>When set, BeforeStart reports it as progress.</summary>
     public string? Progress { get; set; }
 
-    /// <summary>When set, the session throws it from every line it is given.</summary>
-    public Exception? SessionLineFailure { get; set; }
+    /// <summary>The recovery data of the sessions BeforeStart makes from now on.</summary>
+    public IReadOnlyDictionary<string, string> RecoveryData { get; set; } = new Dictionary<string, string> { ["wasRunning"] = "true" };
+
+    /// <summary>When set, the session throws what it makes of each line it is given.</summary>
+    public Func<string, Exception>? SessionLineFailure { get; set; }
 
     /// <summary>When set, the session's EndAsync fails with it.</summary>
     public Exception? SessionEndFailure { get; set; }
+
+    /// <summary>When true, the session's EndAsync never finishes.</summary>
+    public bool SessionEndHangs { get; set; }
+
+    /// <summary>When set, RecoverAsync throws it.</summary>
+    public Exception? RecoverFailure { get; set; }
+
+    /// <summary>When set, RecoverAsync waits for it, honouring its token.</summary>
+    public TaskCompletionSource? RecoverGate { get; set; }
+
+    public TaskCompletionSource RecoverEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -373,14 +448,24 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
             throw Refusal;
         }
 
-        return Session = new FakeModuleSession(steps, SessionLineFailure, SessionEndFailure);
+        return Session = new FakeModuleSession(steps, RecoveryData, SessionLineFailure, SessionEndFailure, SessionEndHangs);
     }
 
-    public Task RecoverAsync(ModuleContext ctx, IReadOnlyDictionary<string, string> data, CancellationToken ct)
+    public async Task RecoverAsync(ModuleContext ctx, IReadOnlyDictionary<string, string> data, CancellationToken ct)
     {
         steps.Add("recover");
+        RecoverEntered.TrySetResult();
+        if (RecoverGate is not null)
+        {
+            await RecoverGate.Task.WaitAsync(ct);
+        }
+
+        if (RecoverFailure is not null)
+        {
+            throw RecoverFailure;
+        }
+
         Recovered = data;
-        return Task.CompletedTask;
     }
 
     public void AddDiagnostics(ModuleContext ctx, Profile profile, IDiagnosticsSink sink)
@@ -413,6 +498,7 @@ internal sealed class Harness : IAsyncDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(StandInExe)!);
         File.WriteAllBytes(StandInExe, [0x4D, 0x5A, 1, 2, 3]);
 
+        Timers = new TimerWatch(Time);
         Processes = new FakeProcessList(Steps);
         Module = new FakeModule(Steps);
         Launcher = new FakeLauncher(Steps, Paths.SessionFile);
@@ -427,7 +513,7 @@ internal sealed class Harness : IAsyncDisposable
                 Profiles,
                 Settings,
                 new Dictionary<string, IHeadsetModule> { [Module.Id] = Module },
-                new ModuleContext(Paths, new FakeHelper(), Processes, new FakeUsb(), Time),
+                new ModuleContext(Paths, new FakeHelper(), Processes, new FakeUsb(), Timers),
                 new MonadoLocator(bundledRoot),
                 Launcher,
                 Pipe,
@@ -474,6 +560,9 @@ internal sealed class Harness : IAsyncDisposable
     public Steps Steps { get; } = new();
 
     public FakeTimeProvider Time { get; } = new();
+
+    /// <summary>The clock the controller is given: <see cref="Time"/>, saying when a timer is set on it.</summary>
+    public TimerWatch Timers { get; }
 
     public FakeProcessList Processes { get; }
 
