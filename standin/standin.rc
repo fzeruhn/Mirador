@@ -1,0 +1,32 @@
+// The stand-in's version resource. Mirador tells its stand-in from a real monado-service by FileDescription
+// (Mirador.Core.Monado.StandIn.FileDescription): keep it exactly "Mirador stand-in".
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ PRODUCTVERSION 0,1,0,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Mirador"
+            VALUE "FileDescription", "Mirador stand-in"
+            VALUE "FileVersion", "0.1.0"
+            VALUE "InternalName", "standin"
+            VALUE "LegalCopyright", "Copyright 2026, Finn Zeruhn. Boost Software License 1.0."
+            VALUE "OriginalFilename", "monado-service.exe"
+            VALUE "ProductName", "Mirador"
+            VALUE "ProductVersion", "0.1.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
