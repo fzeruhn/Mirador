@@ -45,7 +45,7 @@ public sealed partial class GeometryUploader(
     /// isn't among them: the session refuses a real Monado before a Start gets here, and Mirador's own stand-in, which
     /// has that name too, runs while a game's Start uploads.
     /// </summary>
-    private static readonly string[] Holders = ["pi_server", "vrss_gaze_provider"];
+    private static readonly string[] Holders = ["pi_server", "vrss_gaze_provider", PimaxNames.EyeRuntimeProcess];
 
     /// <summary>
     /// Uploads the geometry of <paramref name="variant"/> from <paramref name="pimax"/>. Pimax's software and Monado must
