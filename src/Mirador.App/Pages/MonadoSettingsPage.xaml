@@ -1,6 +1,81 @@
 <Page
     x:Class="Mirador.App.Pages.MonadoSettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid />
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="900" Padding="36,24,36,36" Spacing="4">
+            <TextBlock Margin="0,0,0,12" Style="{StaticResource TitleTextBlockStyle}" Text="Monado settings" />
+
+            <InfoBar
+                Margin="0,0,0,8"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
+                Message="Changes apply the next time Monado starts."
+                Severity="Informational">
+                <InfoBar.ActionButton>
+                    <Button Command="{x:Bind ViewModel.RestartCommand}" Content="Restart Monado" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <InfoBar
+                Margin="0,0,0,8"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasProblem, Mode=OneWay}"
+                Message="{x:Bind ViewModel.Problem, Mode=OneWay}"
+                Severity="Error" />
+
+            <toolkit:SettingsCard
+                Description="How long Monado looks for base stations, controllers and trackers when it starts. Devices switched on later need a restart of Monado."
+                Header="Lighthouse wait time">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.LighthouseWaitText, Mode=OneWay}" TextAlignment="Right" />
+                    <Slider
+                        x:Name="LighthouseSlider"
+                        Width="240"
+                        Maximum="30"
+                        Minimum="1"
+                        StepFrequency="1"
+                        Value="{x:Bind ViewModel.LighthouseWaitSeconds, Mode=TwoWay}" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+
+            <toolkit:SettingsCard
+                Description="The resolution apps are asked to render at. Higher is sharper and costs GPU time."
+                Header="Render scale">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.RenderScaleText, Mode=OneWay}" TextAlignment="Right" />
+                    <Slider
+                        x:Name="ScaleSlider"
+                        Width="240"
+                        Maximum="200"
+                        Minimum="50"
+                        StepFrequency="5"
+                        Value="{x:Bind ViewModel.RenderScale, Mode=TwoWay}" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+
+            <toolkit:SettingsCard
+                Description="Time kept for Monado's own work in each frame. Raise it if the Display line on Home shows missed frames."
+                Header="Compositor budget">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.CompositorBudgetText, Mode=OneWay}" TextAlignment="Right" />
+                    <Slider
+                        x:Name="BudgetSlider"
+                        Width="240"
+                        Maximum="20"
+                        Minimum="1"
+                        StepFrequency="1"
+                        Value="{x:Bind ViewModel.CompositorBudget, Mode=TwoWay}" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+
+            <toolkit:SettingsCard Description="Ends Monado when no app uses it any more." Header="Stop when the last app closes">
+                <ToggleSwitch IsOn="{x:Bind ViewModel.StopWhenLastAppCloses, Mode=TwoWay}" />
+            </toolkit:SettingsCard>
+
+            <Button Margin="0,12,0,0" Click="OnReset" Content="Reset to defaults" />
+        </StackPanel>
+    </ScrollViewer>
 </Page>

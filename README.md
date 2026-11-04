@@ -46,8 +46,9 @@ Every version is pinned in `Directory.Packages.props` (central package managemen
 - `CommunityToolkit.WinUI.Controls.SettingsControls` 8.2.251219 and `H.NotifyIcon.WinUI` 2.4.1: both declare only
   "Windows App SDK 1.6 or newer", so they were checked against 2.6.5. Both restored, compiled and ran there (a
   `SettingsCard` holding a working `Slider`, and a tray icon with a one-item menu that Windows registered), so Mirador
-  uses them as they are, with no `SettingsRow` of its own and no `Shell_NotifyIconW` code. They are pinned but not
-  referenced until the pages that use them exist.
+  uses them as they are, with no `SettingsRow` of its own and no `Shell_NotifyIconW` code.
+- `CommunityToolkit.Mvvm` 8.4.2 for the pages' view models.
+- The icons in `src\Mirador.App\Assets` are drawn by `tools\make-icons.py` (Python with Pillow).
 
 ## License
 
