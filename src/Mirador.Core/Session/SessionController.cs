@@ -515,8 +515,25 @@ public sealed class SessionController(SessionDeps deps)
         run.Settings = deps.MonadoSettings.Load();
         if (module is not null)
         {
-            var session = await module.BeforeStartAsync(deps.Context, profile, new Reporter(text => ShowProgress(run, text)), ct)
-                .ConfigureAwait(false);
+            var recovery = new RecoveryWriter(run, data => sessionFile.Write(profile.Id, module.Id, data));
+            ModuleSession session;
+            try
+            {
+                session = await module.BeforeStartAsync(
+                    deps.Context, profile, new Reporter(text => ShowProgress(run, text)), recovery.Save, ct).ConfigureAwait(false);
+            }
+            catch when (recovery.LeftSomethingToUndo)
+            {
+                // The module refused (or was stopped) without saving that it had undone everything: keep session.json,
+                // so that its RecoverAsync, which is safe to repeat, finishes the job at the next launch or Start.
+                run.WroteSessionFile = false;
+                throw;
+            }
+            finally
+            {
+                recovery.Close();
+            }
+
             Attach(run, session);
             ShowProgress(run, null);
             ct.ThrowIfCancellationRequested();
@@ -528,7 +545,7 @@ public sealed class SessionController(SessionDeps deps)
         var moduleEnvironment = run.Session?.Environment ?? [];
         var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
         var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
-        var standIn = install.IsBundled ? null : StandInCopy.Place(deps.StandInExe, install.StandInDir);
+        var standIn = install.IsBundled ? null : StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe);
 
         var logPath = deps.Context.Paths.NewMonadoLogFile(deps.Context.Time.GetLocalNow().DateTime);
         MonadoLogs.Prune(deps.Context.Paths.LogsDir, logPath, KeptLogs);
@@ -856,12 +873,32 @@ public sealed class SessionController(SessionDeps deps)
     /// <summary>
     /// The first real Monado among <paramref name="running"/>: a <c>monado-service</c> whose program file isn't Mirador's
     /// stand-in, which runs under the same name while it waits for a Start (one per game). One whose file can't be read
-    /// counts as a Monado: when Mirador can't tell, it doesn't start a second service.
+    /// counts as a Monado (when Mirador can't tell, it doesn't start a second service) unless a fresh look shows it has
+    /// ended: Windows can't read the file of a process that is gone, and a stand-in that just gave up is no Monado.
     /// </summary>
-    private ProcInfo? FindService(IReadOnlyList<ProcInfo> running) =>
-        running.FirstOrDefault(p => string.Equals(p.Name, ServiceName, StringComparison.OrdinalIgnoreCase) && !RunsStandIn(p.Id));
+    private ProcInfo? FindService(IReadOnlyList<ProcInfo> running)
+    {
+        List<ProcInfo>? unreadable = null;
+        foreach (var p in running.Where(p => string.Equals(p.Name, ServiceName, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (deps.Context.Processes.ImagePathOf(p.Id) is not { } path)
+            {
+                (unreadable ??= []).Add(p);
+            }
+            else if (!isStandIn(path))
+            {
+                return p;
+            }
+        }
 
-    private bool RunsStandIn(int id) => deps.Context.Processes.ImagePathOf(id) is { } path && isStandIn(path);
+        if (unreadable is null)
+        {
+            return null;
+        }
+
+        var now = deps.Context.Processes.Snapshot();
+        return unreadable.FirstOrDefault(p => now.Contains(p));
+    }
 
     private static StartOutcome Fail(string message) => new(false, message);
 
@@ -913,6 +950,52 @@ public sealed class SessionController(SessionDeps deps)
 
     /// <summary>The log file couldn't take a line.</summary>
     private sealed class LogWriteException(Exception inner) : Exception(inner.Message, inner);
+
+    /// <summary>
+    /// Writes the recovery data a module saves while it gets ready (<see cref="IHeadsetModule.BeforeStartAsync"/>), and
+    /// nothing once that has ended: a late call must not bring back a <c>session.json</c> the session has deleted.
+    /// </summary>
+    private sealed class RecoveryWriter(Run run, Action<IReadOnlyDictionary<string, string>> write)
+    {
+        private readonly object gate = new();
+        private bool closed;
+        private bool somethingToUndo;
+
+        /// <summary>Whether the last data saved wasn't empty: the module's steps may still need undoing.</summary>
+        public bool LeftSomethingToUndo
+        {
+            get
+            {
+                lock (gate)
+                {
+                    return somethingToUndo;
+                }
+            }
+        }
+
+        public void Save(IReadOnlyDictionary<string, string> data)
+        {
+            lock (gate)
+            {
+                if (closed)
+                {
+                    return;
+                }
+
+                write(data);
+                run.WroteSessionFile = true;
+                somethingToUndo = data.Count > 0;
+            }
+        }
+
+        public void Close()
+        {
+            lock (gate)
+            {
+                closed = true;
+            }
+        }
+    }
 
     /// <summary>One Start and, if it succeeds, the session that follows it.</summary>
     private sealed class Run

@@ -69,7 +69,8 @@ public class SessionControllerTests
         Assert.Equal(SessionState.Running, h.Changes.Last());
 
         // The bundled Monado's stand-in is the installer's business.
-        Assert.False(File.Exists(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "monado-service.exe")));
+        Assert.Equal(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "service"), h.Controller.CurrentInstall?.StandInDir);
+        Assert.False(Directory.Exists(h.Controller.CurrentInstall!.StandInDir));
 
         var again = await h.Controller.StartAsync(StartReason.Tray, CancellationToken.None).WaitAsync(Limit);
         Assert.Equal(new StartOutcome(true, "Monado is already running."), again);
@@ -198,6 +199,89 @@ public class SessionControllerTests
         Assert.Equal(0, h.Launcher.Starts);
         Assert.False(File.Exists(h.Paths.SessionFile));
         Assert.Equal(new[] { MonadoLine(StatusLevel.Info, "Stopped") }, h.Controller.Status);
+    }
+
+    [Fact]
+    public async Task What_the_module_saves_while_it_gets_ready_is_in_the_session_file_at_once()
+    {
+        await using var h = new Harness();
+        IReadOnlyDictionary<string, string> early = new Dictionary<string, string> { ["wasRunning"] = "true" };
+        h.Module.SavedDuringStart = early;
+        h.Module.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Pipe.Up = true;
+
+        var start = h.Controller.StartAsync(StartReason.Button, CancellationToken.None);
+        await h.Module.Entered.Task.WaitAsync(Limit);
+
+        // Were Mirador killed now, its next launch would find this and undo the module's step (Review Focus 4).
+        var saved = new SessionFile(h.Paths.SessionFile).Read();
+        Assert.NotNull(saved);
+        Assert.Equal("p1", saved.Value.ProfileId);
+        Assert.Equal("fake", saved.Value.ModuleId);
+        Assert.Equal(early, saved.Value.Data);
+
+        h.Module.Gate.SetResult();
+        Assert.True((await start.WaitAsync(Limit)).Ok);
+        Assert.Equal(h.Module.RecoveryData, new SessionFile(h.Paths.SessionFile).Read()!.Value.Data);
+    }
+
+    [Fact]
+    public async Task A_module_that_undid_its_steps_before_refusing_leaves_no_session_file()
+    {
+        await using var h = new Harness();
+        h.Module.SavedDuringStart = new Dictionary<string, string> { ["wasRunning"] = "true" };
+        h.Module.SavedBeforeRefusal = new Dictionary<string, string>(); // undone: nothing left
+        h.Module.Refusal = new MiradorException("The eye tracker isn't on USB.");
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(false, "The eye tracker isn't on USB."), outcome);
+        Assert.False(File.Exists(h.Paths.SessionFile));
+    }
+
+    [Fact]
+    public async Task A_module_that_refuses_with_steps_left_to_undo_has_them_undone_later()
+    {
+        await using var h = new Harness();
+        IReadOnlyDictionary<string, string> left = new Dictionary<string, string> { ["wasRunning"] = "true" };
+        h.Module.SavedDuringStart = left;
+        h.Module.Refusal = new MiradorException("Direct mode doesn't work, and Pimax's service wouldn't start again.");
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.Equal(left, new SessionFile(h.Paths.SessionFile).Read()!.Value.Data);
+
+        await h.Controller.RecoverAsync(CancellationToken.None).WaitAsync(Limit);
+        Assert.Equal(left, h.Module.Recovered);
+        Assert.False(File.Exists(h.Paths.SessionFile));
+    }
+
+    [Fact]
+    public async Task A_save_after_the_module_got_ready_is_ignored()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+        Assert.False(File.Exists(h.Paths.SessionFile));
+
+        h.Module.SaveRecovery!(new Dictionary<string, string> { ["late"] = "1" });
+
+        Assert.False(File.Exists(h.Paths.SessionFile));
+    }
+
+    [Fact]
+    public async Task A_monado_service_that_ended_before_its_file_could_be_read_does_not_count()
+    {
+        await using var h = new Harness();
+        h.Processes.Add("monado-service", 1234); // a stand-in that gave up just as Start looked
+        h.Processes.EndAfterSnapshot.Add(1234);
+        h.Pipe.Up = true;
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.True(outcome.Ok, outcome.Message);
+        Assert.Equal(1, h.Launcher.Starts);
     }
 
     [Fact]
@@ -407,6 +491,26 @@ public class SessionControllerTests
         await h.Controller.StartAsync(StartReason.Button, CancellationToken.None).WaitAsync(Limit);
 
         Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(copy));
+    }
+
+    [Fact]
+    public async Task The_stand_in_never_replaces_the_builds_own_service()
+    {
+        await using var h = new Harness();
+        var folder = Path.Combine(h.Root, "odd build");
+        var targets = Path.Combine(folder, "src", "xrt", "targets");
+        var dll = Harness.Touch(targets, "openxr_monado.dll"); // so that service\ below the DLL is the real service's folder
+        File.WriteAllText(Path.Combine(folder, "openxr_monado-dev.json"), Mirador.Core.Tests.Monado.TestManifest.Json(dll));
+        var server = Harness.Touch(targets, "service", "monado-service.exe");
+        File.WriteAllText(server, "the real service");
+        h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, folder) });
+
+        await h.StartRunningAsync();
+
+        Assert.Equal("the real service", File.ReadAllText(server));
+        var line = Assert.Single(h.Controller.Status, l => l.Key == "standin");
+        Assert.Equal(StatusLevel.Warning, line.Level);
+        Assert.Contains(server, line.Text);
     }
 
     [Fact]

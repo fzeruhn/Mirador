@@ -94,10 +94,15 @@ internal sealed class FakeProcessList(Steps steps) : IProcessList
     /// <summary>The program file of each process whose file can be read; the others can't.</summary>
     public Dictionary<int, string> Images { get; } = [];
 
+    /// <summary>Processes that end right after the next snapshot has listed them.</summary>
+    public HashSet<int> EndAfterSnapshot { get; } = [];
+
     public IReadOnlyList<ProcInfo> Snapshot()
     {
         steps.Add("processes");
-        return [.. Running];
+        ProcInfo[] now = [.. Running];
+        Running.RemoveAll(p => EndAfterSnapshot.Remove(p.Id));
+        return now;
     }
 
     public string? ImagePathOf(int id) => Images.GetValueOrDefault(id);
@@ -401,6 +406,15 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
     /// <summary>The recovery data of the sessions BeforeStart makes from now on.</summary>
     public IReadOnlyDictionary<string, string> RecoveryData { get; set; } = new Dictionary<string, string> { ["wasRunning"] = "true" };
 
+    /// <summary>When set, BeforeStart saves it as recovery data first thing, before waiting at <see cref="Gate"/>.</summary>
+    public IReadOnlyDictionary<string, string>? SavedDuringStart { get; set; }
+
+    /// <summary>When set, BeforeStart saves it as recovery data just before it throws <see cref="Refusal"/>: an empty set says it undid its steps.</summary>
+    public IReadOnlyDictionary<string, string>? SavedBeforeRefusal { get; set; }
+
+    /// <summary>The last save-recovery callback BeforeStart was given.</summary>
+    public Action<IReadOnlyDictionary<string, string>>? SaveRecovery { get; private set; }
+
     /// <summary>When set, the session throws what it makes of each line it is given.</summary>
     public Func<string, Exception>? SessionLineFailure { get; set; }
 
@@ -431,10 +445,17 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
     public Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<CheckResult>>([]);
 
-    public async Task<ModuleSession> BeforeStartAsync(ModuleContext ctx, Profile profile, IProgress<string> progress, CancellationToken ct)
+    public async Task<ModuleSession> BeforeStartAsync(
+        ModuleContext ctx, Profile profile, IProgress<string> progress, Action<IReadOnlyDictionary<string, string>> saveRecovery, CancellationToken ct)
     {
         steps.Add("before-start");
         Interlocked.Increment(ref beforeStartCalls);
+        SaveRecovery = saveRecovery;
+        if (SavedDuringStart is not null)
+        {
+            saveRecovery(SavedDuringStart);
+        }
+
         if (Progress is not null)
         {
             progress.Report(Progress);
@@ -448,6 +469,11 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
 
         if (Refusal is not null)
         {
+            if (SavedBeforeRefusal is not null)
+            {
+                saveRecovery(SavedBeforeRefusal);
+            }
+
             throw Refusal;
         }
 
