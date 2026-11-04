@@ -1,0 +1,247 @@
+using System.Reflection;
+using Mirador.Ipc;
+
+namespace Mirador.Helper;
+
+/// <summary>Services on this machine: just what the helper needs to know and do with Pimax's.</summary>
+public interface IServiceControl
+{
+    /// <summary>Whether a service of this name is installed.</summary>
+    bool Exists(string name);
+
+    /// <summary>Whether the service is running or hasn't finished stopping, that is, anything but stopped.</summary>
+    bool IsRunning(string name);
+
+    /// <summary>Stops the service and waits until it has stopped; throws a plain message when it doesn't in time.</summary>
+    void Stop(string name, TimeSpan timeout);
+
+    /// <summary>
+    /// Makes sure the service runs: starts it when it is stopped, and first waits (at most <paramref name="timeout"/>)
+    /// for one that is still stopping; one that runs or is starting already is left as it is. Throws a plain message
+    /// when it can't.
+    /// </summary>
+    void Start(string name, TimeSpan timeout);
+}
+
+/// <summary>Processes on this machine, named without <c>.exe</c>.</summary>
+public interface IProcessControl
+{
+    /// <summary>Ends every process of each name. A process that is already gone is fine.</summary>
+    void KillAll(IEnumerable<string> names);
+
+    /// <summary>The command lines of the running processes of this name; none when it isn't running.</summary>
+    IReadOnlyList<string> CommandLines(string processName);
+}
+
+/// <summary>The two registry values the helper changes, in the 64-bit view of <c>HKEY_LOCAL_MACHINE</c>.</summary>
+public interface IRuntimeRegistry
+{
+    /// <summary>The OpenXR <c>ActiveRuntime</c> manifest path, or null when there is none.</summary>
+    string? GetActive();
+
+    /// <summary>Makes <paramref name="path"/> the OpenXR active runtime.</summary>
+    void SetActive(string path);
+
+    /// <summary>The runtime Mirador replaced (<c>PreviousActiveRuntime</c>), or null when nothing is recorded.</summary>
+    string? GetRecorded();
+
+    /// <summary>Records the replaced runtime; null forgets it.</summary>
+    void SetRecorded(string? path);
+}
+
+/// <summary>
+/// Does what <see cref="HelperCommand"/> says, and nothing else. A request carries only the command, so nothing a
+/// caller sends reaches the registry, a service or a process. Requests are handled one at a time: they change
+/// machine-wide state.
+/// </summary>
+public sealed class HelperHandler
+{
+    private const string BundledMissing = "This Mirador has no bundled Monado.";
+    private const string UnknownCommand = "Mirador's helper service doesn't know that command.";
+    // A message goes into one protocol line, where JSON writes each character outside ASCII as six bytes (\uXXXX).
+    private const int MaxErrorLength = 600;
+    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(20);
+
+    private readonly IServiceControl services;
+    private readonly IProcessControl processes;
+    private readonly IRuntimeRegistry registry;
+    private readonly string bundledManifest;
+    private readonly string version;
+    private readonly object gate = new();
+
+    /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
+    /// <param name="version">What <see cref="HelperCommand.Ping"/> answers; the helper's own version when null.</param>
+    public HelperHandler(
+        IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
+        string? version = null)
+    {
+        this.services = services;
+        this.processes = processes;
+        this.registry = registry;
+        this.bundledManifest = Path.GetFullPath(bundledManifest);
+        this.version = version ?? OwnVersion();
+    }
+
+    /// <summary>
+    /// The bundled manifest of a normal install: <c>&lt;helper folder&gt;\..\monado\runtime\openxr_monado.json</c>.
+    /// </summary>
+    public static string DefaultBundledManifest { get; } = Path.GetFullPath(
+        Path.Combine(AppContext.BaseDirectory, "..", "monado", "runtime", "openxr_monado.json"));
+
+    /// <summary>Carries out one request. Any failure comes back as an error reply, never as an exception.</summary>
+    public Task<HelperReply> HandleAsync(HelperRequest request) => Task.Run(() => Handle(request.Command));
+
+    /// <summary>
+    /// For the uninstaller only (<c>--restore-runtime</c>), never over the pipe: puts back the OpenXR runtime that
+    /// <see cref="HelperCommand.SetRuntimeBundled"/> replaced, as long as Mirador's runtime is still the active one; if
+    /// another program has set its own since, that stays and the record is just dropped. Any failure comes back as an
+    /// error reply.
+    /// </summary>
+    public Task<HelperReply> RestoreRuntimeAsync() => Task.Run(() => Locked(RestoreRuntime));
+
+    private HelperReply Handle(HelperCommand command)
+    {
+        // Ping touches nothing on the machine, so it never waits for a request that is (perhaps for a long time) changing it.
+        if (command == HelperCommand.Ping)
+        {
+            return new HelperReply(true, Value: version);
+        }
+
+        return Locked(() => command switch
+        {
+            HelperCommand.SetRuntimeBundled => SetRuntimeBundled(),
+            HelperCommand.StopPimax => StopPimax(),
+            HelperCommand.StartPimax => StartPimax(),
+            HelperCommand.GetPimaxEyeBlob => GetPimaxEyeBlob(),
+            _ => new HelperReply(false, UnknownCommand),
+        });
+    }
+
+    /// <summary>Runs one step that changes the machine, one at a time; an exception becomes an error reply.</summary>
+    private HelperReply Locked(Func<HelperReply> step)
+    {
+        lock (gate)
+        {
+            try
+            {
+                return step();
+            }
+            catch (Exception e)
+            {
+                return new HelperReply(false, Shorten(e.Message));
+            }
+        }
+    }
+
+    private HelperReply SetRuntimeBundled()
+    {
+        if (!File.Exists(bundledManifest))
+        {
+            return new HelperReply(false, BundledMissing);
+        }
+
+        var active = registry.GetActive();
+        if (active is not null && !IsBundled(active))
+        {
+            registry.SetRecorded(active);
+        }
+
+        registry.SetActive(bundledManifest);
+        return new HelperReply(true);
+    }
+
+    /// <summary>
+    /// Puts the recorded runtime back, but only while the bundled one is still the active one: if another program has
+    /// made its own runtime active since, that choice stays, and the record is just forgotten. It must never overwrite
+    /// a runtime Mirador didn't set.
+    /// </summary>
+    private HelperReply RestoreRuntime()
+    {
+        var recorded = registry.GetRecorded();
+        if (recorded is null)
+        {
+            return new HelperReply(true);
+        }
+
+        var active = registry.GetActive();
+        if (active is not null && IsBundled(active))
+        {
+            registry.SetActive(recorded);
+        }
+
+        registry.SetRecorded(null);
+        return new HelperReply(true);
+    }
+
+    /// <summary>
+    /// Stops Pimax's service, then ends its processes, whether or not the service stopped. A failure of either step is
+    /// in the reply (the first one if both fail) together with <c>WasRunning</c>.
+    /// </summary>
+    private HelperReply StopPimax()
+    {
+        var wasRunning = services.Exists(PimaxNames.Service) && services.IsRunning(PimaxNames.Service);
+        string? error = null;
+        if (wasRunning)
+        {
+            try
+            {
+                services.Stop(PimaxNames.Service, StopTimeout);
+            }
+            catch (Exception e)
+            {
+                error = Shorten(e.Message);
+            }
+        }
+
+        try
+        {
+            processes.KillAll(PimaxNames.Processes);
+        }
+        catch (Exception e)
+        {
+            error ??= Shorten(e.Message);
+        }
+
+        return new HelperReply(error is null, error, wasRunning);
+    }
+
+    /// <summary>
+    /// Starts Pimax's service unless it runs. One that is still stopping (a stop that timed out) is waited for, then
+    /// started: left alone, it would finish stopping and stay stopped.
+    /// </summary>
+    private HelperReply StartPimax()
+    {
+        if (services.Exists(PimaxNames.Service))
+        {
+            services.Start(PimaxNames.Service, StopTimeout);
+        }
+
+        return new HelperReply(true);
+    }
+
+    private HelperReply GetPimaxEyeBlob()
+    {
+        foreach (var commandLine in processes.CommandLines(PimaxNames.EyeRuntimeProcess))
+        {
+            var variant = PimaxEyeBlob.Parse(commandLine);
+            if (variant is not null)
+            {
+                return new HelperReply(true, Value: variant);
+            }
+        }
+
+        return new HelperReply(true);
+    }
+
+    /// <summary>Whether <paramref name="manifest"/> is the bundled one: the same full path, ignoring case.</summary>
+    private bool IsBundled(string manifest) =>
+        string.Equals(Path.GetFullPath(manifest), bundledManifest, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Keeps a reply within one protocol line.</summary>
+    private static string Shorten(string message) =>
+        message.Length <= MaxErrorLength ? message : message[..(MaxErrorLength - 3)] + "...";
+
+    private static string OwnVersion() =>
+        typeof(HelperHandler).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? "0.0.0";
+}
