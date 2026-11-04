@@ -32,7 +32,7 @@ public sealed class MonadoLocator(string bundledRoot)
                 $"The Monado that comes with Mirador is incomplete: {service} is missing. Reinstall Mirador, or pick a Monado build folder in the profile.");
         }
 
-        return new MonadoInstall(manifest, dll, service, runtimeDir, IsBundled: true);
+        return new MonadoInstall(manifest, dll, service, StandInDirFor(dll), IsBundled: true);
     }
 
     private static MonadoInstall LocateFolder(string? folderGiven)
@@ -61,8 +61,16 @@ public sealed class MonadoLocator(string bundledRoot)
                 $"The Monado build in {folder} has no monado-service.exe (expected at {service}). Build Monado completely, or pick another folder in the profile.");
         }
 
-        return new MonadoInstall(manifest, dll, service, Path.Combine(Path.GetDirectoryName(dll)!, "service"), IsBundled: false);
+        return new MonadoInstall(manifest, dll, service, StandInDirFor(dll), IsBundled: false);
     }
+
+    /// <summary>
+    /// Where the runtime DLL looks for <c>monado-service.exe</c> when a game finds no service: <c>service\</c> below the
+    /// DLL's folder. Monado's <c>ipc_connect_pipe()</c> first tries a path that never exists (the DLL's file name with
+    /// <c>\monado-service.exe</c> after it; upstream since 55506067, 2026-02), then this one, and never the DLL's own
+    /// folder. Older Monado tried the DLL's own folder first, then this one, so the stand-in works here with both.
+    /// </summary>
+    private static string StandInDirFor(string runtimeDll) => Path.Combine(Path.GetDirectoryName(runtimeDll)!, "service");
 
     private static string ReadRuntimeDll(string manifest, string whatToDo)
     {

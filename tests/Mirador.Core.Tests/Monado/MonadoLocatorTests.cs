@@ -174,7 +174,8 @@ public class MonadoLocatorTests
         Assert.Equal(Path.Combine(root, "runtime", "openxr_monado.json"), install.Manifest);
         Assert.Equal(Path.Combine(root, "runtime", "openxr_monado.dll"), install.RuntimeDll);
         Assert.Equal(Path.Combine(root, "server", "monado-service.exe"), install.ServiceExe);
-        Assert.Equal(Path.Combine(root, "runtime"), install.StandInDir);
+        Assert.Equal(Path.Combine(root, "runtime", "service"), install.StandInDir); // where the runtime DLL looks
+        Assert.False(Directory.Exists(install.StandInDir)); // the installer puts the stand-in there; locating creates nothing
         Assert.True(install.IsBundled);
     }
 
