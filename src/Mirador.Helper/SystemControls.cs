@@ -16,6 +16,42 @@ public sealed class SystemServiceControl : IServiceControl
     /// <summary><c>ERROR_SERVICE_ALREADY_RUNNING</c>: the service started between looking and asking it to.</summary>
     private const int ErrorServiceAlreadyRunning = 1056;
 
+    public (int Id, DateTime Started)? Process(string name)
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                @"root\cimv2",
+                $"SELECT ProcessId FROM Win32_Service WHERE Name = '{name}'",
+                new System.Management.EnumerationOptions { Timeout = TimeSpan.FromSeconds(5), ReturnImmediately = true });
+            using var results = searcher.Get();
+            foreach (var item in results)
+            {
+                using (item)
+                {
+                    if (item["ProcessId"] is uint id && id != 0)
+                    {
+                        using var process = System.Diagnostics.Process.GetProcessById((int)id);
+                        return ((int)id, process.StartTime);
+                    }
+                }
+            }
+        }
+        catch (Exception e) when (e is ManagementException or ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            // Not running, gone meanwhile, or Windows won't say: no service process to trust.
+        }
+
+        return null;
+    }
+
+    public string? ImagePath(string name)
+    {
+        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var key = machine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{name}");
+        return key?.GetValue("ImagePath") as string;
+    }
+
     public bool Exists(string name)
     {
         var services = ServiceController.GetServices();
@@ -116,14 +152,14 @@ public sealed partial class SystemProcessControl : IProcessControl
     /// </summary>
     private static readonly TimeSpan WmiTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly Func<string, IEnumerable<string?>> queryCommandLines;
+    private readonly Func<string, IEnumerable<(string? Path, string? CommandLine, int? ParentId, DateTime? Started)>> queryCommandLines;
 
     public SystemProcessControl() : this(QueryWmi)
     {
     }
 
     /// <summary>For tests: answers the command-line query without WMI.</summary>
-    internal SystemProcessControl(Func<string, IEnumerable<string?>> queryCommandLines) =>
+    internal SystemProcessControl(Func<string, IEnumerable<(string? Path, string? CommandLine, int? ParentId, DateTime? Started)>> queryCommandLines) =>
         this.queryCommandLines = queryCommandLines;
 
     public void KillAll(IEnumerable<string> names)
@@ -158,7 +194,7 @@ public sealed partial class SystemProcessControl : IProcessControl
         }
     }
 
-    public IReadOnlyList<string> CommandLines(string processName)
+    public IReadOnlyList<ProcessCommandLine> CommandLines(string processName)
     {
         // The name goes into a WMI query; only plain process names are let through.
         if (!PlainName().IsMatch(processName))
@@ -168,7 +204,9 @@ public sealed partial class SystemProcessControl : IProcessControl
 
         try
         {
-            return [.. queryCommandLines(processName).Where(line => !string.IsNullOrEmpty(line))!];
+            return [.. queryCommandLines(processName)
+                .Where(p => !string.IsNullOrEmpty(p.CommandLine))
+                .Select(p => new ProcessCommandLine(p.Path, p.CommandLine!, p.ParentId, p.Started))];
         }
         catch (ManagementException e)
         {
@@ -184,10 +222,10 @@ public sealed partial class SystemProcessControl : IProcessControl
     internal static ManagementObjectSearcher CreateSearcher(string processName) =>
         new(
             @"root\cimv2",
-            $"SELECT CommandLine FROM Win32_Process WHERE Name = '{processName}.exe'",
+            $"SELECT CommandLine, ExecutablePath, ParentProcessId, CreationDate FROM Win32_Process WHERE Name = '{processName}.exe'",
             new System.Management.EnumerationOptions { Timeout = WmiTimeout, ReturnImmediately = true });
 
-    private static IEnumerable<string?> QueryWmi(string processName)
+    private static IEnumerable<(string? Path, string? CommandLine, int? ParentId, DateTime? Started)> QueryWmi(string processName)
     {
         using var searcher = CreateSearcher(processName);
         using var results = searcher.Get();
@@ -195,7 +233,20 @@ public sealed partial class SystemProcessControl : IProcessControl
         {
             using (item)
             {
-                yield return item["CommandLine"] as string;
+                var parent = item["ParentProcessId"] is uint p ? (int?)p : null;
+                DateTime? started = null;
+                if (item["CreationDate"] is string created)
+                {
+                    try
+                    {
+                        started = ManagementDateTimeConverter.ToDateTime(created);
+                    }
+                    catch (ArgumentException)
+                    {
+                    }
+                }
+
+                yield return (item["ExecutablePath"] as string, item["CommandLine"] as string, parent, started);
             }
         }
     }

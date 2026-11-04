@@ -17,6 +17,7 @@ namespace Mirador.DreamAir;
 /// <param name="NvidiaWindowsVersion">The NVIDIA driver's Windows version (<see cref="NvidiaDriver.CurrentWindowsVersion"/>).</param>
 /// <param name="SteamVrDir">SteamVR's folder (<see cref="DreamAirChecks.FindSteamVr"/>).</param>
 /// <param name="BlobVariant">The eye geometry variant to use for a state; <see cref="EyeBlobVariants.Tested"/> until Mirador can tell.</param>
+/// <param name="Calibration">The eye calibrations' copies, taken before each Start and after each session; null: none.</param>
 public sealed record DreamAirDeps(
     IRegistryReader Registry,
     Func<ProcessSpec, IConsoleProcess> StartConsole,
@@ -25,7 +26,8 @@ public sealed record DreamAirDeps(
     string BundledLayerDir,
     Func<string?> NvidiaWindowsVersion,
     Func<string?> SteamVrDir,
-    Func<DreamAirState, string> BlobVariant);
+    Func<DreamAirState, string> BlobVariant,
+    CalibrationStore? Calibration = null);
 
 /// <summary>
 /// The Pimax Dream Air: checks the PC, stops Pimax's software for the session and starts it again after, checks direct
@@ -57,16 +59,33 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         devices.Contains(DreamAirIds.Board) || devices.Contains(DreamAirIds.EyeTracker);
 
     /// <summary>The checks of <see cref="DreamAirChecks"/>, then the layer's.</summary>
-    public async Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct)
-    {
-        var variant = deps.BlobVariant(LoadState());
-        return await Task.Run<IReadOnlyList<CheckResult>>(
-            () => [.. Checks(ctx).Run(variant), LayerCheck(profile)], ct).ConfigureAwait(false);
-    }
+    /// <summary>The checks of <see cref="DreamAirChecks"/>, the layer's, and a warning while the headset's variant isn't known.</summary>
+    public Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct) =>
+        Task.Run<IReadOnlyList<CheckResult>>(
+            async () =>
+            {
+                await DetectVariantAsync(ctx, ct).ConfigureAwait(false);
+                var state = LoadState();
+                var variant = deps.BlobVariant(state);
+                List<CheckResult> results = [.. Checks(ctx).Run(variant), LayerCheck(profile)];
+                if (BlobChoice.Resolve(state, null).NeedsOwner)
+                {
+                    results.Add(new CheckResult(
+                        "Headset variant",
+                        StatusLevel.Warning,
+                        $"Not known yet: Mirador uploads the eye geometry of {variant}, the tested one.",
+                        "Pick yours in Eye tracking, or start Pimax Play once and Mirador reads it."));
+                }
+
+                return results;
+            },
+            ct);
 
     public async Task<ModuleSession> BeforeStartAsync(
         ModuleContext ctx, Profile profile, IProgress<string> progress, Action<IReadOnlyDictionary<string, string>> saveRecovery, CancellationToken ct)
     {
+        // Pimax's software still runs now: the last moment to read which geometry it uses.
+        await DetectVariantAsync(ctx, ct).ConfigureAwait(false);
         var state = LoadState();
         var variant = deps.BlobVariant(state);
 
@@ -84,6 +103,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             ?? throw new MiradorException("Pimax Play isn't installed. Install Pimax Play: Mirador uses its eye tracking runtime.");
 
         ct.ThrowIfCancellationRequested();
+        var snapshotProblem = SnapshotCalibrations(deps.Calibration);
         progress.Report("Stopping Pimax's software…");
 
         // Saved before asking: Mirador may be killed, or hear no answer, while the helper stops the service.
@@ -138,11 +158,21 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 
             progress.Report("Uploading the eye geometry…");
             var upload = await deps.Geometry.UploadAsync(pimax, variant, ct).ConfigureAwait(false);
+            var warnings = new List<SessionWarning>();
+            if (snapshotProblem is not null)
+            {
+                warnings.Add(new SessionWarning("calibration", snapshotProblem));
+            }
+
+            if (RememberTracker(upload.TrackerSerial))
+            {
+                warnings.Add(new SessionWarning("geometry", DifferentHeadset));
+            }
 
             var environment = layerFolder is null
                 ? FixedEnvironment
                 : [.. FixedEnvironment, new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", layer.ManifestDir)];
-            return new DreamAirSession(ctx, environment, wasRunning, upload);
+            return new DreamAirSession(ctx, environment, wasRunning, upload, () => SnapshotCalibrations(deps.Calibration), warnings);
         }
         catch
         {
@@ -255,6 +285,92 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         }
 
         return (check, startProblem);
+    }
+
+    internal const string DifferentHeadset =
+        "This looks like a different headset. Mirador reads its eye geometry from Pimax Play the next time Pimax runs.";
+
+    /// <summary>
+    /// Reads the eye geometry variant Pimax's eye runtime runs with, when it runs, and remembers it. A helper that
+    /// can't answer leaves things as they were: the remembered or tested variant is used.
+    /// </summary>
+    private async Task DetectVariantAsync(ModuleContext ctx, CancellationToken ct)
+    {
+        IReadOnlyList<ProcInfo> running;
+        try
+        {
+            running = ctx.Processes.Snapshot();
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return;
+        }
+
+        if (!running.Any(p => string.Equals(p.Name, PimaxNames.EyeRuntimeProcess, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var reply = await ctx.Helper.SendAsync(HelperCommand.GetPimaxEyeBlob, ct).ConfigureAwait(false);
+        if (!reply.Ok || reply.Value is not { } detected)
+        {
+            return;
+        }
+
+        try
+        {
+            deps.State.Update(s => BlobChoice.Resolve(s, detected).State);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>Remembers the tracker's serial after an upload; whether that cleared a variant (a different headset).</summary>
+    private bool RememberTracker(string? serial)
+    {
+        try
+        {
+            var cleared = false;
+            deps.State.Update(s =>
+            {
+                var after = BlobChoice.AfterUpload(s, serial);
+                cleared = BlobChoice.Cleared(s, after);
+                return after;
+            });
+            return cleared;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Keeps a copy of every tracker's calibration that changed (Monado may have replaced one with the tracker's own).
+    /// Never fails a Start or a Stop: a copy that can't be made is only missing from the list.
+    /// </summary>
+    /// <returns>Null, or what went wrong, for a warning: Monado may replace a calibration that has no copy then.</returns>
+    internal static string? SnapshotCalibrations(CalibrationStore? store)
+    {
+        if (store is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            foreach (var serial in store.Serials())
+            {
+                store.SnapshotIfChanged(serial);
+            }
+
+            return null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return $"Mirador couldn't keep a copy of the eye calibration ({e.Message.Trim().TrimEnd('.')}).";
+        }
     }
 
     /// <summary>Where the last display check's output is kept, for the diagnostics.</summary>

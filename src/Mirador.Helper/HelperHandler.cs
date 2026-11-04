@@ -21,7 +21,19 @@ public interface IServiceControl
     /// when it can't.
     /// </summary>
     void Start(string name, TimeSpan timeout);
+
+    /// <summary>The service's <c>ImagePath</c> (variables expanded), or null when it isn't installed.</summary>
+    string? ImagePath(string name);
+
+    /// <summary>The running service's process id and start time; null when it doesn't run.</summary>
+    (int Id, DateTime Started)? Process(string name);
 }
+
+/// <summary>A running program's file, command line, parent and start time.</summary>
+/// <param name="ExecutablePath">Its program file; null when Windows doesn't say.</param>
+/// <param name="ParentId">The process that started it; null when Windows doesn't say.</param>
+/// <param name="Started">When it started; null when Windows doesn't say.</param>
+public sealed record ProcessCommandLine(string? ExecutablePath, string CommandLine, int? ParentId = null, DateTime? Started = null);
 
 /// <summary>Processes on this machine, named without <c>.exe</c>.</summary>
 public interface IProcessControl
@@ -29,8 +41,8 @@ public interface IProcessControl
     /// <summary>Ends every process of each name. A process that is already gone is fine.</summary>
     void KillAll(IEnumerable<string> names);
 
-    /// <summary>The command lines of the running processes of this name; none when it isn't running.</summary>
-    IReadOnlyList<string> CommandLines(string processName);
+    /// <summary>The program files and command lines of the running processes of this name; none when it isn't running.</summary>
+    IReadOnlyList<ProcessCommandLine> CommandLines(string processName);
 }
 
 /// <summary>The two registry values the helper changes, in the 64-bit view of <c>HKEY_LOCAL_MACHINE</c>.</summary>
@@ -219,18 +231,57 @@ public sealed class HelperHandler
         return new HelperReply(true);
     }
 
+    /// <summary>
+    /// The variant Pimax's eye runtime was started with. Any user can start a program named like it, even Pimax's own
+    /// file with a made-up command line, and the variant decides what Mirador sends to the eye tracker: so only a
+    /// runtime that Pimax's service (a SYSTEM process no user can pose as) started, after the service itself started,
+    /// from its place in Pimax's folder counts, and runtimes that disagree count as none.
+    /// </summary>
     private HelperReply GetPimaxEyeBlob()
     {
-        foreach (var commandLine in processes.CommandLines(PimaxNames.EyeRuntimeProcess))
+        if (PimaxFolder() is not { } folder || services.Process(PimaxNames.Service) is not { } service)
         {
-            var variant = PimaxEyeBlob.Parse(commandLine);
-            if (variant is not null)
-            {
-                return new HelperReply(true, Value: variant);
-            }
+            return new HelperReply(true);
         }
 
-        return new HelperReply(true);
+        var expected = Path.Combine(folder, "EyeTrackingServer", "platform_runtime", PimaxNames.EyeRuntimeProcess + ".exe");
+        var variants = processes.CommandLines(PimaxNames.EyeRuntimeProcess)
+            .Where(p => p.ParentId == service.Id && p.Started >= service.Started && SameFile(p.ExecutablePath, expected))
+            .Select(p => PimaxEyeBlob.Parse(p.CommandLine))
+            .OfType<string>()
+            .Distinct()
+            .ToList();
+        return variants.Count == 1 ? new HelperReply(true, Value: variants[0]) : new HelperReply(true);
+    }
+
+    /// <summary>Pimax's runtime folder, with a separator at the end: the folder its service's program is in.</summary>
+    private string? PimaxFolder()
+    {
+        var program = ServiceImage.ProgramOf(services.ImagePath(PimaxNames.Service));
+        try
+        {
+            var folder = program is null ? null : Path.GetDirectoryName(program);
+            return folder is null || !Path.IsPathFullyQualified(folder)
+                ? null
+                : Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private static bool SameFile(string? file, string expected)
+    {
+        try
+        {
+            return file is not null && Path.IsPathFullyQualified(file)
+                && string.Equals(Path.GetFullPath(file), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Whether <paramref name="manifest"/> is the bundled one: the same full path, ignoring case.</summary>

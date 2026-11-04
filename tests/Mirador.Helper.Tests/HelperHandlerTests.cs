@@ -326,8 +326,13 @@ public sealed class HelperHandlerTests : IDisposable
 
     // GetPimaxEyeBlob
 
-    private const string EyeRuntimeExe =
-        "\"C:\\Program Files\\Pimax\\Runtime\\EyeTrackingServer\\platform_runtime\\platform_runtime_XR5EYECHIP_WIN10_x64.exe\"";
+    /// <summary>Pimax's runtime folder, as a full path on whichever system runs the tests.</summary>
+    internal static readonly string PimaxRuntime = Path.GetFullPath("/Program Files/Pimax/Runtime");
+
+    internal static readonly string EyeRuntimePath =
+        Path.Combine(PimaxRuntime, "EyeTrackingServer", "platform_runtime", PimaxNames.EyeRuntimeProcess + ".exe");
+
+    private static readonly string EyeRuntimeExe = $"\"{EyeRuntimePath}\"";
 
     [Fact]
     public async Task GetPimaxEyeBlob_returns_the_variant_of_the_eye_runtime()
@@ -343,12 +348,26 @@ public sealed class HelperHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task GetPimaxEyeBlob_takes_the_first_command_line_that_has_a_known_variant()
+    public async Task GetPimaxEyeBlob_skips_command_lines_without_a_known_variant()
     {
         processes.Lines[PimaxNames.EyeRuntimeProcess] =
         [
             EyeRuntimeExe,
             EyeRuntimeExe + " -x config_XR5PIMAXDA_K12_RAWH.bin",
+            EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin",
+        ];
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.True(r.Ok);
+        Assert.Equal("K10_RAYH", r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_answers_nothing_when_runtimes_disagree()
+    {
+        processes.Lines[PimaxNames.EyeRuntimeProcess] =
+        [
             EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin",
             EyeRuntimeExe + " -x config_XR5PIMAXDA_K11_RAWH.bin",
         ];
@@ -356,7 +375,89 @@ public sealed class HelperHandlerTests : IDisposable
         var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
 
         Assert.True(r.Ok);
-        Assert.Equal("K10_RAYH", r.Value);
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_ignores_a_runtime_that_pimaxs_service_didnt_start()
+    {
+        // Pimax's own program file, started by someone else with a command line of their choosing.
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        processes.ParentId = 4242;
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_ignores_a_runtime_older_than_pimaxs_service()
+    {
+        // Its parent id was the service's before: a process id Windows gave out again.
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        processes.Started = new DateTime(2026, 11, 4, 9, 0, 0);
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_without_pimaxs_service_running_reads_nothing()
+    {
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        services.PimaxProcess = null;
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_ignores_the_runtime_in_another_folder_of_pimaxs()
+    {
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        processes.ExecutablePath = Path.Combine(PimaxRuntime, "Downloads", PimaxNames.EyeRuntimeProcess + ".exe");
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_ignores_a_program_named_like_the_runtime_outside_pimaxs_folder()
+    {
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        processes.ExecutablePath = Path.Combine(Path.GetFullPath("/Users/someone/Downloads"), PimaxNames.EyeRuntimeProcess + ".exe");
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.True(r.Ok);
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_ignores_a_folder_that_only_starts_like_pimaxs()
+    {
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        processes.ExecutablePath = Path.Combine(PimaxRuntime + "Evil", PimaxNames.EyeRuntimeProcess + ".exe");
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.Null(r.Value);
+    }
+
+    [Fact]
+    public async Task GetPimaxEyeBlob_without_pimaxs_service_reads_nothing()
+    {
+        processes.Lines[PimaxNames.EyeRuntimeProcess] = [EyeRuntimeExe + " -x config_XR5PIMAXDA_K10_RAYH.bin"];
+        services.PimaxImagePath = null;
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.GetPimaxEyeBlob));
+
+        Assert.True(r.Ok);
+        Assert.Null(r.Value);
+        Assert.Empty(processes.Queried);
     }
 
     [Fact]

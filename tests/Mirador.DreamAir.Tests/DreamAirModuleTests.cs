@@ -72,6 +72,8 @@ public sealed class DreamAirModuleTests : IDisposable
 
     private ModuleContext Context => new(paths, helper, processes, usb, time);
 
+    private CalibrationStore? calibration;
+
     private DreamAirModule Module() => new(new DreamAirDeps(
         Registry,
         consoles.Start,
@@ -80,7 +82,8 @@ public sealed class DreamAirModuleTests : IDisposable
         bundledLayer,
         () => { duringChecks?.Invoke(); return nvidia; },
         () => Path.Combine(dir.Path, "SteamVR"),
-        _ => EyeBlobVariants.Tested));
+        _ => EyeBlobVariants.Tested,
+        calibration));
 
     private static Profile DreamAirProfile(string? layerFolder = null) => new(
         "p1", "Dream Air", DreamAirModule.ModuleId, BuildSource.Bundled, [],
@@ -463,10 +466,21 @@ public sealed class DreamAirModuleTests : IDisposable
         var results = await Module().CheckAsync(Context, DreamAirProfile(), CancellationToken.None);
 
         Assert.Equal(
-            ["NVIDIA GPU", "Pimax Play", "Eye geometry", "SteamVR", "Headset", "Vulkan layer"],
+            ["NVIDIA GPU", "Pimax Play", "Eye geometry", "SteamVR", "Headset", "Vulkan layer", "Headset variant"],
             results.Select(r => r.Label));
-        Assert.All(results, r => Assert.Equal(StatusLevel.Ok, r.Level));
-        Assert.Equal("Comes with Mirador", results[^1].Text);
+        Assert.All(results.SkipLast(1), r => Assert.Equal(StatusLevel.Ok, r.Level));
+        Assert.Equal("Comes with Mirador", results[^2].Text);
+        Assert.Equal(StatusLevel.Warning, results[^1].Level); // nothing known about the variant yet
+    }
+
+    [Fact]
+    public async Task A_known_variant_needs_no_warning()
+    {
+        state.Save(new DreamAirState(LastGoodDriver: "621.01", BlobVariant: "K11_RAWH", BlobSource: "owner"));
+
+        var results = await Module().CheckAsync(Context, DreamAirProfile(), CancellationToken.None);
+
+        Assert.DoesNotContain(results, r => r.Label == "Headset variant");
     }
 
     [Fact]
@@ -524,6 +538,60 @@ public sealed class DreamAirModuleTests : IDisposable
 
         Assert.Equal([HelperCommand.StopPimax, HelperCommand.StartPimax], helper.Sent);
         Assert.Empty(saves[^1]);
+    }
+
+    [Fact]
+    public async Task Calibrations_are_kept_before_a_start_and_after_the_session()
+    {
+        var monadoDir = Path.Combine(dir.Path, "monado", "dreamair");
+        Directory.CreateDirectory(monadoDir);
+        File.WriteAllText(Path.Combine(monadoDir, "eye_calibration_XR5DA-1.bin"), "mine");
+        calibration = new CalibrationStore(monadoDir, Path.Combine(dir.Path, "backups"), TimeProvider.System);
+
+        var session = (DreamAirSession)await BeforeStart();
+        Assert.Single(calibration.Backups("XR5DA-1"));
+
+        File.WriteAllText(Path.Combine(monadoDir, "eye_calibration_XR5DA-1.bin"), "the tracker's"); // Monado replaced it
+        await session.EndAsync(CancellationToken.None);
+        session.Dispose();
+
+        Assert.Equal(2, calibration.Backups("XR5DA-1").Count);
+    }
+
+    [Fact]
+    public async Task Checks_read_the_variant_pimax_runs_with_and_remember_it()
+    {
+        processes.Add(PimaxNames.EyeRuntimeProcess);
+        helper.Replies[HelperCommand.GetPimaxEyeBlob] = new HelperReply(true, Value: "K10_RAYH");
+
+        await Module().CheckAsync(Context, DreamAirProfile(), CancellationToken.None);
+
+        Assert.Equal(("K10_RAYH", "pimax"), (state.Load().BlobVariant, state.Load().BlobSource));
+    }
+
+    [Fact]
+    public async Task Without_pimaxs_eye_runtime_the_helper_isnt_asked()
+    {
+        await Module().CheckAsync(Context, DreamAirProfile(), CancellationToken.None);
+
+        Assert.DoesNotContain(HelperCommand.GetPimaxEyeBlob, helper.Sent);
+    }
+
+    [Fact]
+    public async Task A_different_tracker_clears_the_variant_and_says_so_at_the_first_look()
+    {
+        state.Save(new DreamAirState(LastGoodDriver: "621.01", BlobVariant: "K10_RAYH", BlobSource: "owner", BlobTrackerSerial: "XR5DA-0"));
+        using var session = (DreamAirSession)await BeforeStart();
+        var warnings = new List<SessionWarning>();
+        session.Warning += w => { lock (warnings) { warnings.Add(w); } };
+
+        Poll(1);
+
+        Assert.Equal((null, "XR5DA-1"), (state.Load().BlobVariant, state.Load().BlobTrackerSerial));
+        lock (warnings)
+        {
+            Assert.Equal([new SessionWarning("geometry", DreamAirModule.DifferentHeadset)], warnings);
+        }
     }
 
     [Fact]

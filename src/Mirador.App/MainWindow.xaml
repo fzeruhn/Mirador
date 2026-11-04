@@ -34,7 +34,7 @@
                         <FontIcon Glyph="&#xE80F;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Eye tracking" Tag="EyeTracking">
+                <NavigationViewItem x:Name="EyeTrackingItem" Content="Eye tracking" Tag="EyeTracking">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE7B3;" />
                     </NavigationViewItem.Icon>
