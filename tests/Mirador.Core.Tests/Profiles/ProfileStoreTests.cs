@@ -83,7 +83,6 @@ public class ProfileStoreTests
     [InlineData("""{"profiles":[],"selectedId":"x"}""")]
     [InlineData("""{"profiles":[null],"selectedId":"x"}""")]
     [InlineData("""{"profiles":[{"id":"a","name":"A"}],"selectedId":"a"}""")]
-    [InlineData("""{"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"id":"a","name":"B","monado":{"kind":"Bundled"}}],"selectedId":"a"}""")]
     [InlineData("""{"profiles":[{"id":"a","name":"A","monado":{"kind":"Sideways"}}],"selectedId":"a"}""")]
     public void A_file_that_is_not_a_usable_profile_list_is_kept_as_bad(string text)
     {
@@ -95,6 +94,60 @@ public class ProfileStoreTests
 
         Assert.False(File.Exists(path));
         Assert.Equal(text, File.ReadAllText(path + ".bad"));
+    }
+
+    [Fact]
+    public void One_unusable_profile_is_left_out_and_the_others_kept_with_a_copy_of_the_file_as_bad()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        const string text = """
+            {"profiles":[
+              {"id":"a","name":"Mine","monado":{"kind":"Folder","folder":"D:\\monado\\build"}},
+              {"id":"b","name":"","monado":{"kind":"Bundled"}},
+              {"id":"c","name":"Other","monado":{"kind":"Bundled"}},
+              {"id":"a","name":"Same id","monado":{"kind":"Bundled"}}
+            ],"selectedId":"c"}
+            """;
+        File.WriteAllText(path, text);
+
+        var set = new ProfileStore(path).Load();
+
+        Assert.Equal(["a", "c"], set.Profiles.Select(p => p.Id));
+        Assert.Equal(@"D:\monado\build", set.Profiles[0].Monado.Folder);
+        Assert.Equal("c", set.SelectedId);
+        Assert.Equal(text, File.ReadAllText(path)); // still there until the next save
+        Assert.Equal(text, File.ReadAllText(path + ".bad"));
+    }
+
+    [Fact]
+    public void Variables_without_a_name_and_options_without_a_value_are_left_out()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        File.WriteAllText(path, """
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"},
+              "extraEnvironment":[null,{"value":"1"},{"name":"KEPT","value":"2"},{"name":"NO_VALUE"}],
+              "moduleOptions":{"layerFolder":null,"other":"x"}}],"selectedId":"a"}
+            """);
+
+        var profile = Assert.Single(new ProfileStore(path).Load().Profiles);
+
+        Assert.Equal([new EnvVar("KEPT", "2"), new EnvVar("NO_VALUE", "")], profile.ExtraEnvironment);
+        Assert.Equal(new Dictionary<string, string> { ["other"] = "x" }, profile.ModuleOptions);
+        Assert.True(File.Exists(path + ".bad"));
+    }
+
+    [Fact]
+    public void A_file_with_nothing_left_out_leaves_no_bad_copy()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        new ProfileStore(path).Save(ProfileSet.Defaults());
+
+        new ProfileStore(path).Load();
+
+        Assert.False(File.Exists(path + ".bad"));
     }
 
     [Fact]

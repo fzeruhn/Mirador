@@ -42,7 +42,16 @@ internal static class JsonFile
         return value;
     }
 
-    /// <summary>Writes <paramref name="value"/> to <c>&lt;path&gt;.tmp</c>, then moves it over <paramref name="path"/>.</summary>
+    /// <summary>
+    /// Copies <paramref name="path"/> to <c>&lt;path&gt;.bad</c> (replacing an older one) and keeps the file: for a file
+    /// that loaded only in part, so that what was left out isn't lost when the file is next saved.
+    /// </summary>
+    public static void KeepCopyAsBad(string path) => File.Copy(path, path + ".bad", overwrite: true);
+
+    /// <summary>
+    /// Writes <paramref name="value"/> to <c>&lt;path&gt;.tmp</c> and onto the disk, then moves it over
+    /// <paramref name="path"/>: a crash or power cut leaves the old file or the new one, never one half written or empty.
+    /// </summary>
     public static void Save<T>(string path, T value, JsonTypeInfo<T> typeInfo)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
@@ -52,7 +61,12 @@ internal static class JsonFile
         }
 
         var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(value, typeInfo));
+        using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            JsonSerializer.Serialize(stream, value, typeInfo);
+            stream.Flush(flushToDisk: true);
+        }
+
         File.Move(temp, path, overwrite: true);
     }
 }
