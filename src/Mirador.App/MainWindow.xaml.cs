@@ -28,6 +28,8 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1100 * scale), (int)(760 * scale)));
         AppWindow.Closing += OnClosing;
         NavView.SelectedItem = NavView.MenuItems[0];
+        App.Current.Host.ProfilesChanged += ShowHeadsetPages;
+        ShowHeadsetPages();
     }
 
     /// <summary>Whether the window is on screen (not hidden in the tray).</summary>
@@ -67,6 +69,17 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Show();
         Activate();
+    }
+
+    /// <summary>The Eye tracking page is there only for a Dream Air profile; leaving one while on it goes Home.</summary>
+    private void ShowHeadsetPages()
+    {
+        var dreamAir = App.Current.Host.SelectedIsDreamAir();
+        EyeTrackingItem.Visibility = dreamAir ? Visibility.Visible : Visibility.Collapsed;
+        if (!dreamAir && ReferenceEquals(NavView.SelectedItem, EyeTrackingItem))
+        {
+            Navigate("Home");
+        }
     }
 
     /// <summary>Shows the page with <paramref name="tag"/> (Home, EyeTracking, …).</summary>

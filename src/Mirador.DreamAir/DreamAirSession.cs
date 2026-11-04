@@ -28,6 +28,8 @@ public sealed class DreamAirSession : ModuleSession, IDisposable
     private readonly DreamAirLogParser parser;
     private readonly object gate = new();
     private readonly ITimer timer;
+    private readonly Func<string?>? afterMonado;
+    private List<SessionWarning>? pending;
     private bool pimaxSeen;
     private bool steamVrSeen;
     private bool ended;
@@ -36,9 +38,15 @@ public sealed class DreamAirSession : ModuleSession, IDisposable
     /// <param name="environment">The variables Monado gets for the Dream Air.</param>
     /// <param name="pimaxWasRunning">Whether Pimax's service ran before the session stopped it, so it is started again at the end.</param>
     /// <param name="upload">How the eye geometry upload went, the first state of the eye tracker's line.</param>
-    public DreamAirSession(ModuleContext ctx, IReadOnlyList<EnvVar> environment, bool pimaxWasRunning, GeometryResult? upload)
+    /// <param name="afterMonado">Runs first in <see cref="EndAsync"/>, once Monado has stopped (the calibrations' copies); a text it returns is a warning.</param>
+    /// <param name="warnings">Warnings from getting ready, raised at the first look (Mirador listens only once it has the session).</param>
+    public DreamAirSession(
+        ModuleContext ctx, IReadOnlyList<EnvVar> environment, bool pimaxWasRunning, GeometryResult? upload, Func<string?>? afterMonado = null,
+        IReadOnlyList<SessionWarning>? warnings = null)
     {
         this.ctx = ctx;
+        this.afterMonado = afterMonado;
+        pending = warnings is { Count: > 0 } ? [.. warnings] : null;
         this.pimaxWasRunning = pimaxWasRunning;
         Environment = environment;
         RecoveryData = Recovery(pimaxWasRunning);
@@ -72,6 +80,10 @@ public sealed class DreamAirSession : ModuleSession, IDisposable
     public override async Task EndAsync(CancellationToken ct)
     {
         StopWatching();
+        if (afterMonado?.Invoke() is { } problem)
+        {
+            RaiseWarning(new SessionWarning("calibration", problem));
+        }
         if (!pimaxWasRunning)
         {
             return;
@@ -120,6 +132,12 @@ public sealed class DreamAirSession : ModuleSession, IDisposable
             if (ended)
             {
                 return;
+            }
+
+            if (pending is not null)
+            {
+                warnings.AddRange(pending);
+                pending = null;
             }
 
             if (pimax && !pimaxSeen)

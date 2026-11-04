@@ -1,3 +1,5 @@
+using Mirador.Ipc;
+
 namespace Mirador.DreamAir;
 
 /// <summary>
@@ -6,7 +8,7 @@ namespace Mirador.DreamAir;
 /// </summary>
 public static class EyeBlobVariants
 {
-    public static readonly string[] All = ["K10_RAWH", "K10_RAYH", "K11_RAWH", "K11_RAYH"];
+    public static IReadOnlyList<string> All => PimaxNames.EyeBlobVariants;
 
     /// <summary>Finn's headset; the only variant known to work.</summary>
     public const string Tested = "K11_RAWH";
@@ -14,7 +16,7 @@ public static class EyeBlobVariants
     /// <summary>The geometry file's name for <paramref name="variant"/>, such as <c>config_XR5PIMAXDA_K11_RAWH.bin</c>.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="variant"/> isn't one of <see cref="All"/>: it becomes part of a path.</exception>
     public static string FileName(string variant) =>
-        Array.IndexOf(All, variant) >= 0
+        All.Contains(variant)
             ? $"config_XR5PIMAXDA_{variant}.bin"
             : throw new ArgumentOutOfRangeException(nameof(variant), variant, "Not a known eye geometry variant.");
 }

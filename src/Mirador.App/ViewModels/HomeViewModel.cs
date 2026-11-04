@@ -198,6 +198,7 @@ public sealed partial class HomeViewModel : ObservableObject
             if (set.SelectedId != value.Id && set.Profiles.Any(p => p.Id == value.Id))
             {
                 host.Profiles.Save(set.Select(value.Id));
+                host.NotifyProfilesChanged();
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

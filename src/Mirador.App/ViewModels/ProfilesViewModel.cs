@@ -266,6 +266,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
             var set = change(host.Profiles.Load());
             host.Profiles.Save(set);
             LoadList(keep ?? Selected?.Id);
+            host.NotifyProfilesChanged();
             return true;
         }
         catch (MiradorException e)

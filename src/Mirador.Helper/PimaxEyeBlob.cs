@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Mirador.Ipc;
 
 namespace Mirador.Helper;
 
@@ -8,8 +9,6 @@ namespace Mirador.Helper;
 /// </summary>
 public static partial class PimaxEyeBlob
 {
-    private static readonly string[] Known = ["K10_RAWH", "K10_RAYH", "K11_RAWH", "K11_RAYH"];
-
     /// <summary>
     /// The variant in the first <c>config_XR5PIMAXDA_&lt;variant&gt;.bin</c> of <paramref name="commandLine"/> that is a
     /// known one, or null.
@@ -19,7 +18,7 @@ public static partial class PimaxEyeBlob
         foreach (Match match in ConfigFile().Matches(commandLine))
         {
             var variant = match.Groups["variant"].Value;
-            if (Array.IndexOf(Known, variant) >= 0)
+            if (PimaxNames.EyeBlobVariants.Contains(variant))
             {
                 return variant;
             }

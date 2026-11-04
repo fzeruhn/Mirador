@@ -40,7 +40,7 @@ public sealed record PimaxInstall(string RuntimeDir, string? Version)
         var entry = FindUninstallEntry(reg);
         var version = entry is null ? null : NullIfBlank(reg.GetString(entry, "DisplayVersion"));
 
-        var runtimeDir = FullFolder(ProgramOf(reg.GetString(ServiceKey, "ImagePath")) is { } exe ? Path.GetDirectoryName(exe) : null)
+        var runtimeDir = FullFolder(ServiceImage.ProgramOf(reg.GetString(ServiceKey, "ImagePath")) is { } exe ? Path.GetDirectoryName(exe) : null)
             ?? (entry is not null && NullIfBlank(reg.GetString(entry, "InstallLocation")) is { } location
                 ? FullFolder(Path.Combine(location.Trim().Trim('"'), "Runtime"))
                 : null);
@@ -64,33 +64,6 @@ public sealed record PimaxInstall(string RuntimeDir, string? Version)
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// The program a service's <c>ImagePath</c> runs, without its quotes and arguments: <c>"C:\…\x.exe" -k</c>, or
-    /// unquoted up to the first <c>.exe</c>; <c>\??\</c> in front is dropped.
-    /// </summary>
-    private static string? ProgramOf(string? imagePath)
-    {
-        var text = imagePath?.Trim();
-        if (string.IsNullOrEmpty(text))
-        {
-            return null;
-        }
-
-        if (text.StartsWith(@"\??\", StringComparison.Ordinal))
-        {
-            text = text[4..];
-        }
-
-        if (text.StartsWith('"'))
-        {
-            var close = text.IndexOf('"', 1);
-            return close < 0 ? text[1..] : text[1..close];
-        }
-
-        var exe = text.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-        return exe < 0 ? text : text[..(exe + 4)];
     }
 
     /// <summary><paramref name="folder"/> as a full path without a trailing separator; null when it isn't a full path.</summary>
