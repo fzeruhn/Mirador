@@ -43,13 +43,25 @@ public sealed class ConsoleProcess : IConsoleProcess
     private Action<string>? listeners;
     private List<string>? early = [];
 
+    /// <summary>How long the output may stay open after the program ended (a program it started may hold it).</summary>
+    private static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(2);
+
+    private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private ConsoleProcess(Process process)
     {
         this.process = process;
         process.OutputDataReceived += (_, e) => OnData(e.Data);
         process.ErrorDataReceived += (_, e) => OnData(e.Data);
+        process.Exited += (_, _) => ended.TrySetResult();
+        process.EnableRaisingEvents = true;
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+        if (process.HasExited)
+        {
+            ended.TrySetResult();
+        }
+
         Exited = WaitAsync();
     }
 
@@ -170,19 +182,37 @@ public sealed class ConsoleProcess : IConsoleProcess
         {
             process.Kill(entireProcessTree: true);
         }
-        catch (Exception e) when (e is InvalidOperationException or Win32Exception or NotSupportedException)
+        catch (Exception e) when (e is InvalidOperationException or Win32Exception or NotSupportedException or AggregateException)
         {
-            // It ended on its own in the meantime, or Windows wouldn't let it be ended; nothing more to do.
+            // It ended on its own in the meantime, or Windows wouldn't let it (or a program it started) be ended.
         }
     }
 
     public void Dispose() => process.Dispose();
 
+    /// <summary>
+    /// The exit code once the program has ended, and its output has been read to the end or <see cref="DrainGrace"/>
+    /// has passed: a program it started that kept the output open doesn't hold this up.
+    /// </summary>
     private async Task<int> WaitAsync()
     {
-        // Waits for the redirected output to be read to the end too.
-        await process.WaitForExitAsync().ConfigureAwait(false);
-        return process.ExitCode;
+        await ended.Task.ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(DrainGrace).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+        }
+
+        try
+        {
+            return process.ExitCode;
+        }
+        catch (InvalidOperationException)
+        {
+            return -1; // disposed before it could be read
+        }
     }
 
     private void OnData(string? line)

@@ -43,12 +43,12 @@ public static class DisplayCheck
             }
             catch (TimeoutException)
             {
-                process.Kill();
+                await KillAsync(process).ConfigureAwait(false);
                 return Result(false, $"The display check didn't finish within {Limit.TotalSeconds:0} s.", null, lines);
             }
             catch (OperationCanceledException)
             {
-                process.Kill();
+                await KillAsync(process).ConfigureAwait(false);
                 throw;
             }
         }
@@ -69,6 +69,13 @@ public static class DisplayCheck
         var pass = exitCode == 0;
         message ??= pass ? "Direct mode works." : $"The display check failed (exit code {exitCode}).";
         return Result(pass, message, whatToDo, output);
+    }
+
+    /// <summary>Ends the check and waits a moment for it to let go of the display.</summary>
+    private static async Task KillAsync(IConsoleProcess process)
+    {
+        process.Kill();
+        await Task.WhenAny(process.Exited, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(false);
     }
 
     private static DisplayCheckResult Result(bool pass, string message, string? whatToDo, List<string> lines)

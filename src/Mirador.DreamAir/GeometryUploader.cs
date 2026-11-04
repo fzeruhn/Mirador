@@ -26,6 +26,8 @@ public sealed partial class GeometryUploader(
 
     internal const string NoTracker = "The eye tracker isn't on USB. Is the headset connected and switched on?";
 
+    private const string NotUploaded = "The eye geometry wasn't uploaded, so gaze will be about 10° off";
+
     /// <summary>How long the runtime gets to reach its licence check, which comes after it opened the tracker.</summary>
     internal static readonly TimeSpan LicenceWait = TimeSpan.FromSeconds(30);
 
@@ -35,8 +37,15 @@ public sealed partial class GeometryUploader(
     /// <summary>How long it gets to end after ENTER before it is killed.</summary>
     internal static readonly TimeSpan ExitWait = TimeSpan.FromSeconds(15);
 
-    /// <summary>The programs that hold the eye tracker; the runtime can't open it while one runs.</summary>
-    private static readonly string[] Holders = ["monado-service", "pi_server", "vrss_gaze_provider"];
+    /// <summary>How long a killed runtime gets to be gone, so that it lets go of the tracker and its copied files.</summary>
+    internal static readonly TimeSpan KillWait = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Pimax's programs that hold the eye tracker; the runtime can't open it while one runs. A <c>monado-service</c>
+    /// isn't among them: the session refuses a real Monado before a Start gets here, and Mirador's own stand-in, which
+    /// has that name too, runs while a game's Start uploads.
+    /// </summary>
+    private static readonly string[] Holders = ["pi_server", "vrss_gaze_provider"];
 
     /// <summary>
     /// Uploads the geometry of <paramref name="variant"/> from <paramref name="pimax"/>. Pimax's software and Monado must
@@ -48,6 +57,11 @@ public sealed partial class GeometryUploader(
     public async Task<GeometryResult> UploadAsync(PimaxInstall pimax, string variant, CancellationToken ct)
     {
         var logPath = Path.Combine(paths.GeometryDir, "runtime.log");
+        if (!EyeBlobVariants.All.Contains(variant))
+        {
+            return new GeometryResult(false, null, $"{NotUploaded}: Mirador doesn't know the eye geometry variant {variant}.", logPath);
+        }
+
         try
         {
             if (!usb.Present().Contains(DreamAirIds.EyeTracker))
@@ -57,14 +71,14 @@ public sealed partial class GeometryUploader(
         }
         catch (MiradorException e)
         {
-            return new GeometryResult(false, null, e.Message, logPath);
+            return new GeometryResult(false, null, $"{NotUploaded}: {e.Message}", logPath);
         }
 
         if (processes.Snapshot().FirstOrDefault(p => Holders.Contains(p.Name, StringComparer.OrdinalIgnoreCase)) is { } holder)
         {
             return new GeometryResult(
                 false, null,
-                $"The eye geometry wasn't uploaded, so gaze will be about 10° off: {holder.Name} is running and holds the eye tracker.",
+                $"{NotUploaded}: {holder.Name} is running and holds the eye tracker.",
                 logPath);
         }
 
@@ -92,7 +106,7 @@ public sealed partial class GeometryUploader(
         var (connected, created, serial) = Evaluate(output);
         return connected && created
             ? new GeometryResult(true, serial, Uploaded, logPath)
-            : new GeometryResult(false, serial, $"The eye geometry wasn't uploaded, so gaze will be about 10° off. Details: {logPath}", logPath);
+            : new GeometryResult(false, serial, $"{NotUploaded}. Details: {logPath}", logPath);
     }
 
     /// <summary>
@@ -129,7 +143,9 @@ public sealed partial class GeometryUploader(
         File.Copy(pimax.TobiiRuntimeExe, exe, overwrite: true);
         File.Copy(pimax.BlobPath(variant), Path.Combine(runtimeDir, blob), overwrite: true);
 
-        using var process = start(new ProcessSpec(exe, $"-x {blob} \"{outputDir}\"", runtimeDir, ConsoleProcess.CurrentEnvironment()));
+        // The output folder relative to the runtime's own: a user name outside the ANSI code page can't break it.
+        var outputArg = Path.Combine("..", "log");
+        using var process = start(new ProcessSpec(exe, $"-x {blob} \"{outputArg}\"", runtimeDir, ConsoleProcess.CurrentEnvironment()));
         var licence = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         process.Line += line =>
         {
@@ -150,7 +166,7 @@ public sealed partial class GeometryUploader(
             // check instead, then give it a moment to send the geometry.
             if (await WaitAsync(licence.Task, process.Exited, LicenceWait, ct).ConfigureAwait(false))
             {
-                await Task.Delay(SendWait, time, ct).ConfigureAwait(false);
+                await WaitAsync(process.Exited, null, SendWait, ct).ConfigureAwait(false);
             }
             else if (!process.Exited.IsCompleted)
             {
@@ -162,14 +178,23 @@ public sealed partial class GeometryUploader(
             if (!await WaitAsync(process.Exited, null, ExitWait, ct).ConfigureAwait(false))
             {
                 notes.Add($"Didn't stop within {ExitWait.TotalSeconds:0} s of ENTER; ended it.");
-                process.Kill();
+                await KillAsync(process).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            process.Kill();
+            await KillAsync(process).ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>Ends the runtime and waits a moment for it to be gone, so that Monado finds the tracker free.</summary>
+    private async Task KillAsync(IConsoleProcess process)
+    {
+        process.Kill();
+        using var stop = new CancellationTokenSource();
+        await Task.WhenAny(process.Exited, Task.Delay(KillWait, time, stop.Token)).ConfigureAwait(false);
+        await stop.CancelAsync().ConfigureAwait(false);
     }
 
     /// <summary>Whether <paramref name="task"/> completed within <paramref name="limit"/>; <paramref name="orElse"/> ending first counts as no.</summary>

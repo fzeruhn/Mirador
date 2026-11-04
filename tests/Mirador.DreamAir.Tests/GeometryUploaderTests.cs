@@ -91,7 +91,7 @@ public sealed class GeometryUploaderTests : IDisposable
 
         var spec = Assert.Single(starter.Specs);
         Assert.Equal(Path.Combine(RuntimeDir, PimaxNames.EyeRuntimeProcess + ".exe"), spec.FileName);
-        Assert.Equal($"-x config_XR5PIMAXDA_K11_RAWH.bin \"{Path.Combine(paths.GeometryDir, "log")}\"", spec.Arguments);
+        Assert.Equal($"-x config_XR5PIMAXDA_K11_RAWH.bin \"{Path.Combine("..", "log")}\"", spec.Arguments);
         Assert.Equal(RuntimeDir, spec.WorkingDirectory);
         Assert.Equal("exe", File.ReadAllText(spec.FileName));
         Assert.Equal("blob", File.ReadAllText(Path.Combine(RuntimeDir, "config_XR5PIMAXDA_K11_RAWH.bin")));
@@ -133,7 +133,6 @@ public sealed class GeometryUploaderTests : IDisposable
     [Theory]
     [InlineData("pi_server")]
     [InlineData("vrss_gaze_provider")]
-    [InlineData("monado-service")]
     public async Task A_program_holding_the_tracker_refuses(string holder)
     {
         processes.Add(holder);
@@ -143,6 +142,54 @@ public sealed class GeometryUploaderTests : IDisposable
         Assert.False(result.Ok);
         Assert.Equal($"The eye geometry wasn't uploaded, so gaze will be about 10° off: {holder} is running and holds the eye tracker.", result.Message);
         Assert.Empty(starter.Specs);
+    }
+
+    [Fact]
+    public async Task Mirador_s_stand_in_doesnt_count_as_a_holder()
+    {
+        // A game's Start: the stand-in, named monado-service, waits for Mirador while the module uploads.
+        processes.Add("monado-service");
+
+        Assert.True((await UploadAsync()).Ok);
+    }
+
+    [Fact]
+    public async Task An_unknown_variant_is_a_failure_not_a_throw()
+    {
+        var result = await Uploader().UploadAsync(pimax, "K12_RAWH", CancellationToken.None);
+
+        Assert.Equal(
+            new GeometryResult(false, null, "The eye geometry wasn't uploaded, so gaze will be about 10° off: Mirador doesn't know the eye geometry variant K12_RAWH.", LogPath),
+            result);
+        Assert.Empty(starter.Specs);
+    }
+
+    [Fact]
+    public async Task Usb_devices_that_cant_be_listed_say_the_geometry_wasnt_uploaded()
+    {
+        var failing = new FailingUsb(new MiradorException("Windows couldn't list the USB devices (busy), so Mirador can't tell which headset is plugged in. Try again."));
+
+        var result = await new GeometryUploader(starter.Start, failing, processes, paths, time).UploadAsync(pimax, "K11_RAWH", CancellationToken.None);
+
+        Assert.Equal(
+            "The eye geometry wasn't uploaded, so gaze will be about 10° off: Windows couldn't list the USB devices (busy), so Mirador can't tell which headset is plugged in. Try again.",
+            result.Message);
+    }
+
+    [Fact]
+    public async Task A_runtime_that_ends_after_its_licence_check_isnt_waited_for()
+    {
+        var starter = new FakeConsoleStarter(_ =>
+        {
+            var quick = new FakeConsole([.. Licence, .. AtEnd]);
+            quick.End(0);
+            return quick;
+        });
+
+        var result = await new GeometryUploader(starter.Start, usb, processes, paths, time)
+            .UploadAsync(pimax, "K11_RAWH", CancellationToken.None).WaitAsync(Limit);
+
+        Assert.True(result.Ok);
     }
 
     [Fact]
@@ -196,7 +243,8 @@ public sealed class GeometryUploaderTests : IDisposable
     [Fact]
     public async Task A_runtime_that_doesnt_stop_is_killed_after_15_seconds()
     {
-        var starter = new FakeConsoleStarter(_ => new FakeConsole(Licence) { LinesAtEnter = AtEnd, ExitCodeAtEnter = null });
+        // Its stdout holds back the created line until it ends, so a killed runtime never says it.
+        var starter = new FakeConsoleStarter(_ => new FakeConsole(Licence) { ExitCodeAtEnter = null });
         var upload = new GeometryUploader(starter.Start, usb, processes, paths, time).UploadAsync(pimax, "K11_RAWH", CancellationToken.None);
         await time.Set(GeometryUploader.SendWait).WaitAsync(Limit);
         time.Clock.Advance(GeometryUploader.SendWait);
@@ -206,7 +254,7 @@ public sealed class GeometryUploaderTests : IDisposable
         var result = await upload.WaitAsync(Limit);
 
         Assert.True(starter.Last!.Killed);
-        Assert.True(result.Ok); // it said so before it hung
+        Assert.False(result.Ok);
         Assert.Contains("Mirador: Didn't stop within 15 s of ENTER; ended it.", File.ReadAllLines(LogPath));
     }
 
@@ -245,5 +293,10 @@ public sealed class GeometryUploaderTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => upload.WaitAsync(Limit));
         Assert.True(starter.Last!.Killed);
         Assert.True(File.Exists(LogPath));
+    }
+
+    private sealed class FailingUsb(MiradorException failure) : Core.Modules.IUsbDevices
+    {
+        public IReadOnlySet<Core.Modules.UsbId> Present() => throw failure;
     }
 }
