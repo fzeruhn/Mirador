@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Mirador.App.Services;
 using Mirador.App.ViewModels;
 using Mirador.Core;
+using Mirador.Core.Diagnostics;
 using Mirador.Core.Modules;
 using Mirador.Core.Session;
 using Mirador.Ipc;
@@ -100,6 +101,45 @@ public partial class App : Application
         if (args.Start)
         {
             await StartAsync(StartReason.Tray);
+        }
+
+        await CheckForUpdateAsync();
+    }
+
+    /// <summary>At most once a day, when on: a newer release shows on Home.</summary>
+    private async Task CheckForUpdateAsync()
+    {
+        AppSettings settings;
+        try
+        {
+            settings = Host.Settings.Load();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (!settings.CheckForUpdates || (settings.LastUpdateCheck is { } last && now - last < TimeSpan.FromDays(1) && last <= now))
+        {
+            return;
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var found = await UpdateCheck.CheckAsync(http, AppInfo.Version, CancellationToken.None);
+        try
+        {
+            Host.Settings.Save(Host.Settings.Load() with { LastUpdateCheck = now });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write("Couldn't record the update check", ex);
+        }
+
+        if (found is { } release)
+        {
+            AppLog.Write($"Mirador {release.Tag} is out: {release.Url}");
+            Home.ShowUpdate(release.Tag, release.Url);
         }
     }
 

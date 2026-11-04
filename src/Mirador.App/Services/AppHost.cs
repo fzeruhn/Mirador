@@ -26,6 +26,7 @@ public sealed class AppHost : IAsyncDisposable
         Paths = paths;
         Profiles = new ProfileStore(paths.ProfilesFile);
         MonadoSettings = new MonadoSettingsStore(paths.MonadoSettingsFile);
+        Settings = new AppSettingsStore(paths.SettingsFile);
         Helper = new HelperClient();
         Runtime = new OpenXrRuntime(new RegistryRuntimeReader());
         Locator = new MonadoLocator(Path.Combine(appDir, "monado"));
@@ -68,6 +69,9 @@ public sealed class AppHost : IAsyncDisposable
 
     public MonadoSettingsStore MonadoSettings { get; }
 
+    /// <summary>Mirador's own settings: close to the tray, the update check.</summary>
+    public AppSettingsStore Settings { get; }
+
     public IHelperClient Helper { get; }
 
     public OpenXrRuntime Runtime { get; }
@@ -89,8 +93,18 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>Mirador's own stand-in, copied into Monado build folders (<c>{app}\standin\monado-service.exe</c>).</summary>
     public string StandInExe => Path.Combine(AppDir, "standin", "monado-service.exe");
 
-    /// <summary>Whether closing the window keeps Mirador in the tray. Settings (Task 17) make it a choice.</summary>
-    public Func<bool> CloseToTray { get; set; } = () => true;
+    /// <summary>Whether closing the window keeps Mirador in the tray (the default, and when settings.json can't be read).</summary>
+    public bool CloseToTray()
+    {
+        try
+        {
+            return Settings.Load().CloseToTray;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>What went wrong while Mirador started that the user should read on Home: settings reset, files it couldn't read.</summary>
     public IReadOnlyList<string> StartupNotices => notices;
@@ -105,6 +119,7 @@ public sealed class AppHost : IAsyncDisposable
         var host = new AppHost(appDir, paths);
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
         host.CheckStore("Monado settings", paths.MonadoSettingsFile, () => host.MonadoSettings.Load());
+        host.CheckStore("settings", paths.SettingsFile, () => host.Settings.Load());
         return host;
     }
 

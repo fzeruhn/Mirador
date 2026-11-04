@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
     <Authors>Finn Zeruhn</Authors>
     <Copyright>Copyright 2026, Finn Zeruhn</Copyright>
   </PropertyGroup>

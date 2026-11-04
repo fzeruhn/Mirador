@@ -181,6 +181,63 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         sink.AddFile("geometry-runtime.txt", Path.Combine(ctx.Paths.GeometryDir, "runtime.log"));
     }
 
+    /// <summary>
+    /// The Diagnostics page's "Check display", while Monado is stopped: stops Pimax's software (the check refuses while
+    /// it holds the headset), runs the display check, and starts Pimax again if it ran. A pass records the driver as
+    /// good, so the next Start doesn't check again.
+    /// </summary>
+    /// <returns>The check's result, and what went wrong starting Pimax again (null when nothing did).</returns>
+    public async Task<(DisplayCheckResult Check, string? PimaxProblem)> CheckDisplayAsync(ModuleContext ctx, Profile profile, CancellationToken ct)
+    {
+        LayerFiles layer;
+        try
+        {
+            layer = DreamAirLayer.Locate(LayerFolder(profile), deps.BundledLayerDir);
+        }
+        catch (MiradorException e)
+        {
+            return (new DisplayCheckResult(false, e.Message, null, "") { Finished = false }, null);
+        }
+
+        string? startProblem = null;
+
+        var stop = await ctx.Helper.SendAsync(HelperCommand.StopPimax, CancellationToken.None).ConfigureAwait(false);
+        DisplayCheckResult check;
+        try
+        {
+            check = stop.Ok
+                ? await DisplayCheck.RunAsync(layer.CheckExe, deps.StartConsole, ct).ConfigureAwait(false)
+                : new DisplayCheckResult(false, stop.Error ?? "Pimax's software couldn't be stopped.", null, "") { Finished = false };
+        }
+        finally
+        {
+            // Also when the check was cancelled: Pimax goes back as it was.
+            if (stop.WasRunning == true)
+            {
+                var start = await ctx.Helper.SendAsync(HelperCommand.StartPimax, CancellationToken.None).ConfigureAwait(false);
+                startProblem = start.Ok ? null : $"Mirador couldn't start Pimax's service again: {start.Error}";
+            }
+        }
+
+        if (stop.Ok)
+        {
+            SaveCheckOutput(ctx, check);
+        }
+
+        if (check.Pass && Safe(NvidiaDriverNow) is { } driver)
+        {
+            try
+            {
+                deps.State.Update(s => s with { LastGoodDriver = driver });
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
+        return (check, startProblem);
+    }
+
     /// <summary>Where the last display check's output is kept, for the diagnostics.</summary>
     public static string DisplayCheckFile(AppPaths paths) => Path.Combine(paths.LogsDir, "display-check.txt");
 
