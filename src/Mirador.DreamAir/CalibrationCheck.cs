@@ -17,6 +17,15 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
     /// <summary>How long <c>gaze_world</c> may take (it shows the dots for 60 s).</summary>
     public static readonly TimeSpan Limit = TimeSpan.FromSeconds(120);
 
+    /// <summary>
+    /// How long the dots may take to appear: <c>gaze_world</c> places them about a second after the headset is tracked
+    /// (it says "placed …"), and its 60 s start only then.
+    /// </summary>
+    public static readonly TimeSpan PlaceLimit = TimeSpan.FromSeconds(30);
+
+    internal const string NotTracked =
+        "The dots never appeared because the headset isn't tracked. Check that the base stations are on and can see the headset, then try again.";
+
     /// <summary>The worst dot, in degrees, that still counts as a good calibration.</summary>
     public const double GoodWorstDotDeg = 2.5;
 
@@ -109,13 +118,14 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
 
     private static string DotsFile(string outDir) => Path.Combine(outDir, Prefix + "_targets.csv");
 
-    private async Task<List<string>> RunGazeWorldAsync(string exe, string manifest, string outDir, CancellationToken ct)
+    internal async Task<List<string>> RunGazeWorldAsync(string exe, string manifest, string outDir, CancellationToken ct)
     {
         var environment = new Dictionary<string, string>(ConsoleProcess.CurrentEnvironment(), StringComparer.OrdinalIgnoreCase)
         {
             ["XR_RUNTIME_JSON"] = manifest,
         };
         var lines = new List<string>();
+        var placed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var process = start(new ProcessSpec(
             exe, $"--cursor --grid --bright 64 --seconds 60 {Prefix}", outDir, environment));
         process.Line += line =>
@@ -124,12 +134,27 @@ public sealed class CalibrationCheck(Func<ProcessSpec, IConsoleProcess> start, D
             {
                 lines.Add(line);
             }
+
+            if (line.StartsWith("placed ", StringComparison.Ordinal))
+            {
+                placed.TrySetResult();
+            }
         };
         process.CloseInput();
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var limit = Task.Delay(Limit, time, stop.Token);
-        var first = await Task.WhenAny(process.Exited, limit).ConfigureAwait(false);
+        var placeLimit = Task.Delay(PlaceLimit, time, stop.Token);
+        var first = await Task.WhenAny(process.Exited, placed.Task, placeLimit).ConfigureAwait(false);
+        if (first == placeLimit)
+        {
+            await stop.CancelAsync().ConfigureAwait(false);
+            process.Kill();
+            ct.ThrowIfCancellationRequested();
+            throw new MiradorException(NotTracked);
+        }
+
+        first = await Task.WhenAny(process.Exited, limit).ConfigureAwait(false);
         await stop.CancelAsync().ConfigureAwait(false);
         if (first != process.Exited)
         {

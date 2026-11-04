@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Time.Testing;
+using Mirador.Core;
+
 namespace Mirador.DreamAir.Tests;
 
 public class CalibrationCheckTests
@@ -34,6 +37,71 @@ public class CalibrationCheckTests
         Assert.NotNull(result);
         Assert.Equal((25, 1, 25), (result.Frames, result.Dots, result.FixationFrames));
         Assert.Equal(0.0, result.MedianDeg, 1e-9);
+    }
+
+    private sealed class Run : IDisposable
+    {
+        public TempDir Dir { get; } = new();
+
+        public TimerWatch Time { get; } = new(new FakeTimeProvider());
+
+        public FakeConsoleStarter Starter { get; }
+
+        public CalibrationCheck Check { get; }
+
+        public Run(params string[] gazeWorldSays)
+        {
+            Starter = new FakeConsoleStarter(_ => new FakeConsole(gazeWorldSays));
+            Check = new CalibrationCheck(Starter.Start, new DreamAirStateStore(Path.Combine(Dir.Path, "dreamair.json")), Time);
+        }
+
+        public Task<List<string>> GazeWorld() => Check.RunGazeWorldAsync("gaze_world.exe", "openxr_monado.json", Dir.Path, CancellationToken.None);
+
+        public void Dispose() => Dir.Dispose();
+    }
+
+    [Fact]
+    public async Task Gaze_world_runs_in_the_checks_folder_with_a_relative_prefix()
+    {
+        using var run = new Run("placed 1");
+        var task = run.GazeWorld();
+        run.Starter.Last!.End(0);
+        await task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var spec = run.Starter.Specs.Single();
+        Assert.Equal("--cursor --grid --bright 64 --seconds 60 gaze", spec.Arguments);
+        Assert.Equal(run.Dir.Path, spec.WorkingDirectory);
+        Assert.Equal("openxr_monado.json", spec.Environment["XR_RUNTIME_JSON"]);
+    }
+
+    [Fact]
+    public async Task Dots_that_never_appear_say_the_headset_isnt_tracked()
+    {
+        // What gaze_world says on an untracked headset (2026-11-04): it waits for the head pose before placing the dots.
+        using var run = new Run("eye gaze: supported");
+        var task = run.GazeWorld();
+        await run.Time.Set(CalibrationCheck.PlaceLimit);
+
+        run.Time.Clock.Advance(CalibrationCheck.PlaceLimit);
+
+        var ex = await Assert.ThrowsAsync<MiradorException>(() => task.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(CalibrationCheck.NotTracked, ex.Message);
+        Assert.True(run.Starter.Last!.Killed);
+    }
+
+    [Fact]
+    public async Task Placed_dots_get_their_minute()
+    {
+        using var run = new Run("eye gaze: supported", "placed 17258362639200");
+        var task = run.GazeWorld();
+        await run.Time.Set(CalibrationCheck.Limit);
+
+        run.Time.Clock.Advance(TimeSpan.FromSeconds(61));
+        Assert.False(task.IsCompleted);
+        run.Starter.Last!.End(0);
+
+        Assert.Contains("placed 17258362639200", await task.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.False(run.Starter.Last.Killed);
     }
 
     [Fact]
