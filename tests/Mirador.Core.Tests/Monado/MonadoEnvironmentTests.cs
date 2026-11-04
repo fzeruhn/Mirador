@@ -172,6 +172,50 @@ public class MonadoEnvironmentTests
     }
 
     [Fact]
+    public void An_empty_extra_value_removes_an_inherited_variable()
+    {
+        var inherited = Inherited();
+        inherited["VK_INSTANCE_LAYERS"] = "VK_LAYER_something";
+
+        var env = MonadoEnvironment.Build(inherited, new MonadoSettings(), CustomWith(new EnvVar("vk_instance_layers", "")), []);
+
+        Assert.False(env.ContainsKey("VK_INSTANCE_LAYERS"));
+    }
+
+    [Fact]
+    public void An_empty_extra_value_removes_a_module_variable()
+    {
+        EnvVar[] moduleFixed = [new("DREAMAIR_VK_LAYER", "1")];
+
+        var env = MonadoEnvironment.Build(Inherited(), new MonadoSettings(), CustomWith(new EnvVar("DREAMAIR_VK_LAYER", "")), moduleFixed);
+
+        Assert.False(env.ContainsKey("DREAMAIR_VK_LAYER"));
+    }
+
+    [Fact]
+    public void No_variable_reaches_monado_empty()
+    {
+        // An empty XDG_RUNTIME_DIR would be "" to Monado's getenv, not "unset", and move its pipe away from where
+        // Mirador and games look for it.
+        var inherited = Inherited();
+        inherited["XDG_RUNTIME_DIR"] = "";
+        inherited["EMPTY"] = "";
+
+        var env = MonadoEnvironment.Build(inherited, new MonadoSettings(), CustomWith(new EnvVar("ALSO_EMPTY", "")), [new("FIXED_EMPTY", "")]);
+
+        Assert.All(env.Values, v => Assert.NotEqual("", v));
+        Assert.Equal(2 + 3, env.Count); // inherited, the three settings
+    }
+
+    [Fact]
+    public void A_missing_value_from_a_hand_edited_profile_counts_as_empty()
+    {
+        var env = MonadoEnvironment.Build(Inherited(), new MonadoSettings(), CustomWith(new EnvVar("SystemRoot", null!)), []);
+
+        Assert.False(env.ContainsKey("SystemRoot"));
+    }
+
+    [Fact]
     public void With_nothing_inherited_only_what_mirador_sets_is_listed()
     {
         var profile = CustomWith(new EnvVar("EXTRA", "1"));
