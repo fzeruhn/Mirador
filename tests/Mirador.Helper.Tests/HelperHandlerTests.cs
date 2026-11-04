@@ -47,6 +47,24 @@ public sealed class HelperHandlerTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(reply.Value));
     }
 
+    [Fact]
+    public async Task Ping_answers_while_another_request_is_still_running()
+    {
+        using var gate = new ManualResetEventSlim();
+        services.StopGate = gate;
+        var handler = Handler(serviceRunning: true, version: "1.2.3");
+        var stopping = handler.HandleAsync(Request(HelperCommand.StopPimax));
+        Assert.True(services.StopEntered.Wait(TimeSpan.FromSeconds(5)), "StopPimax never started");
+
+        var ping = handler.HandleAsync(Request(HelperCommand.Ping));
+
+        var finished = await Task.WhenAny(ping, Task.Delay(TimeSpan.FromSeconds(3)));
+        gate.Set();
+        Assert.True(finished == ping, "Ping waited for the running request");
+        Assert.Equal(new HelperReply(true, Value: "1.2.3"), await ping);
+        Assert.True((await stopping).Ok);
+    }
+
     // StopPimax / StartPimax
 
     [Fact]
@@ -82,17 +100,41 @@ public sealed class HelperHandlerTests : IDisposable
         Assert.True(r.Ok);
         Assert.False(r.WasRunning);
         Assert.Empty(services.Stopped);
+        Assert.Equal(PimaxNames.Processes, processes.Killed);
     }
 
     [Fact]
-    public async Task StopPimax_that_cannot_stop_the_service_reports_why()
+    public async Task StopPimax_that_cannot_stop_the_service_still_ends_the_processes_and_reports_why()
     {
         services.StopFails = new InvalidOperationException("The service PiServiceLauncher didn't stop within 20 seconds.");
 
         var r = await Handler(serviceRunning: true).HandleAsync(Request(HelperCommand.StopPimax));
 
-        Assert.False(r.Ok);
-        Assert.Equal("The service PiServiceLauncher didn't stop within 20 seconds.", r.Error);
+        Assert.Equal(new HelperReply(false, "The service PiServiceLauncher didn't stop within 20 seconds.", WasRunning: true), r);
+        Assert.Equal(PimaxNames.Processes, processes.Killed);
+    }
+
+    [Fact]
+    public async Task StopPimax_that_cannot_end_a_process_reports_why_after_stopping_the_service()
+    {
+        processes.KillFails = new InvalidOperationException("Windows wouldn't end pi_server: Access is denied.");
+
+        var r = await Handler(serviceRunning: true).HandleAsync(Request(HelperCommand.StopPimax));
+
+        Assert.Equal(new HelperReply(false, "Windows wouldn't end pi_server: Access is denied.", WasRunning: true), r);
+        Assert.Equal(["PiServiceLauncher"], services.Stopped);
+    }
+
+    [Fact]
+    public async Task StopPimax_that_fails_twice_reports_the_first_failure()
+    {
+        services.StopFails = new InvalidOperationException("stop failed");
+        processes.KillFails = new InvalidOperationException("kill failed");
+
+        var r = await Handler(serviceRunning: true).HandleAsync(Request(HelperCommand.StopPimax));
+
+        Assert.Equal(new HelperReply(false, "stop failed", WasRunning: true), r);
+        Assert.Equal(PimaxNames.Processes, processes.Killed);
     }
 
     [Fact]
@@ -204,6 +246,43 @@ public sealed class HelperHandlerTests : IDisposable
         Assert.True(r.Ok);
         Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Active);
         Assert.Null(registry.Recorded);
+    }
+
+    [Fact]
+    public async Task RestoreRuntime_leaves_a_runtime_that_replaced_the_bundled_one_and_forgets()
+    {
+        registry.Active = @"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json";
+        registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+
+        Assert.True(r.Ok);
+        Assert.Equal(@"C:\Program Files (x86)\Steam\steamapps\common\SteamVR\steamxr_win64.json", registry.Active);
+        Assert.Null(registry.Recorded);
+    }
+
+    [Fact]
+    public async Task RestoreRuntime_with_no_active_runtime_forgets_without_setting_one()
+    {
+        registry.Active = null;
+        registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
+
+        var r = await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+
+        Assert.True(r.Ok);
+        Assert.Null(registry.Active);
+        Assert.Null(registry.Recorded);
+    }
+
+    [Fact]
+    public async Task RestoreRuntime_knows_the_bundle_by_its_full_path_ignoring_case()
+    {
+        registry.Active = BundledManifest.ToUpperInvariant();
+        registry.Recorded = @"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json";
+
+        await Handler().HandleAsync(Request(HelperCommand.RestoreRuntime));
+
+        Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Active);
     }
 
     [Fact]

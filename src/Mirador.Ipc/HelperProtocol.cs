@@ -15,10 +15,15 @@ public enum HelperCommand
     /// <summary>Makes the Monado that came with Mirador the active OpenXR runtime, remembering the one it replaces.</summary>
     SetRuntimeBundled,
 
-    /// <summary>Puts back the OpenXR runtime that <see cref="SetRuntimeBundled"/> replaced.</summary>
+    /// <summary>
+    /// Puts back the OpenXR runtime that <see cref="SetRuntimeBundled"/> replaced, as long as Mirador's runtime is still
+    /// the active one; if another program has set its own since, that stays and the record is just dropped.
+    /// </summary>
     RestoreRuntime,
 
-    /// <summary>Stops Pimax's service and ends its processes.</summary>
+    /// <summary>
+    /// Stops Pimax's service and ends its processes (also when the service would not stop; the reply then says why).
+    /// </summary>
     StopPimax,
 
     /// <summary>Starts Pimax's service again if it is stopped.</summary>

@@ -15,6 +15,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
     private readonly FakeProcessControl processes = new();
     private readonly FakeRuntimeRegistry registry = new();
     private readonly ListLogger<HelperPipeServer> logger = new();
+    private readonly FakeLifetime lifetime = new();
     private HelperPipeServer server = null!;
 
     public async Task InitializeAsync()
@@ -39,7 +40,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
     }
 
     private HelperPipeServer NewServer(string name, TimeSpan? readLimit = null) =>
-        new(NewHandler(), logger, name) { ReadLimit = readLimit ?? TimeSpan.FromSeconds(5) };
+        new(NewHandler(), logger, lifetime, name) { ReadLimit = readLimit ?? TimeSpan.FromSeconds(5) };
 
     /// <summary>Connects with a bare pipe, writes <paramref name="request"/> as given and reads until the helper closes.</summary>
     private async Task<string> RawAsync(byte[] request)
@@ -104,7 +105,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
 
         var reply = await new HelperClient(pipeName).SendAsync(HelperCommand.StopPimax, CancellationToken.None);
 
-        Assert.Equal(new HelperReply(false, "Pimax's service won't stop."), reply);
+        Assert.Equal(new HelperReply(false, "Pimax's service won't stop.", WasRunning: true), reply);
     }
 
     [Fact]
@@ -242,6 +243,75 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Contains("longer than 4096 bytes", entry.Message);
     }
 
+    /// <summary>A server whose pipes after the first come from <paramref name="replacement"/>.</summary>
+    private HelperPipeServer ServerWithReplacements(string name, Func<NamedPipeServerStream> replacement) =>
+        new(NewHandler(), logger, lifetime, name)
+        {
+            RetryDelay = TimeSpan.FromMilliseconds(10),
+            PipeFactory = first => first ? HelperPipeServer.CreatePipe(name, firstInstance: true) : replacement(),
+        };
+
+    [Fact]
+    public async Task A_pipe_that_cannot_be_replaced_stops_the_host_with_an_error()
+    {
+        var name = pipeName + "-broken";
+        var attempts = 0;
+        using var broken = ServerWithReplacements(name, () =>
+        {
+            Interlocked.Increment(ref attempts);
+            throw new IOException("Out of pipes.");
+        });
+        await broken.StartAsync(CancellationToken.None);
+
+        await using var caller = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await caller.ConnectAsync(2000);
+        await broken.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, lifetime.StopRequests);
+        Assert.Equal(3, attempts);
+        var error = Assert.Single(logger.Entries, e => e.Level >= LogLevel.Error);
+        Assert.Contains("stopping", error.Message);
+    }
+
+    [Fact]
+    public async Task A_pipe_that_cannot_be_replaced_at_first_is_tried_again_and_the_host_keeps_running()
+    {
+        var name = pipeName + "-flaky";
+        var attempts = 0;
+        using var flaky = ServerWithReplacements(name, () =>
+            Interlocked.Increment(ref attempts) == 1
+                ? throw new IOException("Out of pipes.")
+                : HelperPipeServer.CreatePipe(name, firstInstance: false));
+        await flaky.StartAsync(CancellationToken.None);
+        try
+        {
+            var reply = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None);
+            var second = await new HelperClient(name).SendAsync(HelperCommand.Ping, CancellationToken.None);
+
+            Assert.True(reply.Ok);
+            Assert.True(second.Ok);
+            Assert.Equal(0, lifetime.StopRequests);
+            Assert.True(attempts >= 2);
+        }
+        finally
+        {
+            await flaky.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task A_caller_that_connects_and_leaves_without_a_word_is_not_a_warning()
+    {
+        await using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
+        {
+            await client.ConnectAsync(2000);
+        }
+
+        await Task.Delay(300);
+
+        Assert.DoesNotContain(logger.Entries, e => e.Level >= LogLevel.Warning);
+    }
+
     [Fact]
     public async Task A_second_server_on_the_same_name_does_not_start()
     {
@@ -273,6 +343,115 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         var reply = await new HelperClient(name) { ConnectTimeout = TimeSpan.FromMilliseconds(300) }.SendAsync(HelperCommand.Ping, CancellationToken.None);
         Assert.False(reply.Ok);
         Assert.StartsWith("Mirador's helper service isn't running", reply.Error);
+    }
+
+    /// <summary>
+    /// Another program (any signed-in user can do this) keeps trying to create the pipe as its first instance, which only
+    /// works while no instance of the name exists. It must never get in.
+    /// </summary>
+    private sealed class Squatter : IDisposable
+    {
+        private readonly CancellationTokenSource stop = new();
+        private readonly Task loop;
+        private int attempts;
+        private int takeovers;
+
+        public Squatter(string pipeName)
+        {
+            loop = Task.Factory.StartNew(() =>
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    try
+                    {
+                        using var taken = new NamedPipeServerStream(
+                            pipeName, PipeDirection.InOut, 4, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.FirstPipeInstance);
+                        Interlocked.Increment(ref takeovers);
+                    }
+                    catch (Exception e) when (e is UnauthorizedAccessException or IOException)
+                    {
+                    }
+
+                    Interlocked.Increment(ref attempts);
+                }
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        public int Attempts => Volatile.Read(ref attempts);
+
+        public int Takeovers => Volatile.Read(ref takeovers);
+
+        public void Dispose()
+        {
+            stop.Cancel();
+            loop.Wait();
+            stop.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task The_pipe_name_is_never_free_while_callers_connect_and_hang_up()
+    {
+        using var squatter = new Squatter(pipeName);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        ThreadPool.GetMinThreads(out var workers, out var io);
+        ThreadPool.SetMinThreads(Math.Max(workers, 32), io);
+
+        var hangers = Enumerable.Range(0, 3).Select(_ => Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                await using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                try
+                {
+                    await client.ConnectAsync(500);
+                }
+                catch (Exception e) when (e is TimeoutException or IOException)
+                {
+                }
+            }
+        }));
+        await Task.WhenAll(hangers);
+
+        Assert.True(squatter.Attempts > 100, $"the squatter only tried {squatter.Attempts} times");
+        Assert.Equal(0, squatter.Takeovers);
+        Assert.True((await new HelperClient(pipeName).SendAsync(HelperCommand.Ping, CancellationToken.None)).Ok);
+    }
+
+    [Fact]
+    public async Task The_pipe_name_is_never_free_when_every_instance_is_in_use_and_all_callers_leave_together()
+    {
+        using var squatter = new Squatter(pipeName);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            var clients = new List<NamedPipeClientStream>();
+            try
+            {
+                for (var i = 0; i < 4; i++)
+                {
+                    var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                    clients.Add(client);
+                    try
+                    {
+                        await client.ConnectAsync(300);
+                    }
+                    catch (Exception e) when (e is TimeoutException or IOException)
+                    {
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var client in clients)
+                {
+                    client.Dispose();
+                }
+            }
+        }
+
+        Assert.Equal(0, squatter.Takeovers);
+        Assert.True((await new HelperClient(pipeName).SendAsync(HelperCommand.Ping, CancellationToken.None)).Ok);
     }
 
     // The pipe's permissions

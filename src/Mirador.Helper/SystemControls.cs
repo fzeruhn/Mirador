@@ -89,6 +89,22 @@ public sealed partial class SystemProcessControl : IProcessControl
 {
     private static readonly TimeSpan ExitWait = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// How long WMI may take to answer. Its default is to wait for ever, and the helper handles one request at a time,
+    /// so a WMI service that hangs would otherwise hang the helper.
+    /// </summary>
+    private static readonly TimeSpan WmiTimeout = TimeSpan.FromSeconds(5);
+
+    private readonly Func<string, IEnumerable<string?>> queryCommandLines;
+
+    public SystemProcessControl() : this(QueryWmi)
+    {
+    }
+
+    /// <summary>For tests: answers the command-line query without WMI.</summary>
+    internal SystemProcessControl(Func<string, IEnumerable<string?>> queryCommandLines) =>
+        this.queryCommandLines = queryCommandLines;
+
     public void KillAll(IEnumerable<string> names)
     {
         string? failure = null;
@@ -129,21 +145,38 @@ public sealed partial class SystemProcessControl : IProcessControl
             throw new ArgumentException("Not a plain process name.", nameof(processName));
         }
 
-        var lines = new List<string>();
-        using var searcher = new ManagementObjectSearcher($"SELECT CommandLine FROM Win32_Process WHERE Name = '{processName}.exe'");
+        try
+        {
+            return [.. queryCommandLines(processName).Where(line => !string.IsNullOrEmpty(line))!];
+        }
+        catch (ManagementException e)
+        {
+            throw new InvalidOperationException(
+                e.ErrorCode == ManagementStatus.Timedout
+                    ? $"Windows couldn't list the running programs within {WmiTimeout.TotalSeconds:0} seconds. Try again."
+                    : $"Windows couldn't list the running programs: {e.Message}",
+                e);
+        }
+    }
+
+    /// <summary>The WMI query for the command lines of the running programs called <paramref name="processName"/>.</summary>
+    internal static ManagementObjectSearcher CreateSearcher(string processName) =>
+        new(
+            @"root\cimv2",
+            $"SELECT CommandLine FROM Win32_Process WHERE Name = '{processName}.exe'",
+            new System.Management.EnumerationOptions { Timeout = WmiTimeout, ReturnImmediately = true });
+
+    private static IEnumerable<string?> QueryWmi(string processName)
+    {
+        using var searcher = CreateSearcher(processName);
         using var results = searcher.Get();
         foreach (var item in results)
         {
             using (item)
             {
-                if (item["CommandLine"] is string { Length: > 0 } line)
-                {
-                    lines.Add(line);
-                }
+                yield return item["CommandLine"] as string;
             }
         }
-
-        return lines;
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9_.\-]{1,100}$", RegexOptions.CultureInvariant)]

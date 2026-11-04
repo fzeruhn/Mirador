@@ -88,13 +88,18 @@ public sealed class HelperHandler
 
     private HelperReply Handle(HelperCommand command)
     {
+        // Ping touches nothing on the machine, so it never waits for a request that is (perhaps for a long time) changing it.
+        if (command == HelperCommand.Ping)
+        {
+            return new HelperReply(true, Value: version);
+        }
+
         lock (gate)
         {
             try
             {
                 return command switch
                 {
-                    HelperCommand.Ping => new HelperReply(true, Value: version),
                     HelperCommand.SetRuntimeBundled => SetRuntimeBundled(),
                     HelperCommand.RestoreRuntime => RestoreRuntime(),
                     HelperCommand.StopPimax => StopPimax(),
@@ -127,28 +132,59 @@ public sealed class HelperHandler
         return new HelperReply(true);
     }
 
+    /// <summary>
+    /// Puts the recorded runtime back, but only while the bundled one is still the active one: if another program has
+    /// made its own runtime active since, that choice stays, and the record is just forgotten. Any signed-in user can
+    /// ask for this, so it must never overwrite a runtime Mirador didn't set.
+    /// </summary>
     private HelperReply RestoreRuntime()
     {
         var recorded = registry.GetRecorded();
-        if (recorded is not null)
+        if (recorded is null)
         {
-            registry.SetActive(recorded);
-            registry.SetRecorded(null);
+            return new HelperReply(true);
         }
 
+        var active = registry.GetActive();
+        if (active is not null && IsBundled(active))
+        {
+            registry.SetActive(recorded);
+        }
+
+        registry.SetRecorded(null);
         return new HelperReply(true);
     }
 
+    /// <summary>
+    /// Stops Pimax's service, then ends its processes, whether or not the service stopped. A failure of either step is
+    /// in the reply (the first one if both fail) together with <c>WasRunning</c>.
+    /// </summary>
     private HelperReply StopPimax()
     {
         var wasRunning = services.Exists(PimaxNames.Service) && services.IsRunning(PimaxNames.Service);
+        string? error = null;
         if (wasRunning)
         {
-            services.Stop(PimaxNames.Service, StopTimeout);
+            try
+            {
+                services.Stop(PimaxNames.Service, StopTimeout);
+            }
+            catch (Exception e)
+            {
+                error = Shorten(e.Message);
+            }
         }
 
-        processes.KillAll(PimaxNames.Processes);
-        return new HelperReply(true, WasRunning: wasRunning);
+        try
+        {
+            processes.KillAll(PimaxNames.Processes);
+        }
+        catch (Exception e)
+        {
+            error ??= Shorten(e.Message);
+        }
+
+        return new HelperReply(error is null, error, wasRunning);
     }
 
     private HelperReply StartPimax()

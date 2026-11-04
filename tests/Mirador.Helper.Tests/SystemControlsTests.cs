@@ -104,6 +104,35 @@ public sealed class SystemControlsTests : IDisposable
         Assert.Empty(new SystemProcessControl().CommandLines("mirador-test-not-running-" + Guid.NewGuid().ToString("N")));
     }
 
+    [Fact]
+    public void The_wmi_query_gives_up_after_five_seconds_instead_of_waiting_for_ever()
+    {
+        using var searcher = SystemProcessControl.CreateSearcher("pi_server");
+
+        Assert.Equal(TimeSpan.FromSeconds(5), searcher.Options.Timeout);
+        Assert.True(searcher.Options.ReturnImmediately);
+        Assert.Equal("SELECT CommandLine FROM Win32_Process WHERE Name = 'pi_server.exe'", searcher.Query.QueryString);
+    }
+
+    [Fact]
+    public void A_wmi_failure_comes_back_as_a_plain_message()
+    {
+        var processes = new SystemProcessControl(_ => throw new System.Management.ManagementException("Provider load failure"));
+
+        var error = Assert.Throws<InvalidOperationException>(() => processes.CommandLines("pi_server"));
+
+        Assert.StartsWith("Windows couldn't list the running programs", error.Message);
+        Assert.Contains("Provider load failure", error.Message);
+    }
+
+    [Fact]
+    public void Command_lines_that_wmi_leaves_empty_are_skipped()
+    {
+        var processes = new SystemProcessControl(_ => ["a b c", null, "", "d"]);
+
+        Assert.Equal(["a b c", "d"], processes.CommandLines("pi_server"));
+    }
+
     [Theory]
     [InlineData("x' OR Name LIKE '%")]
     [InlineData("a b")]

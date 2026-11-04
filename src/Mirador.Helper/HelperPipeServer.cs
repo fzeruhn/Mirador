@@ -14,6 +14,12 @@ namespace Mirador.Helper;
 /// <see cref="LineCodec.MaxLineBytes"/> bytes of it and <see cref="ReadLimit"/> to send them; anything that isn't one of
 /// the fixed commands is dropped by closing the connection. What the caller sent is never logged (only that it was
 /// refused and why), and nothing from it reaches the registry, a service or a process.
+/// <para>
+/// The pipe's name is never without an instance of ours while the service runs: only the first instance is created
+/// with <see cref="PipeOptions.FirstPipeInstance"/>, so a program that found the name free could take it over. Every
+/// replacement listener is therefore created while the instance it replaces still exists, and at most three callers are
+/// served at once, so that a fourth instance is always available for the next listener.
+/// </para>
 /// </summary>
 public sealed class HelperPipeServer : BackgroundService
 {
@@ -22,26 +28,41 @@ public sealed class HelperPipeServer : BackgroundService
 
     private const int MaxInstances = 4;
 
+    /// <summary>How often a replacement listener is tried before the helper gives up and stops.</summary>
+    private const int MaxReplacementAttempts = 3;
+
     // Room for a whole request and a whole reply. With no buffer (0) a pipe hands data over only while the other side is
     // reading, so a caller that sent more than the helper read, or never reads its reply, would block both for good.
     private const int BufferBytes = 2 * (LineCodec.MaxLineBytes + 1);
 
     private readonly HelperHandler handler;
     private readonly ILogger<HelperPipeServer> logger;
+    private readonly IHostApplicationLifetime lifetime;
     private readonly string pipeName;
+
+    // One slot for each instance of the pipe that exists, whether it is listening or connected.
     private readonly SemaphoreSlim instances = new(MaxInstances);
     private readonly ConcurrentDictionary<Task, byte> serving = new();
     private NamedPipeServerStream? firstPipe;
 
-    public HelperPipeServer(HelperHandler handler, ILogger<HelperPipeServer> logger, string pipeName = DefaultPipeName)
+    public HelperPipeServer(
+        HelperHandler handler, ILogger<HelperPipeServer> logger, IHostApplicationLifetime lifetime,
+        string pipeName = DefaultPipeName)
     {
         this.handler = handler;
         this.logger = logger;
+        this.lifetime = lifetime;
         this.pipeName = pipeName;
     }
 
     /// <summary>How long a caller has to send its request, and the helper to send the reply.</summary>
     internal TimeSpan ReadLimit { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The pause between tries when a replacement listener can't be created.</summary>
+    internal TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>Makes the pipe instances (bool: whether it is the first); a test makes it fail.</summary>
+    internal Func<bool, NamedPipeServerStream>? PipeFactory { get; init; }
 
     /// <summary>
     /// Authenticated Users may read and write, which is all a request needs; SYSTEM and Administrators have full
@@ -58,6 +79,18 @@ public sealed class HelperPipeServer : BackgroundService
         return security;
     }
 
+    /// <summary>One instance of the pipe, with its permissions; the first one must be the first of its name.</summary>
+    internal static NamedPipeServerStream CreatePipe(string pipeName, bool firstInstance) =>
+        NamedPipeServerStreamAcl.Create(
+            pipeName,
+            PipeDirection.InOut,
+            MaxInstances,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | (firstInstance ? PipeOptions.FirstPipeInstance : PipeOptions.None),
+            inBufferSize: BufferBytes,
+            outBufferSize: BufferBytes,
+            CreatePipeSecurity());
+
     /// <summary>
     /// Makes the first instance of the pipe here, as a first instance: if a program already holds the name, the
     /// service fails to start instead of listening on a pipe nobody will connect to (or serving behind an imposter).
@@ -65,7 +98,7 @@ public sealed class HelperPipeServer : BackgroundService
     public override Task StartAsync(CancellationToken cancellationToken)
     {
         instances.Wait(CancellationToken.None);
-        firstPipe = CreatePipe(firstInstance: true);
+        firstPipe = NewPipe(firstInstance: true);
         return base.StartAsync(cancellationToken);
     }
 
@@ -77,37 +110,46 @@ public sealed class HelperPipeServer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        NamedPipeServerStream? pipe = firstPipe ?? throw new InvalidOperationException("The pipe is opened by StartAsync.");
+        NamedPipeServerStream? listening = firstPipe ?? throw new InvalidOperationException("The pipe is opened by StartAsync.");
         firstPipe = null;
         logger.LogInformation("The helper is listening on {Pipe}.", pipeName);
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                var accepted = true;
                 try
                 {
-                    await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
+                    await listening.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
                 }
                 catch (IOException e)
                 {
-                    // The caller went away between connecting and being accepted; listen again on a fresh instance.
+                    // The caller went away between connecting and being accepted; this instance is no use any more.
                     logger.LogDebug(e, "A caller disconnected before it was accepted.");
-                    pipe.Dispose();
-                    pipe = null;
-                    instances.Release();
-                    pipe = await NextPipeAsync(stoppingToken).ConfigureAwait(false);
-                    continue;
+                    accepted = false;
                 }
 
-                var connected = pipe;
-                pipe = null;
-                var task = ServeAsync(connected, stoppingToken);
-                serving.TryAdd(task, 0);
-                _ = task.ContinueWith(t => serving.TryRemove(t, out _), TaskScheduler.Default);
+                // The next listener comes first, while `listening` (connected, or dead) still holds the name. When all
+                // four instances are in use this waits for a served caller to finish, and the accepted one waits with it.
+                var next = await NextListenerAsync(stoppingToken).ConfigureAwait(false);
+                if (next is null)
+                {
+                    break;
+                }
 
-                // The next listener is up before the caller is served, and while all instances are busy the
-                // pipe still exists (busy), so callers wait instead of finding the name gone.
-                pipe = await NextPipeAsync(stoppingToken).ConfigureAwait(false);
+                var current = listening;
+                listening = next;
+                if (accepted)
+                {
+                    var task = ServeAsync(current, stoppingToken);
+                    serving.TryAdd(task, 0);
+                    _ = task.ContinueWith(t => serving.TryRemove(t, out _), TaskScheduler.Default);
+                }
+                else
+                {
+                    current.Dispose();
+                    instances.Release();
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -116,40 +158,50 @@ public sealed class HelperPipeServer : BackgroundService
         }
         finally
         {
-            pipe?.Dispose();
+            listening?.Dispose();
             await Task.WhenAll(serving.Keys).ConfigureAwait(false);
         }
     }
 
-    /// <summary>Takes a free instance slot and makes the next listening instance, trying again if Windows refuses.</summary>
-    private async Task<NamedPipeServerStream> NextPipeAsync(CancellationToken ct)
+    private NamedPipeServerStream NewPipe(bool firstInstance) =>
+        PipeFactory is { } factory ? factory(firstInstance) : CreatePipe(pipeName, firstInstance);
+
+    /// <summary>
+    /// Takes a free instance slot (waiting for one if all are in use) and makes a listening instance in it. When Windows
+    /// keeps refusing, logs an error and asks the host to stop, rather than carry on without a listener; returns null then.
+    /// </summary>
+    private async Task<NamedPipeServerStream?> NextListenerAsync(CancellationToken ct)
     {
-        while (true)
+        await instances.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            await instances.WaitAsync(ct).ConfigureAwait(false);
-            try
+            for (var attempt = 1; ; attempt++)
             {
-                return CreatePipe(firstInstance: false);
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-                instances.Release();
-                logger.LogError(e, "The helper couldn't open its pipe again; trying again in a second.");
-                await Task.Delay(TimeSpan.FromSeconds(1), ct).ConfigureAwait(false);
+                try
+                {
+                    return NewPipe(firstInstance: false);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt == MaxReplacementAttempts)
+                    {
+                        logger.LogError(e, "The helper couldn't open its pipe again after {Attempts} tries; stopping the helper service.", attempt);
+                        lifetime.StopApplication();
+                        instances.Release();
+                        return null;
+                    }
+
+                    logger.LogWarning(e, "The helper couldn't open its pipe again; trying again.");
+                    await Task.Delay(RetryDelay, ct).ConfigureAwait(false);
+                }
             }
         }
+        catch (OperationCanceledException)
+        {
+            instances.Release();
+            throw;
+        }
     }
-
-    private NamedPipeServerStream CreatePipe(bool firstInstance) =>
-        NamedPipeServerStreamAcl.Create(
-            pipeName,
-            PipeDirection.InOut,
-            MaxInstances,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous | (firstInstance ? PipeOptions.FirstPipeInstance : PipeOptions.None),
-            inBufferSize: BufferBytes,
-            outBufferSize: BufferBytes,
-            CreatePipeSecurity());
 
     /// <summary>Serves one connection, then closes it and frees its slot. Never throws: a bad caller must not stop the service.</summary>
     private async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken stop)
@@ -184,7 +236,8 @@ public sealed class HelperPipeServer : BackgroundService
 
             if (request is null)
             {
-                logger.LogWarning("Dropped a connection: it sent no request.");
+                // Connecting and leaving is not worth a warning, which any signed-in user could otherwise pile up in the event log.
+                logger.LogDebug("A caller connected and left without sending a request.");
                 return;
             }
 
