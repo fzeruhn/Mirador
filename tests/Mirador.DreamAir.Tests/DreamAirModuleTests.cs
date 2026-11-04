@@ -30,7 +30,10 @@ public sealed class DreamAirModuleTests : IDisposable
 
     public DreamAirModuleTests()
     {
-        helper = new FakeHelper(steps);
+        helper = new FakeHelper(steps, processes);
+
+        // Some of Pimax's software runs, so a Start asks the helper to stop it, unless a test removes it.
+        processes.Add("PimaxClient", 7);
         paths = new AppPaths(Path.Combine(dir.Path, "Mirador"));
         state = new DreamAirStateStore(paths.DreamAirFile);
         state.Save(new DreamAirState(LastGoodDriver: "621.01"));
@@ -115,6 +118,7 @@ public sealed class DreamAirModuleTests : IDisposable
                 new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
                 new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
                 new("U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS", "8.9"),
+                new("DREAMAIR_LOG", "info"),
             },
             session.Environment);
         Assert.Equal(new Dictionary<string, string> { ["pimaxWasRunning"] = "true" }, session.RecoveryData);
@@ -136,6 +140,36 @@ public sealed class DreamAirModuleTests : IDisposable
     }
 
     [Fact]
+    public async Task With_nothing_of_pimax_running_start_needs_no_helper()
+    {
+        processes.Remove("PimaxClient");
+        helper.Replies[HelperCommand.StopPimax] = new HelperReply(false, "Mirador's helper service isn't running.") { NotDelivered = true };
+
+        using var session = (DreamAirSession)await BeforeStart();
+
+        Assert.Empty(helper.Sent);
+        Assert.Equal("false", session.RecoveryData["pimaxWasRunning"]);
+        Assert.Equal(["save pimaxWasRunning=false"], steps.Where(s => s.StartsWith("save", StringComparison.Ordinal)));
+        Assert.Contains("upload", steps);
+    }
+
+    [Theory]
+    [InlineData("PiServiceLauncher")]
+    [InlineData("pi_server")]
+    [InlineData("VRSS_GAZE_PROVIDER")]
+    public async Task Any_of_pimax_running_asks_the_helper(string name)
+    {
+        processes.Remove("PimaxClient");
+        processes.Add(name);
+        helper.Replies[HelperCommand.StopPimax] = new HelperReply(false, "Mirador's helper service isn't running.") { NotDelivered = true };
+
+        var ex = await Assert.ThrowsAsync<MiradorException>(() => BeforeStart());
+
+        Assert.Equal("Mirador's helper service isn't running.", ex.Message);
+        Assert.Equal([HelperCommand.StopPimax], helper.Sent);
+    }
+
+    [Fact]
     public async Task Layer_folder_adds_the_implicit_layer_path()
     {
         dir.Touch("vk-layer", "build", "layer", DreamAirLayer.ManifestName);
@@ -146,7 +180,7 @@ public sealed class DreamAirModuleTests : IDisposable
         using var session = (DreamAirSession)await BeforeStart(DreamAirProfile(build));
 
         Assert.Equal(new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", Path.Combine(build, "layer")), session.Environment[^1]);
-        Assert.Equal(8, session.Environment.Count);
+        Assert.Equal(DreamAirModule.FixedEnvironment.Count + 1, session.Environment.Count);
     }
 
     [Fact]
@@ -374,6 +408,7 @@ public sealed class DreamAirModuleTests : IDisposable
 
         Assert.Equal([HelperCommand.StopPimax], helper.Sent);
 
+        processes.Add("PimaxClient", 7); // Pimax runs again
         helper.Replies[HelperCommand.StopPimax] = new HelperReply(true, WasRunning: true);
         using (var session = (DreamAirSession)await BeforeStart())
         {
@@ -529,6 +564,20 @@ public sealed class DreamAirModuleTests : IDisposable
     }
 
     [Fact]
+    public async Task Check_display_with_nothing_of_pimax_running_needs_no_helper()
+    {
+        processes.Remove("PimaxClient");
+        helper.Replies[HelperCommand.StopPimax] = new HelperReply(false, "Mirador's helper service isn't running.") { NotDelivered = true };
+
+        var (result, problem) = await Module().CheckDisplayAsync(Context, DreamAirProfile(), Save, CancellationToken.None);
+
+        Assert.True(result.Pass);
+        Assert.Null(problem);
+        Assert.Empty(helper.Sent);
+        Assert.Contains("display check", steps);
+    }
+
+    [Fact]
     public async Task Check_display_with_no_answer_from_the_helper_starts_pimax_again_when_it_was_seen()
     {
         helper.Replies[HelperCommand.StopPimax] = new HelperReply(false, "Mirador's helper service didn't answer in time.");
@@ -633,7 +682,7 @@ public sealed class DreamAirModuleTests : IDisposable
         public void Report(string value) => steps.Add(value);
     }
 
-    private sealed class FakeHelper(List<string> steps) : IHelperClient
+    private sealed class FakeHelper(List<string> steps, FakeProcesses processes) : IHelperClient
     {
         public Dictionary<HelperCommand, HelperReply> Replies { get; } = [];
 
@@ -647,7 +696,13 @@ public sealed class DreamAirModuleTests : IDisposable
             Sent.Add(command);
             steps.Add(command.ToString());
             OnSend?.Invoke(command);
-            return Task.FromResult(Replies.GetValueOrDefault(command) ?? new HelperReply(true, WasRunning: command == HelperCommand.StopPimax ? true : null));
+            var reply = Replies.GetValueOrDefault(command) ?? new HelperReply(true, WasRunning: command == HelperCommand.StopPimax ? true : null);
+            if (command == HelperCommand.StopPimax && reply.Ok)
+            {
+                processes.Remove("PimaxClient"); // the helper ends Pimax's processes
+            }
+
+            return Task.FromResult(reply);
         }
     }
 }

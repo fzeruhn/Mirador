@@ -37,7 +37,10 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 {
     public const string ModuleId = "dreamair";
 
-    /// <summary>The variables the Dream Air needs (Mirador.md §4.3), the same as the launcher's.</summary>
+    /// <summary>
+    /// The variables the Dream Air needs (Mirador.md §4.3): the launcher's, and the Dream Air drivers' log at info, whose
+    /// lines the board and eye tracker status come from (their default, warn, leaves those out).
+    /// </summary>
     public static IReadOnlyList<EnvVar> FixedEnvironment { get; } =
     [
         new("STEAMVR_LH_ENABLE", "1"),
@@ -47,6 +50,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
         new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
         new("U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS", "8.9"),
+        new("DREAMAIR_LOG", "info"),
     ];
 
     public string Id => ModuleId;
@@ -107,14 +111,15 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         progress.Report("Stopping Pimax's software…");
 
         // Saved before asking: Mirador may be killed, or hear no answer, while the helper stops the service.
-        var seenRunning = ctx.Processes.Snapshot().Any(p => string.Equals(p.Name, PimaxNames.Service, StringComparison.OrdinalIgnoreCase));
+        var running = ctx.Processes.Snapshot();
+        var seenRunning = ServiceRuns(running);
         if (seenRunning)
         {
             saveRecovery(DreamAirSession.Recovery(true));
         }
 
         // Not cancelled by Stop: Mirador must hear whether Pimax ran to start it again (the helper's own limit applies).
-        var stop = await ctx.Helper.SendAsync(HelperCommand.StopPimax, CancellationToken.None).ConfigureAwait(false);
+        var stop = await StopPimaxAsync(ctx, running).ConfigureAwait(false);
 
         // An answer says; a request that never arrived changed nothing; with no answer, what was seen running decides.
         var wasRunning = stop.WasRunning ?? (!stop.NotDelivered && seenRunning);
@@ -232,13 +237,14 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             return (new DisplayCheckResult(false, e.Message, null, "") { Finished = false }, null);
         }
 
-        var seenRunning = ctx.Processes.Snapshot().Any(p => string.Equals(p.Name, PimaxNames.Service, StringComparison.OrdinalIgnoreCase));
+        var running = ctx.Processes.Snapshot();
+        var seenRunning = ServiceRuns(running);
         if (seenRunning)
         {
             saveRecovery(DreamAirSession.Recovery(true));
         }
 
-        var stop = await ctx.Helper.SendAsync(HelperCommand.StopPimax, CancellationToken.None).ConfigureAwait(false);
+        var stop = await StopPimaxAsync(ctx, running).ConfigureAwait(false);
         var wasRunning = stop.WasRunning ?? (!stop.NotDelivered && seenRunning);
         if (wasRunning)
         {
@@ -286,6 +292,18 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 
         return (check, startProblem);
     }
+
+    private static bool ServiceRuns(IReadOnlyList<ProcInfo> running) =>
+        running.Any(p => string.Equals(p.Name, PimaxNames.Service, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Stops Pimax's service and processes through the helper. When none of them runs there is nothing to stop or to
+    /// start again, so the helper isn't asked: a missing or broken helper then doesn't block a Start that doesn't need it.
+    /// </summary>
+    private static Task<HelperReply> StopPimaxAsync(ModuleContext ctx, IReadOnlyList<ProcInfo> running) =>
+        ServiceRuns(running) || running.Any(p => PimaxNames.Processes.Contains(p.Name, StringComparer.OrdinalIgnoreCase))
+            ? ctx.Helper.SendAsync(HelperCommand.StopPimax, CancellationToken.None)
+            : Task.FromResult(new HelperReply(true, WasRunning: false));
 
     internal const string DifferentHeadset =
         "This looks like a different headset. Mirador reads its eye geometry from Pimax Play the next time Pimax runs.";
