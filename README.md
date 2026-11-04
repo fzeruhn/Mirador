@@ -17,6 +17,10 @@ tools\build.ps1 -Test    # the same, then all tests
 dotnet run --project src\Mirador.App -p:Platform=x64
 ```
 
+The stand-in (`standin\`, C) needs Visual Studio's C++ x64 tools; `tools\build.ps1` builds it first (with a warning,
+not a failure, when they're missing) into `artifacts\standin\monado-service.exe`, and `standin\build.ps1` builds it
+alone.
+
 ## Layout
 
 | Project | What it is |
@@ -26,6 +30,7 @@ dotnet run --project src\Mirador.App -p:Platform=x64
 | `src\Mirador.DreamAir` | The Pimax Dream Air module |
 | `src\Mirador.Ipc` | Messages between the app and the helper service |
 | `src\Mirador.Helper` | The helper Windows service, which does the steps that need admin rights |
+| `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for `monado-service.exe` and asks Mirador to start Monado |
 | `tests\` | xUnit tests, one project per source project |
 
 Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`.
