@@ -92,7 +92,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Equal(0, registry.Writes);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task Ping_over_the_pipe_returns_the_version()
     {
         var reply = await new HelperClient(pipeName).SendAsync(HelperCommand.Ping, CancellationToken.None);
@@ -100,7 +100,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Equal(new HelperReply(true, Value: "9.9.9"), reply);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_command_over_the_pipe_reaches_the_handler()
     {
         var reply = await new HelperClient(pipeName).SendAsync(HelperCommand.StopPimax, CancellationToken.None);
@@ -110,7 +110,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Equal(PimaxNames.Processes, processes.Killed);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_failing_command_comes_back_as_an_error_reply()
     {
         services.StopFails = new InvalidOperationException("Pimax's service won't stop.");
@@ -120,7 +120,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Equal(new HelperReply(false, "Pimax's service won't stop.", WasRunning: true), reply);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task The_raw_reply_is_one_json_line()
     {
         var text = await RawAsync("{\"command\":\"Ping\"}\n");
@@ -128,7 +128,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Equal("{\"ok\":true,\"value\":\"9.9.9\"}\n", text);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task More_clients_at_once_than_pipe_instances_are_all_served()
     {
         // A pipe client blocks a pool thread while it connects. Here the clients and the server share one process, so
@@ -142,7 +142,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.All(replies, r => Assert.Equal(new HelperReply(true, Value: "9.9.9"), r));
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task The_helper_keeps_serving_one_connection_after_another()
     {
         for (var i = 0; i < 10; i++)
@@ -152,7 +152,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task Only_the_first_request_of_a_connection_is_handled()
     {
         var text = await RawAsync("{\"command\":\"Ping\"}\n{\"command\":\"StopPimax\"}\n");
@@ -161,7 +161,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         AssertNothingHappened();
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_line_over_the_limit_is_dropped_without_a_reply_and_without_effect()
     {
         var text = await RawAsync(new string('a', LineCodec.MaxLineBytes + 100) + "\n");
@@ -171,7 +171,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.True((await new HelperClient(pipeName).SendAsync(HelperCommand.Ping, CancellationToken.None)).Ok);
     }
 
-    [Theory]
+    [ElevatedTheory]
     [InlineData("not json at all")]
     [InlineData("{\"command\":\"Reboot\"}")]
     [InlineData("{\"command\":1}")]
@@ -188,7 +188,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.True((await new HelperClient(pipeName).SendAsync(HelperCommand.Ping, CancellationToken.None)).Ok);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_caller_that_hangs_up_before_the_end_of_its_request_gets_nothing_done()
     {
         await using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
@@ -204,7 +204,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Contains("ended before its newline", entry.Message);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_client_that_connects_and_says_nothing_is_dropped_after_the_read_limit()
     {
         var name = pipeName + "-quick";
@@ -229,7 +229,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task What_a_caller_sends_is_never_written_to_the_log()
     {
         await RawAsync("SECRET-PAYLOAD-12345 C:\\evil.json\n");
@@ -246,7 +246,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         });
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task Dropped_connections_are_logged_as_warnings_with_the_reason()
     {
         await RawAsync(new string('a', LineCodec.MaxLineBytes + 1) + "\n");
@@ -264,7 +264,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
             PipeFactory = first => first ? HelperPipeServer.CreatePipe(name, firstInstance: true) : replacement(),
         };
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_pipe_that_cannot_be_replaced_stops_the_host_with_an_error()
     {
         var name = pipeName + "-broken";
@@ -286,7 +286,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Contains("stopping", error.Message);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_pipe_that_cannot_be_replaced_at_first_is_tried_again_and_the_host_keeps_running()
     {
         var name = pipeName + "-flaky";
@@ -312,7 +312,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_replacement_refused_because_every_instance_is_in_use_is_waited_for_not_given_up()
     {
         var name = pipeName + "-busy";
@@ -339,7 +339,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task Callers_that_keep_their_connections_open_cannot_stop_the_helper()
     {
         var name = pipeName + "-held";
@@ -373,7 +373,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_caller_that_keeps_its_connection_open_after_the_reply_is_let_go()
     {
         var name = pipeName + "-lingering";
@@ -408,7 +408,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_caller_that_connects_and_leaves_without_a_word_is_not_a_warning()
     {
         await using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
@@ -421,7 +421,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.DoesNotContain(logger.Entries, e => e.Level >= LogLevel.Warning);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_second_server_on_the_same_name_does_not_start()
     {
         using var second = NewServer(pipeName);
@@ -429,7 +429,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => second.StartAsync(CancellationToken.None));
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task A_program_that_already_holds_the_pipe_name_keeps_the_server_from_starting()
     {
         var name = pipeName + "-squatted";
@@ -439,7 +439,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.StartAsync(CancellationToken.None));
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task Stopping_the_server_closes_the_pipe()
     {
         var name = pipeName + "-stopping";
@@ -498,7 +498,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task The_pipe_name_is_never_free_while_callers_connect_and_hang_up()
     {
         using var squatter = new Squatter(pipeName);
@@ -527,7 +527,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.True((await new HelperClient(pipeName).SendAsync(HelperCommand.Ping, CancellationToken.None)).Ok);
     }
 
-    [Fact]
+    [ElevatedFact]
     public async Task The_pipe_name_is_never_free_when_every_instance_is_in_use_and_all_callers_leave_together()
     {
         using var squatter = new Squatter(pipeName);
@@ -573,7 +573,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
             .ToArray();
     }
 
-    [Fact]
+    [ElevatedFact]
     public void Authenticated_users_may_read_and_write_and_nothing_more()
     {
         var users = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
@@ -588,7 +588,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.False(rule.Rights.HasFlag(PipeAccessRights.Delete));
     }
 
-    [Theory]
+    [ElevatedTheory]
     [InlineData(WellKnownSidType.LocalSystemSid)]
     [InlineData(WellKnownSidType.BuiltinAdministratorsSid)]
     public void System_and_administrators_have_full_control(WellKnownSidType sid)
@@ -600,7 +600,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         Assert.Equal(PipeAccessRights.FullControl, rule.Rights);
     }
 
-    [Fact]
+    [ElevatedFact]
     public void Nobody_else_is_let_in_and_network_logons_are_turned_away()
     {
         var allowed = new[]

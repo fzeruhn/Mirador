@@ -5,7 +5,7 @@ using Mirador.Ipc;
 namespace Mirador.Core.Tests;
 
 /// <summary>A test of the built stand-in (<c>artifacts\standin\monado-service.exe</c>, from <c>standin\build.ps1</c>); skipped when it isn't built.</summary>
-public sealed class StandInFactAttribute : FactAttribute
+public class StandInFactAttribute : FactAttribute
 {
     public StandInFactAttribute()
     {
@@ -16,6 +16,18 @@ public sealed class StandInFactAttribute : FactAttribute
         else if (!File.Exists(StandInExeTests.Exe))
         {
             Skip = $"The stand-in isn't built ({StandInExeTests.Exe}): run standin\\build.ps1.";
+        }
+    }
+}
+
+/// <summary>A stand-in test on a test pipe: an elevated stand-in ignores <c>MIRADOR_STANDIN_PIPE</c> by design, so these run unelevated only.</summary>
+public sealed class UnelevatedStandInFactAttribute : StandInFactAttribute
+{
+    public UnelevatedStandInFactAttribute()
+    {
+        if (Skip is null && Environment.IsPrivilegedProcess)
+        {
+            Skip = "An elevated stand-in ignores its test pipe: run this test unelevated.";
         }
     }
 }
@@ -55,7 +67,7 @@ public class StandInExeTests
         return (process.ExitCode, await error, watch.Elapsed);
     }
 
-    [StandInFact]
+    [UnelevatedStandInFact]
     public async Task Ok_exits_0_after_lingering()
     {
         var name = UniqueName();
@@ -68,7 +80,7 @@ public class StandInExeTests
         Assert.InRange(took, TimeSpan.FromSeconds(2.0), TimeSpan.FromSeconds(4.0));
     }
 
-    [StandInFact]
+    [UnelevatedStandInFact]
     public async Task Fail_exits_1_at_once_with_the_message()
     {
         var name = UniqueName();
@@ -82,19 +94,15 @@ public class StandInExeTests
         Assert.True(took < TimeSpan.FromSeconds(2), took.ToString()); // no linger: an OK takes 2 s at least
     }
 
-    [StandInFact]
+    [UnelevatedStandInFact]
     public async Task Starts_mirador_and_waits_for_it()
     {
-        if (Environment.IsPrivilegedProcess)
-        {
-            return; // an elevated stand-in doesn't start Mirador (exit 3), by design
-        }
-
-        // whoami.exe stands in for Mirador: it starts (and ends); the "Mirador" answering comes a second later.
+        // attrib.exe stands in for a Mirador that hands over to another and ends well: it takes the stand-in's
+        // "--background" as a file name to list, only reads, and exits 0. The "Mirador" answering comes a second later.
         var name = UniqueName();
-        var whoami = Path.Combine(Environment.SystemDirectory, "whoami.exe");
+        var handsOver = Path.Combine(Environment.SystemDirectory, "attrib.exe");
         await using var server = new AppPipeServer(name, (_, _) => Task.FromResult(AppPipe.Ok));
-        var run = RunAsync(name, whoami);
+        var run = RunAsync(name, handsOver);
         await Task.Delay(1000);
 
         server.Start();
@@ -103,14 +111,9 @@ public class StandInExeTests
         Assert.True(code == 0, error);
     }
 
-    [StandInFact]
+    [UnelevatedStandInFact]
     public async Task Unstartable_app_exits_4()
     {
-        if (Environment.IsPrivilegedProcess)
-        {
-            return; // an elevated stand-in doesn't start Mirador (exit 3), by design
-        }
-
         var (code, error, _) = await RunAsync(UniqueName(), @"C:\nowhere\Mirador.exe");
 
         Assert.Equal(4, code);
