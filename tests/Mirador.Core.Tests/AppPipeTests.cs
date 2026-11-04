@@ -122,12 +122,86 @@ public class AppPipeTests
     [Fact]
     public async Task A_second_server_on_the_same_name_is_refused()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // first pipe instances are Windows' own
+        }
+
         var name = UniqueName();
         await using var server = new AppPipeServer(name, Answer);
         server.Start();
         await using var second = new AppPipeServer(name, Answer);
 
-        Assert.ThrowsAny<Exception>(second.Start);
+        Assert.Throws<UnauthorizedAccessException>(second.Start);
+    }
+
+    [Fact]
+    public async Task A_handler_that_throws_answers_fail_and_says_so()
+    {
+        var name = UniqueName();
+        var reported = new List<Exception>();
+        await using var server = new AppPipeServer(name, (_, _) => throw new InvalidOperationException("The session is broken."));
+        server.HandlerFailed += e => { lock (reported) { reported.Add(e); } };
+        server.Start();
+
+        var reply = await AppPipeClient.SendAsync(name, AppPipe.Start, Limit, CancellationToken.None);
+
+        Assert.Equal("FAIL Mirador failed: The session is broken.", reply);
+        lock (reported)
+        {
+            Assert.IsType<InvalidOperationException>(Assert.Single(reported));
+        }
+    }
+
+    [Fact]
+    public async Task A_caller_that_never_reads_its_reply_doesnt_hold_up_closing()
+    {
+        var name = UniqueName();
+        var server = new AppPipeServer(name, Answer) { ReadLimit = TimeSpan.FromMilliseconds(300) };
+        server.Start();
+        await using var rude = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await rude.ConnectAsync((int)Limit.TotalMilliseconds);
+        await rude.WriteAsync(Encoding.ASCII.GetBytes("SHOW\n"));
+        await Task.Delay(100);
+
+        await server.DisposeAsync().AsTask().WaitAsync(Limit);
+    }
+
+    [Fact]
+    public async Task Closing_while_a_start_runs_cancels_it_and_waits_for_it()
+    {
+        var name = UniqueName();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = new AppPipeServer(name, async (_, ct) =>
+        {
+            started.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            return AppPipe.Ok;
+        });
+        server.Start();
+        var reply = AppPipeClient.SendAsync(name, AppPipe.Start, Limit, CancellationToken.None);
+        await started.Task.WaitAsync(Limit);
+
+        await server.DisposeAsync().AsTask().WaitAsync(Limit);
+
+        Assert.Null(await reply.WaitAsync(Limit));
+    }
+
+    [Fact]
+    public async Task More_callers_than_slots_are_all_answered()
+    {
+        var name = UniqueName();
+        await using var server = new AppPipeServer(name, async (line, ct) =>
+        {
+            await Task.Delay(50, ct);
+            return AppPipe.Ok;
+        });
+        server.Start();
+
+        var replies = await Task.WhenAll(Enumerable.Range(0, AppPipeServer.MaxServed + 8)
+            .Select(_ => AppPipeClient.SendAsync(name, AppPipe.Show, Limit, CancellationToken.None)));
+
+        Assert.All(replies, r => Assert.Equal("OK", r));
     }
 
     [Fact]
