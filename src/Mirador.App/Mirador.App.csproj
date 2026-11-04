@@ -17,6 +17,10 @@
   <ItemGroup>
     <Content Include="Assets\*.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The stand-in (standin\build.ps1), when it has been built: copied into build folders, it lets games start Monado. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\artifacts\standin\monado-service.exe')">
+    <None Include="$(MSBuildThisFileDirectory)..\..\artifacts\standin\monado-service.exe" Link="standin\monado-service.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" />
