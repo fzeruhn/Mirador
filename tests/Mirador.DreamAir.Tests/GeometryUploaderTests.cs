@@ -136,7 +136,7 @@ public sealed class GeometryUploaderTests : IDisposable
     [InlineData("monado-service")]
     public async Task A_program_holding_the_tracker_refuses(string holder)
     {
-        processes.Running.Add(new ProcInfo(holder, 42));
+        processes.Add(holder);
 
         var result = await Uploader().UploadAsync(pimax, "K11_RAWH", CancellationToken.None);
 

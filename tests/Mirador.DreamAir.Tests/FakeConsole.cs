@@ -132,7 +132,29 @@ internal sealed class FakeUsbDevices(params UsbId[] ids) : IUsbDevices
 
 internal sealed class FakeProcesses : IProcessList
 {
-    public List<ProcInfo> Running { get; } = [];
+    private readonly List<ProcInfo> running = [];
 
-    public IReadOnlyList<ProcInfo> Snapshot() => [.. Running];
+    public void Add(string name, int id = 42)
+    {
+        lock (running)
+        {
+            running.Add(new ProcInfo(name, id));
+        }
+    }
+
+    public void Remove(string name)
+    {
+        lock (running)
+        {
+            running.RemoveAll(p => p.Name == name);
+        }
+    }
+
+    public IReadOnlyList<ProcInfo> Snapshot()
+    {
+        lock (running)
+        {
+            return [.. running];
+        }
+    }
 }
