@@ -94,7 +94,7 @@ public class GazeAccuracyTests
         var result = Compute(ThirtyAtEveryDot(1.0) + string.Concat(Enumerable.Repeat(Row(4, 3.0, flags: 1), 50)) + Row(4, 3.0, placed: "0"));
 
         Assert.NotNull(result);
-        Assert.Equal(321, result.Frames);
+        Assert.Equal(320, result.Frames); // the row before a dot was placed isn't a frame
         Assert.Equal(270, result.ValidFrames);
         Assert.Equal(1.0, result.WorstDotDeg, 1e-6);
     }
@@ -105,7 +105,7 @@ public class GazeAccuracyTests
         var result = Compute(ThirtyAtEveryDot(1.0) + "0.1,1,3,0,0,0,0.1,0.2");
 
         Assert.NotNull(result);
-        Assert.Equal(271, result.Frames);
+        Assert.Equal(270, result.Frames);
         Assert.Equal(270, result.ValidFrames);
     }
 
@@ -131,6 +131,7 @@ public class GazeAccuracyTests
         Assert.NotNull(result);
         Assert.Equal(8, result.Dots);
         Assert.Equal(1.0, result.WorstDotDeg, 1e-6);
+        Assert.Equal(259, result.FixationFrames); // its frames still count in the overall median, as in the script
     }
 
     [Fact]

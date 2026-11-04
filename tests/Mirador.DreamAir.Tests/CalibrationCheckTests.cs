@@ -15,36 +15,25 @@ public class CalibrationCheckTests
         Assert.True(CalibrationCheck.Describe(1.2, 2.5, 9).Good);
     }
 
+    private const string GazeHeader = "now_ns,display_ns,phase,placed,tx,ty,tz,h_flags,h_px,h_py,h_pz,h_qx,h_qy,h_qz,h_qw,g_flags,g_px,g_py,g_pz,g_qx,g_qy,g_qz,g_qw,g_sample_ns,gv_flags,gv_qx,gv_qy,gv_qz,gv_qw,background";
+
+    /// <summary>A gaze_world row (its columns as of 2026-10-29) looking straight ahead from the origin.</summary>
+    private const string StraightAhead = "1,2,dots,1,0,0,-2,15,0,0,0,0,0,0,1,3,0,0,0,0,0,0,1,3,3,0,0,0,1,\n";
+
     [Fact]
-    public void The_two_files_are_told_apart_by_their_columns()
+    public void The_check_reads_gaze_worlds_two_files()
     {
         using var dir = new TempDir();
-        File.WriteAllText(Path.Combine(dir.Path, "a.csv"), "dot,x,y,z\n0,0,0,-2\n");
-        File.WriteAllText(
-            Path.Combine(dir.Path, "b.csv"),
-            "t,placed,g_flags,g_px,g_py,g_pz,g_qx,g_qy,g_qz,g_qw\n" + string.Concat(Enumerable.Repeat("0.1,1,3,0,0,0,0,0,0,1\n", 25)));
+        File.WriteAllText(Path.Combine(dir.Path, "gaze_targets.csv"), "index,x,y,z\n0,0,0,-2\n");
+        File.WriteAllText(Path.Combine(dir.Path, "gaze_head.csv"), "now_ns,h_flags\n1,15\n");
+        File.WriteAllText(Path.Combine(dir.Path, "gaze_app.csv"), GazeHeader + "\n" + string.Concat(Enumerable.Repeat(StraightAhead, 25)) + "1,2,dots,1,0,0");
 
+        Assert.True(CalibrationCheck.HasResults(dir.Path));
         var result = CalibrationCheck.Measure(dir.Path);
 
         Assert.NotNull(result);
-        Assert.Equal((1, 25), (result.Dots, result.FixationFrames));
+        Assert.Equal((25, 1, 25), (result.Frames, result.Dots, result.FixationFrames));
         Assert.Equal(0.0, result.MedianDeg, 1e-9);
-    }
-
-    [Fact]
-    public void Files_in_a_folder_below_count_and_the_targets_file_wins()
-    {
-        using var dir = new TempDir();
-        var below = Path.Combine(dir.Path, "gaze_world");
-        Directory.CreateDirectory(below);
-        File.WriteAllText(Path.Combine(below, "a_other.csv"), "x,y,z\n5,5,5\n");
-        File.WriteAllText(Path.Combine(below, "b_targets.csv"), "dot,x,y,z\n0,0,0,-2\n");
-        File.WriteAllText(
-            Path.Combine(below, "c_app.csv"),
-            "t,placed,g_flags,g_px,g_py,g_pz,g_qx,g_qy,g_qz,g_qw\n" + string.Concat(Enumerable.Repeat("0.1,1,3,0,0,0,0,0,0,1\n", 25)));
-
-        Assert.True(CalibrationCheck.HasResults(dir.Path));
-        Assert.Equal(1, CalibrationCheck.Measure(dir.Path)!.Dots);
     }
 
     [Fact]
@@ -54,14 +43,16 @@ public class CalibrationCheckTests
 
         Assert.False(CalibrationCheck.HasResults(dir.Path));
         Assert.False(CalibrationCheck.HasResults(Path.Combine(dir.Path, "gone")));
+        Assert.Null(CalibrationCheck.Measure(dir.Path));
     }
 
     [Fact]
-    public void Without_both_files_there_is_nothing_to_measure()
+    public void Without_the_gaze_file_there_is_nothing_to_measure()
     {
         using var dir = new TempDir();
-        File.WriteAllText(Path.Combine(dir.Path, "a.csv"), "dot,x,y,z\n0,0,0,-2\n");
+        File.WriteAllText(Path.Combine(dir.Path, "gaze_targets.csv"), "index,x,y,z\n0,0,0,-2\n");
 
+        Assert.False(CalibrationCheck.HasResults(dir.Path));
         Assert.Null(CalibrationCheck.Measure(dir.Path));
     }
 }
