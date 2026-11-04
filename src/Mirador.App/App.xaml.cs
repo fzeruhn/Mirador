@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Mirador.App.Services;
+using Mirador.App.ViewModels;
 using Mirador.Core;
 using Mirador.Core.Modules;
 using Mirador.Core.Session;
@@ -15,6 +16,7 @@ public partial class App : Application
     private AppHost? host;
     private MainWindow? window;
     private TrayIcon? tray;
+    private HomeViewModel? home;
     private DispatcherQueue? ui;
     private bool lastStartFailed;
     private bool quitting;
@@ -38,6 +40,9 @@ public partial class App : Application
     public AppHost Host => host ?? throw new InvalidOperationException("Mirador hasn't started yet.");
 
     public MainWindow MainWindow => window ?? throw new InvalidOperationException("Mirador hasn't started yet.");
+
+    /// <summary>Home's view model, made at start so that nothing that happens before Home opens is lost.</summary>
+    public HomeViewModel Home => home ?? throw new InvalidOperationException("Mirador hasn't started yet.");
 
     /// <summary>The UI thread's queue, for handing work from background threads to it.</summary>
     public DispatcherQueue Ui => ui ?? throw new InvalidOperationException("Mirador hasn't started yet.");
@@ -66,6 +71,7 @@ public partial class App : Application
         }
 
         Notifications.Register(() => Ui.TryEnqueue(() => MainWindow.ShowAndActivate()));
+        home = new HomeViewModel(Host, Ui);
         window = new MainWindow();
         tray = new TrayIcon(() => MainWindow.ShowAndActivate(), StartOrStopAsync, QuitAsync);
         Host.Session.Changed += () => Ui.TryEnqueue(UpdateTray);

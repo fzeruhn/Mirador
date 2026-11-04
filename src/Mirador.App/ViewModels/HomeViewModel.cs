@@ -1,0 +1,347 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Controls;
+using Mirador.App.Services;
+using Mirador.Core;
+using Mirador.Core.Modules;
+using Mirador.Core.Monado;
+using Mirador.Core.Profiles;
+using Mirador.Core.Runtime;
+using Mirador.Core.Session;
+
+namespace Mirador.App.ViewModels;
+
+/// <summary>
+/// Home: the profile, the one Start/Stop button, Monado's status lines, the active OpenXR runtime, and what needs the
+/// user's attention (the last failed Start, the runtime, checks, warnings). Lives as long as Mirador, so that what
+/// happens while another page is open isn't lost. Everything here runs on the UI thread.
+/// </summary>
+public sealed partial class HomeViewModel : ObservableObject
+{
+    private readonly AppHost host;
+    private readonly DispatcherQueue ui;
+    private CancellationTokenSource? checking;
+    private bool loading;
+
+    public HomeViewModel(AppHost host, DispatcherQueue ui)
+    {
+        this.host = host;
+        this.ui = ui;
+        foreach (var notice in host.StartupNotices)
+        {
+            Notices.Add(new NoticeItem("startup", "Settings", notice, InfoBarSeverity.Warning));
+        }
+
+        host.Session.Changed += () => ui.TryEnqueue(OnSessionChanged);
+        host.Session.StatusChanged += () => ui.TryEnqueue(RefreshStatus);
+        host.Session.Warning += w => ui.TryEnqueue(() => AddWarning(w));
+        App.Current.StartFailed += message => LastFailure = message;
+        LoadProfiles();
+        OnSessionChanged();
+    }
+
+    public ObservableCollection<ProfileItem> Profiles { get; } = [];
+
+    public ObservableCollection<StatusItem> Status { get; } = [];
+
+    /// <summary>Notices from Mirador's start, check results that need a look, and warnings while Monado runs.</summary>
+    public ObservableCollection<NoticeItem> Notices { get; } = [];
+
+    [ObservableProperty]
+    public partial ProfileItem? SelectedProfile { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeProfile))]
+    public partial SessionState State { get; set; }
+
+    [ObservableProperty]
+    public partial string StartStopLabel { get; set; } = "Start";
+
+    [ObservableProperty]
+    public partial bool CanStartStop { get; set; } = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFailure))]
+    public partial string? LastFailure { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRuntimeNotice))]
+    public partial string? RuntimeNotice { get; set; }
+
+    [ObservableProperty]
+    public partial string RuntimeText { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CanSetRuntime { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRuntimeProblem))]
+    public partial string? RuntimeProblem { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpdate))]
+    public partial string? UpdateText { get; set; }
+
+    [ObservableProperty]
+    public partial Uri? UpdateUrl { get; set; }
+
+    public bool CanChangeProfile => State == SessionState.Stopped;
+
+    public bool HasFailure => LastFailure is not null;
+
+    public bool HasRuntimeNotice => RuntimeNotice is not null;
+
+    public bool HasRuntimeProblem => RuntimeProblem is not null;
+
+    public bool HasUpdate => UpdateText is not null;
+
+    /// <summary>Reads the profiles again (the Profiles page may have changed them) and runs the checks.</summary>
+    public void Refresh()
+    {
+        LoadProfiles();
+        RefreshRuntime();
+        _ = RunChecksAsync();
+    }
+
+    /// <summary>Shows a newer release (from the update check).</summary>
+    public void ShowUpdate(string tag, string url)
+    {
+        UpdateText = $"Mirador {tag} is out.";
+        UpdateUrl = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
+    }
+
+    [RelayCommand]
+    private async Task StartStopAsync()
+    {
+        if (host.Session.State == SessionState.Stopped)
+        {
+            ClearWarnings();
+            LastFailure = null;
+            await App.Current.StartAsync(StartReason.Button);
+        }
+        else
+        {
+            await host.Session.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [RelayCommand]
+    private async Task SetRuntimeAsync()
+    {
+        RuntimeProblem = null;
+        MonadoInstall install;
+        try
+        {
+            install = host.Session.CurrentInstall ?? host.Locator.Locate(SelectedSet().Selected.Monado);
+        }
+        catch (MiradorException e)
+        {
+            RuntimeProblem = e.Message;
+            return;
+        }
+
+        // The elevated step's errors never reach the user, so the manifest is checked here first.
+        if (RuntimeManifest.Validate(install.Manifest) is { } problem)
+        {
+            RuntimeProblem = problem;
+            return;
+        }
+
+        CanSetRuntime = false;
+        try
+        {
+            RuntimeProblem = await RuntimeSwitch.SetAsync(install, host.Helper, ElevatedRuntime.RunAsync, host.Runtime);
+        }
+        finally
+        {
+            RefreshRuntime();
+        }
+    }
+
+    partial void OnSelectedProfileChanged(ProfileItem? value)
+    {
+        if (loading || value is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var set = host.Profiles.Load();
+            if (set.SelectedId != value.Id && set.Profiles.Any(p => p.Id == value.Id))
+            {
+                host.Profiles.Save(set.Select(value.Id));
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            LastFailure = $"Mirador couldn't save the profile choice ({e.Message.Trim().TrimEnd('.')}).";
+        }
+
+        RefreshRuntime();
+        _ = RunChecksAsync();
+    }
+
+    private ProfileSet SelectedSet() => host.Profiles.Load();
+
+    private void LoadProfiles()
+    {
+        loading = true;
+        try
+        {
+            var set = SelectedSet();
+            Profiles.Clear();
+            foreach (var p in set.Profiles)
+            {
+                Profiles.Add(new ProfileItem(p.Id, p.Name));
+            }
+
+            SelectedProfile = Profiles.FirstOrDefault(p => p.Id == set.SelectedId);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            LastFailure = $"Mirador couldn't read its profiles ({e.Message.Trim().TrimEnd('.')}).";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OnSessionChanged()
+    {
+        var previous = State;
+        State = host.Session.State;
+        (StartStopLabel, CanStartStop) = State switch
+        {
+            SessionState.Running => ("Stop", true),
+            SessionState.Starting => ("Starting…", true),
+            SessionState.Stopping => ("Stopping…", false),
+            _ => ("Start", true),
+        };
+        RuntimeNotice = host.Session.RuntimeNotice;
+        RefreshStatus();
+        RefreshRuntime();
+        if (State == SessionState.Stopped && previous != SessionState.Stopped)
+        {
+            _ = RunChecksAsync();
+        }
+    }
+
+    private void RefreshStatus()
+    {
+        var lines = host.Session.Status.Select(StatusItem.From).ToList();
+        if (!lines.SequenceEqual(Status))
+        {
+            Status.Clear();
+            foreach (var line in lines)
+            {
+                Status.Add(line);
+            }
+        }
+    }
+
+    private void RefreshRuntime()
+    {
+        MonadoInstall? install = host.Session.CurrentInstall;
+        if (install is null)
+        {
+            try
+            {
+                install = host.Locator.Locate(SelectedSet().Selected.Monado);
+            }
+            catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
+            {
+                install = null;
+            }
+        }
+
+        var active = host.Runtime.Active();
+        var isActive = install is not null && host.Runtime.IsActive(install.Manifest);
+        RuntimeText = RuntimeLine.Describe(active, install, isActive);
+        CanSetRuntime = install is not null && !isActive;
+    }
+
+    /// <summary>Runs the selected profile's headset checks and shows those that need a look.</summary>
+    private async Task RunChecksAsync()
+    {
+        checking?.Cancel();
+        var cts = checking = new CancellationTokenSource();
+        Profile profile;
+        try
+        {
+            profile = SelectedSet().Selected;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        IReadOnlyList<CheckResult> results = [];
+        if (profile.ModuleId is { } id && host.Modules.TryGetValue(id, out var module))
+        {
+            try
+            {
+                results = await module.CheckAsync(host.Context, profile, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                AppLog.Write("The checks failed", e);
+            }
+        }
+
+        if (cts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        for (var i = Notices.Count - 1; i >= 0; i--)
+        {
+            if (Notices[i].Key.StartsWith("check:", StringComparison.Ordinal))
+            {
+                Notices.RemoveAt(i);
+            }
+        }
+
+        foreach (var r in results.Where(r => r.Level is StatusLevel.Warning or StatusLevel.Error))
+        {
+            Notices.Add(new NoticeItem(
+                "check:" + r.Label,
+                r.Label,
+                r.Fix is null ? r.Text : $"{r.Text} {r.Fix}",
+                r.Level == StatusLevel.Error ? InfoBarSeverity.Error : InfoBarSeverity.Warning));
+        }
+    }
+
+    private void AddWarning(SessionWarning w)
+    {
+        var key = "warning:" + w.Key;
+        var existing = Notices.FirstOrDefault(n => n.Key == key);
+        var item = new NoticeItem(key, "While Monado runs", w.Text, InfoBarSeverity.Warning);
+        if (existing is null)
+        {
+            Notices.Add(item);
+        }
+        else
+        {
+            Notices[Notices.IndexOf(existing)] = item;
+        }
+    }
+
+    private void ClearWarnings()
+    {
+        for (var i = Notices.Count - 1; i >= 0; i--)
+        {
+            if (Notices[i].Key.StartsWith("warning:", StringComparison.Ordinal))
+            {
+                Notices.RemoveAt(i);
+            }
+        }
+    }
+}
