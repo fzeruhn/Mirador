@@ -70,6 +70,11 @@ $buildType = Get-CacheValue '^CMAKE_BUILD_TYPE:[A-Z]+=(.*)$'
 if ($buildType -notin 'Release', 'RelWithDebInfo') {
     throw "The Monado build is '$buildType' (none: a multi-configuration generator such as Visual Studio's). Bundle a Release or RelWithDebInfo build made with Ninja."
 }
+# Without this cache entry Monado's runtime DLL never starts a service, so games couldn't start Monado through the
+# stand-in (nothing in Monado sets it by itself).
+if ((Get-CacheValue '^XRT_SERVICE_EXECUTABLE:[A-Z]+=(.*)$') -ne 'monado-service') {
+    throw 'The Monado build was configured without -DXRT_SERVICE_EXECUTABLE=monado-service, so games couldn''t start it through Mirador. Configure it again with that option and build it.'
+}
 $monadoSource = Get-CacheValue '^CMAKE_HOME_DIRECTORY:INTERNAL=(.*)$'
 $runtimeBuild = Join-Path $Monado 'src\xrt\targets\openxr'
 $serviceBuild = Join-Path $Monado 'src\xrt\targets\service'

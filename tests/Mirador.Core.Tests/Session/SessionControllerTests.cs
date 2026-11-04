@@ -567,6 +567,55 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task The_stand_in_goes_below_the_selected_build_before_any_start()
+    {
+        await using var h = new Harness();
+        var folder = Path.Combine(h.Root, "Zoë Build", "monado build");
+        var copy = Path.Combine(Harness.MakeBuild(folder), "service", "monado-service.exe");
+        h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, folder) });
+
+        h.Controller.PlaceStandIn();
+
+        Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(copy));
+        Assert.Equal(0, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task Placing_the_stand_in_leaves_the_bundled_monado_and_missing_builds_alone()
+    {
+        await using var h = new Harness();
+        h.Controller.PlaceStandIn();
+        Assert.False(Directory.Exists(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "service")));
+
+        h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, Path.Combine(h.Root, "gone")) });
+        h.Controller.PlaceStandIn(); // no throw
+    }
+
+    [Theory]
+    [InlineData("XRT_SERVICE_EXECUTABLE:UNINITIALIZED=monado-service\n", false)]
+    [InlineData("XRT_SERVICE_EXECUTABLE:STRING=monado-service\n", false)]
+    [InlineData("CMAKE_BUILD_TYPE:STRING=RelWithDebInfo\n", true)]
+    [InlineData("XRT_SERVICE_EXECUTABLE:UNINITIALIZED=\n", true)]
+    public async Task A_build_that_doesnt_start_its_service_says_games_cant_start_it(string cache, bool warned)
+    {
+        await using var h = new Harness();
+        var folder = Path.Combine(h.Root, "Zoë Build", "monado build");
+        Harness.MakeBuild(folder);
+        File.WriteAllText(Path.Combine(folder, "CMakeCache.txt"), "# This is the CMakeCache file.\n" + cache);
+        h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, folder) });
+
+        await h.StartRunningAsync();
+
+        var line = h.Controller.Status.SingleOrDefault(l => l.Key == "standin");
+        Assert.Equal(warned, line is not null);
+        if (line is not null)
+        {
+            Assert.Equal(StatusLevel.Warning, line.Level);
+            Assert.Contains(ServiceLaunch.ConfigureOption, line.Text);
+        }
+    }
+
+    [Fact]
     public async Task Missing_stand_in_is_a_status_line_not_a_refusal()
     {
         await using var h = new Harness();

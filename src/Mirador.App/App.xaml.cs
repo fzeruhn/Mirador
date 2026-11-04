@@ -104,6 +104,7 @@ public partial class App : Application
             Ui.TryEnqueue(() => OnEnded(text));
         };
         AppHost.RecordAppPath();
+        _ = Task.Run(Host.Session.PlaceStandIn);
 
         if (!args.Background)
         {

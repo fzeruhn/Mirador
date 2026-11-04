@@ -266,6 +266,28 @@ public sealed class SessionController(SessionDeps deps)
         }
     }
 
+    /// <summary>
+    /// Puts the stand-in below the selected profile's build folder now, as every Start does too, so that a game can
+    /// start Monado from that build before Mirador has started it once. Call at launch and when the profiles change.
+    /// Does nothing for the bundled Monado (its stand-in is the installer's) or a build that can't be found (its Start
+    /// says why).
+    /// </summary>
+    public void PlaceStandIn()
+    {
+        try
+        {
+            var profile = deps.Profiles.Load().Selected;
+            if (profile.Monado.Kind == SourceKind.Folder)
+            {
+                var install = deps.Locator.Locate(profile.Monado);
+                StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe);
+            }
+        }
+        catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     /// <summary>Why a game whose runtime is another Monado than <paramref name="install"/> doesn't get it.</summary>
     private static string OtherMonado(string gameStandIn, MonadoInstall install, Profile? profile)
     {
@@ -654,7 +676,9 @@ public sealed class SessionController(SessionDeps deps)
         var moduleEnvironment = run.Session?.Environment ?? [];
         var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
         var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
-        var standIn = install.IsBundled ? null : StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe);
+        var standIn = install.IsBundled
+            ? null
+            : StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe) ?? ServiceLaunch.Check(Path.GetDirectoryName(install.Manifest)!);
 
         var logPath = deps.Context.Paths.NewMonadoLogFile(deps.Context.Time.GetLocalNow().DateTime);
         MonadoLogs.Prune(deps.Context.Paths.LogsDir, logPath, KeptLogs);
