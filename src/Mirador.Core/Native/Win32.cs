@@ -64,6 +64,29 @@ internal static class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetThreadErrorMode(uint mode, out uint oldMode);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandle(SafeFileHandle file, out ByHandleFileInformation information);
+
+    /// <summary>
+    /// What tells a file from every other on this computer, whatever path leads to it (case, short names, links): its
+    /// volume's serial number and its index on that volume. Null when the file can't be opened.
+    /// </summary>
+    public static (uint Volume, ulong Index)? FileIdentity(string path)
+    {
+        try
+        {
+            using var file = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return GetFileInformationByHandle(file, out var information)
+                ? (information.VolumeSerialNumber, ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow)
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     /// <summary><c>SEM_FAILCRITICALERRORS</c>: Windows hands the error back instead of showing its message box.</summary>
     private const uint SemFailCriticalErrors = 0x0001;
 
@@ -232,6 +255,25 @@ internal static class Win32
         public ulong ReadTransferCount;
         public ulong WriteTransferCount;
         public ulong OtherTransferCount;
+    }
+
+    /// <summary><c>BY_HANDLE_FILE_INFORMATION</c>; each <c>FILETIME</c> as its two halves, so the layout matches.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public uint CreationTimeLow;
+        public uint CreationTimeHigh;
+        public uint LastAccessTimeLow;
+        public uint LastAccessTimeHigh;
+        public uint LastWriteTimeLow;
+        public uint LastWriteTimeHigh;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
     }
 
     [StructLayout(LayoutKind.Sequential)]

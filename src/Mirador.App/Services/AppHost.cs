@@ -171,7 +171,7 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>Starts answering the stand-in and a second Mirador on the app pipe.</summary>
     /// <exception cref="MiradorException">Another program holds the pipe's name.</exception>
-    public void StartPipe(Func<string, CancellationToken, Task<string>> handle)
+    public void StartPipe(Func<string, int?, CancellationToken, Task<string>> handle)
     {
         var server = new AppPipeServer(AppPipe.CurrentName(), handle);
         server.Failed += e => AppLog.Write("The app pipe stopped listening", e);

@@ -306,6 +306,59 @@ public class SessionControllerTests
         Assert.Equal(1, h.Module.BeforeStartCalls);
     }
 
+    /// <summary>A stand-in file in <paramref name="runtimeDir"/>'s <c>service</c> folder, as a game's runtime DLL would start it.</summary>
+    private static string StandInBelow(string runtimeDir)
+    {
+        var path = Path.Combine(runtimeDir, "service", StandIn.FileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "stand-in");
+        return path;
+    }
+
+    [Fact]
+    public async Task A_game_of_the_profiles_monado_starts_it()
+    {
+        await using var h = new Harness();
+        h.Pipe.Up = true;
+        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(true, "Monado is running."), outcome);
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task A_game_of_another_monado_is_refused_before_any_step()
+    {
+        await using var h = new Harness();
+        h.Pipe.Up = true;
+        var other = StandInBelow(Path.Combine(h.Root, "other build", "runtime"));
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, other, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.StartsWith($"The game uses the Monado in {Path.Combine(h.Root, "other build", "runtime")}, but the profile ", outcome.Message);
+        Assert.Contains($"uses the one in {Path.GetDirectoryName(h.BundledManifest)}.", outcome.Message);
+        Assert.Equal(0, h.Module.BeforeStartCalls);
+        Assert.Equal(0, h.Launcher.Starts);
+        Assert.Equal(SessionState.Stopped, h.Controller.State);
+    }
+
+    [Fact]
+    public async Task A_game_of_another_monado_doesnt_get_the_running_one()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        var other = StandInBelow(Path.Combine(h.Root, "other build", "runtime"));
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, other, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.Equal(SessionState.Running, h.Controller.State);
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
     [Fact]
     public async Task Starting_shows_the_module_progress_and_passes_on_its_warnings()
     {

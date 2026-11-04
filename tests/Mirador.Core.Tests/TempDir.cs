@@ -7,7 +7,7 @@ public sealed class TempDir : IDisposable
 
     public TempDir() => Directory.CreateDirectory(Path);
 
-    public string File(string name) => System.IO.Path.Combine(Path, name);
+    public string File(params string[] parts) => System.IO.Path.Combine([Path, .. parts]);
 
     public void Dispose()
     {

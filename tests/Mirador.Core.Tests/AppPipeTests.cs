@@ -24,6 +24,22 @@ public class AppPipeTests
     }
 
     [Fact]
+    public async Task The_handler_learns_which_process_asked()
+    {
+        var name = UniqueName();
+        int? seen = null;
+        await using var server = new AppPipeServer(name, (line, caller, ct) =>
+        {
+            seen = caller;
+            return Task.FromResult(AppPipe.Ok);
+        });
+        server.Start();
+
+        Assert.Equal("OK", await AppPipeClient.SendAsync(name, AppPipe.Start, Limit, CancellationToken.None));
+        Assert.Equal(Environment.ProcessId, seen);
+    }
+
+    [Fact]
     public async Task An_unknown_line_is_up_to_the_handler()
     {
         var name = UniqueName();
