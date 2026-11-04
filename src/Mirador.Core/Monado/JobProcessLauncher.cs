@@ -105,7 +105,7 @@ public sealed class JobProcessLauncher : IProcessLauncher, IDisposable
 
         try
         {
-            return Process.Start(info)
+            return QuietProcess.Start(info)
                 ?? throw new MiradorException($"Couldn't start {spec.FileName}: Windows didn't start it.");
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException)

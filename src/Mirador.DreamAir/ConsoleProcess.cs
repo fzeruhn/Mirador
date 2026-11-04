@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Mirador.Core;
 using Mirador.Core.Monado;
+using Mirador.Core.Native;
 
 namespace Mirador.DreamAir;
 
@@ -125,7 +126,7 @@ public sealed class ConsoleProcess : IConsoleProcess
 
         try
         {
-            var process = Process.Start(info)
+            var process = QuietProcess.Start(info)
                 ?? throw new MiradorException($"Couldn't start {spec.FileName}.");
             return new ConsoleProcess(process);
         }

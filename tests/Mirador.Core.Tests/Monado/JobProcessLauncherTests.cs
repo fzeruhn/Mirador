@@ -314,10 +314,13 @@ public class JobProcessLauncherTests
         using var launcher = new JobProcessLauncher();
         var notProgram = dir.File("fake.exe");
         File.WriteAllText(notProgram, "this is text, not a program");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
 
+        // With Windows' message box this call would wait until someone clicked OK on "Unsupported 16-Bit Application".
         var ex = Assert.Throws<MiradorException>(() =>
             launcher.Start(new ProcessSpec(notProgram, "", Environment.SystemDirectory, SystemEnv())));
 
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), watch.Elapsed.ToString());
         Assert.StartsWith($"Couldn't start {notProgram}: ", ex.Message);
         Assert.DoesNotContain("%1", ex.Message); // Windows' texts name the file with a placeholder that must be filled in
     }
