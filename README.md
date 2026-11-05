@@ -21,8 +21,14 @@ The stand-in (`standin\`, C) needs Visual Studio's C++ x64 tools; `tools\build.p
 not a failure, when they're missing) into `artifacts\standin\monado-service.exe`, and `standin\build.ps1` builds it
 alone.
 
-The installer: `tools\build-bundle.ps1 -Monado <build> -Layer <layer build> -GazeWorld <dir>` puts the install layout
-in `artifacts\bundle`, then `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
+OpenComposite, which runs OpenVR games on Monado: `tools\build-opencomposite.ps1 -Vulkan <dir>` clones it into
+`artifacts\opencomposite-src` at its pinned commit and builds `artifacts\opencomposite-build\bin\vrclient_x64.dll`.
+`-Vulkan` is a folder with `include\vulkan` and `lib\vulkan-1.lib` (a Vulkan SDK, or a Monado build's
+`vcpkg_installed\x64-windows`). It needs Visual Studio's C++ x64 tools with "C++ ATL".
+
+The installer: `tools\build-bundle.ps1 -Monado <build> -Layer <layer build> -GazeWorld <dir> -OpenComposite
+artifacts\opencomposite-build -OpenCompositeSource artifacts\opencomposite-src` puts the install layout in
+`artifacts\bundle`, then `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
 `artifacts\Mirador-<version>-setup.exe` from it.
 
 ## Layout

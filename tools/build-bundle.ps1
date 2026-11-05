@@ -15,17 +15,25 @@
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
       layer\                         dreamair_vk_layer.json, .dll, dreamair-display-check.exe
       tools\                         gaze_world.exe, openxr_loader.dll
+      opencomposite\bin\             vrclient_x64.dll and an empty version.txt (Mirador copies them per user)
+      opencomposite\                 SOURCE.txt (line 1 the commit) and OpenComposite's licences
 
     A Monado build that isn't Release or RelWithDebInfo is refused. Debug copies of a DLL (a name ending in "d" next
     to the same name without it, such as SDL2d.dll beside SDL2.dll) are left out.
+
+    OpenComposite (tools\build-opencomposite.ps1) goes in as built from its source folder, as committed: a build whose
+    OC_VERSION isn't that folder's commit is refused. It is GPL-3.0-or-later, so its licence and those of what is built
+    into the DLL go with it, and SOURCE.txt says where its source is.
 .EXAMPLE
-    tools\build-bundle.ps1 -Monado ..\monado-dreamair\build -Layer ..\dreamair-vk-layer\build -GazeWorld ..\DreamAirWin\tools\gaze_world
+    tools\build-bundle.ps1 -Monado ..\monado-dreamair\build -Layer ..\dreamair-vk-layer\build -GazeWorld ..\DreamAirWin\tools\gaze_world -OpenComposite artifacts\opencomposite-build -OpenCompositeSource artifacts\opencomposite-src
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string]$Monado,
     [Parameter(Mandatory)] [string]$Layer,
     [Parameter(Mandatory)] [string]$GazeWorld,
+    [Parameter(Mandatory)] [string]$OpenComposite,
+    [Parameter(Mandatory)] [string]$OpenCompositeSource,
     [string]$Out = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\bundle')
 )
 
@@ -57,6 +65,8 @@ function Get-ReleaseDlls([string]$folder) {
 $Monado = (Resolve-Path -LiteralPath $Monado).Path
 $Layer = (Resolve-Path -LiteralPath $Layer).Path
 $GazeWorld = (Resolve-Path -LiteralPath $GazeWorld).Path
+$OpenComposite = (Resolve-Path -LiteralPath $OpenComposite).Path
+$OpenCompositeSource = (Resolve-Path -LiteralPath $OpenCompositeSource).Path
 
 # 1. The Monado build: Release or RelWithDebInfo only, and where its source is.
 $cache = Join-Path $Monado 'CMakeCache.txt'
@@ -101,6 +111,36 @@ if ($layerFiles.Count -ne 3) {
 }
 Need (Join-Path $GazeWorld 'gaze_world.exe') 'gaze_world.exe'
 Need (Join-Path $GazeWorld 'openxr_loader.dll') 'gaze_world''s openxr_loader.dll'
+
+# OpenComposite: built from that source folder's commit, which is what SOURCE.txt and the licences say.
+$ocDll = Join-Path $OpenComposite 'bin\vrclient_x64.dll'
+Need $ocDll 'OpenComposite''s vrclient_x64.dll (tools\build-opencomposite.ps1)'
+$ocCommit = git -C $OpenCompositeSource rev-parse HEAD 2>$null
+if (-not $ocCommit) {
+    throw "$OpenCompositeSource isn't a git checkout of OpenComposite."
+}
+$ocCache = Join-Path $OpenComposite 'CMakeCache.txt'
+Need $ocCache 'The OpenComposite build folder''s CMakeCache.txt'
+$ocVersion = Get-Content -LiteralPath $ocCache | Select-String -Pattern '^OC_VERSION:[A-Z]+=(.*)$' |
+    Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value }
+if (-not $ocVersion -or -not $ocVersion.StartsWith($ocCommit)) {
+    throw "The OpenComposite build in $OpenComposite is of '$ocVersion', not of the source's commit $ocCommit. Build it again with tools\build-opencomposite.ps1."
+}
+# Its licence, and those of what is built into the DLL (the hand models, glm, the OpenXR loader and its jsoncpp).
+$ocLicences = [ordered]@{
+    'LICENSE.txt'                                                    = 'LICENSE.txt'
+    'LICENSE_OPENVR.txt'                                             = 'LICENSE_OPENVR.txt'
+    'LICENSE_INIH.txt'                                               = 'LICENSE_INIH.txt'
+    'LICENCE_BUILD_UTIL.txt'                                         = 'LICENCE_BUILD_UTIL.txt'
+    'assets\LICENSE.txt'                                             = 'LICENSE_assets.txt'
+    'assets\notes.txt'                                               = 'NOTES_assets.txt'
+    'libs\glm\copying.txt'                                           = 'LICENSE_glm.txt'
+    'libs\openxr-sdk\LICENSE'                                        = 'LICENSE_openxr-sdk.txt'
+    'libs\openxr-sdk\LICENSES\LicenseRef-jsoncpp-public-domain.txt'  = 'LICENSE_jsoncpp.txt'
+}
+foreach ($licence in $ocLicences.Keys) {
+    Need (Join-Path $OpenCompositeSource $licence) "OpenComposite's $licence"
+}
 
 # 3. A clean bundle folder.
 if (Test-Path -LiteralPath $Out) {
@@ -156,8 +196,25 @@ Copy-Item -LiteralPath $layerFiles.Manifest, $layerFiles.Dll, $layerFiles.Check 
 $toolsOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'tools')
 Copy-Item -LiteralPath (Join-Path $GazeWorld 'gaze_world.exe'), (Join-Path $GazeWorld 'openxr_loader.dll') -Destination $toolsOut.FullName
 
-# 8. What was made.
+# 8. OpenComposite: the DLL and an empty version.txt (it keeps Steam from rewriting the OpenVR paths file while the
+#    copy is first in it), its licences and where its source is.
+$ocOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'opencomposite')
+$ocBin = New-Item -ItemType Directory -Force -Path (Join-Path $ocOut.FullName 'bin')
+Copy-Item -LiteralPath $ocDll -Destination $ocBin.FullName
+New-Item -ItemType File -Force -Path (Join-Path $ocBin.FullName 'version.txt') | Out-Null
+foreach ($licence in $ocLicences.Keys) {
+    Copy-Item -LiteralPath (Join-Path $OpenCompositeSource $licence) -Destination (Join-Path $ocOut.FullName $ocLicences[$licence])
+}
+@(
+    $ocCommit,
+    'OpenComposite from Mirador''s fork, https://github.com/fzeruhn/OpenComposite (upstream: https://gitlab.com/znixian/OpenOVR), GPL-3.0-or-later (LICENSE.txt).',
+    "Source: https://github.com/fzeruhn/OpenComposite/tree/$ocCommit, with its submodules.",
+    'Built by Mirador''s tools\build-opencomposite.ps1: 64-bit, Release, the C runtime linked in.'
+) | Set-Content -LiteralPath (Join-Path $ocOut.FullName 'SOURCE.txt') -Encoding utf8NoBOM
+
+# 9. What was made.
 $standinSize = (Get-Item -LiteralPath (Join-Path $serviceOut.FullName 'monado-service.exe')).Length
 Write-Host "Bundle: $Out"
 Write-Host "  Monado $version ($buildType)"
 Write-Host "  stand-in $([math]::Round($standinSize / 1KB)) KB"
+Write-Host "  OpenComposite $ocCommit"
