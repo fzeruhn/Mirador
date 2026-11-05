@@ -332,9 +332,12 @@ internal sealed class FakeHelper : IHelperClient
     public Task<HelperReply> SendAsync(HelperCommand command, CancellationToken ct) => Task.FromResult(new HelperReply(true));
 }
 
+/// <summary>The USB devices "plugged in": the fake headset unless a test unplugs it.</summary>
 internal sealed class FakeUsb : IUsbDevices
 {
-    public IReadOnlySet<UsbId> Present() => new HashSet<UsbId>();
+    public HashSet<UsbId> Devices { get; } = [FakeModule.HeadsetId];
+
+    public IReadOnlySet<UsbId> Present() => new HashSet<UsbId>(Devices);
 }
 
 internal sealed class FakeModuleSession(
@@ -440,7 +443,10 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
 
     public IReadOnlyDictionary<string, string>? Recovered { get; private set; }
 
-    public bool IsPresent(IReadOnlySet<UsbId> devices) => false;
+    /// <summary>The fake headset's USB id; <see cref="FakeUsb"/> has it plugged in by default.</summary>
+    public static readonly UsbId HeadsetId = new(0x1234, 0x5678);
+
+    public bool IsPresent(IReadOnlySet<UsbId> devices) => devices.Contains(HeadsetId);
 
     public Task<IReadOnlyList<CheckResult>> CheckAsync(ModuleContext ctx, Profile profile, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<CheckResult>>([]);
@@ -535,6 +541,7 @@ internal sealed class Harness : IAsyncDisposable
         Runtime = new FakeRuntimeReader { Active = BundledManifest };
         Profiles = new ProfileStore(Paths.ProfilesFile);
         Settings = new MonadoSettingsStore(Paths.MonadoSettingsFile);
+        Usb = new FakeUsb();
         UseProfile(DreamAir);
 
         Controller = new SessionController(
@@ -542,7 +549,7 @@ internal sealed class Harness : IAsyncDisposable
                 Profiles,
                 Settings,
                 new Dictionary<string, IHeadsetModule> { [Module.Id] = Module },
-                new ModuleContext(Paths, new FakeHelper(), Processes, new FakeUsb(), Timers),
+                new ModuleContext(Paths, new FakeHelper(), Processes, Usb, Timers),
                 new MonadoLocator(bundledRoot),
                 Launcher,
                 Pipe,
@@ -598,6 +605,9 @@ internal sealed class Harness : IAsyncDisposable
     public FakeModule Module { get; }
 
     public FakeLauncher Launcher { get; }
+
+    /// <summary>What is plugged in: the fake headset, until a test clears it.</summary>
+    public FakeUsb Usb { get; }
 
     public FakePipe Pipe { get; }
 
