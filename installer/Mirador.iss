@@ -45,6 +45,7 @@ Type: filesandordirs; Name: "{app}\monado"
 Type: filesandordirs; Name: "{app}\layer"
 Type: filesandordirs; Name: "{app}\standin"
 Type: filesandordirs; Name: "{app}\tools"
+Type: filesandordirs; Name: "{app}\opencomposite"
 
 [Files]
 Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -203,6 +204,14 @@ var
 begin
   if CurUninstallStep <> usUninstall then
     Exit;
+
+  { OpenVR games back on SteamVR, and OpenComposite's per-user copy gone, for the user who uninstalls (Mirador.md
+    section 4.6 item 24). It runs as the account that approved the prompt; other users' files stay. A failure only
+    leaves the copy where it is, so games still find their DLL. }
+  if not Exec(ExpandConstant('{app}\Mirador.exe'), '--restore-openvr', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+    Log('Mirador.exe --restore-openvr could not be started.')
+  else if Code <> 0 then
+    Log(Format('Mirador.exe --restore-openvr: exit code %d (the OpenVR paths file could not be changed).', [Code]));
 
   Ours := ExpandConstant('{app}\monado\runtime\openxr_monado.json');
   if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
