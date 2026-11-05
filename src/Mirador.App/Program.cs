@@ -31,8 +31,15 @@ public static partial class Program
         // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.
         if (parsed.RestoreOpenVr)
         {
-            var copy = AppPaths.Default.OpenCompositeDir;
-            return RestoreOpenVrCommand.Run(new OpenVrPaths(OpenVrPaths.DefaultFile, copy), copy);
+            try
+            {
+                var copy = AppPaths.Default.OpenCompositeDir;
+                return RestoreOpenVrCommand.Run(new OpenVrPaths(OpenVrPaths.DefaultFile, copy), copy);
+            }
+            catch (Exception)
+            {
+                return 1; // the copy stays, so games still find their DLL; the uninstaller logs the exit code
+            }
         }
 
         if (IsElevated())

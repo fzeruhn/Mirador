@@ -164,7 +164,9 @@ public sealed class OpenVrPaths(string file, string ourRuntimeDir)
         JsonNode? node;
         try
         {
-            node = JsonNode.Parse(text, documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true });
+            // Duplicate keys refused here: JsonObject would otherwise throw ArgumentException at the first lookup.
+            node = JsonNode.Parse(
+                text, documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true, AllowDuplicateProperties = false });
         }
         catch (JsonException)
         {

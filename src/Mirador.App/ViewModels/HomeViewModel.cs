@@ -340,7 +340,18 @@ public sealed partial class HomeViewModel : ObservableObject
             return;
         }
 
-        var view = host.OpenVr.View(openXrIsMonado, activeOpenXr);
+        OpenVrView view;
+        try
+        {
+            view = host.OpenVr.View(openXrIsMonado, activeOpenXr);
+        }
+        catch (Exception e)
+        {
+            // Never let this row stop the rest of Home (the checks run after it).
+            AppLog.Write("Reading where OpenVR games go failed", e);
+            view = new OpenVrView("OpenVR games: unknown", true, null, $"Mirador couldn't read where OpenVR games go ({e.Message.Trim().TrimEnd('.')}).");
+        }
+
         OpenVrText = view.Line;
         offersMonado = view.OffersMonado;
         OpenVrButtonText = view.OffersMonado ? OpenVrGames.UseMonadoLabel : OpenVrGames.UseSteamVrLabel;
@@ -356,7 +367,7 @@ public sealed partial class HomeViewModel : ObservableObject
         {
             openVrSwitchProblem = await Task.Run(() => toMonado ? host.OpenVr.UseMonado() : host.OpenVr.UseSteamVr());
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
             AppLog.Write("Switching OpenVR games failed", e);
             openVrSwitchProblem = $"Switching OpenVR games failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
