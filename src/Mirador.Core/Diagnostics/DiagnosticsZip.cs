@@ -6,6 +6,9 @@ using Mirador.Core.Profiles;
 
 namespace Mirador.Core.Diagnostics;
 
+/// <summary>The OpenVR files the zip takes: the user's paths file and OpenComposite's log.</summary>
+public sealed record OpenVrFiles(string PathsFile, string LogFile);
+
 /// <summary>
 /// The zip a user saves to report a problem (Mirador.md §4.2 item 8): logs, the profile, the settings, the environment
 /// Mirador gave Monado and the versions, plus what the headset module adds. Files are read as they are, even while a
@@ -35,8 +38,11 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
     /// </summary>
     /// <param name="lastEnvironment">The session's <c>LastMiradorEnvironment</c>; null before the first Start.</param>
     /// <param name="versions">Mirador's, Windows' and the profile's Monado's versions, one a line.</param>
+    /// <param name="openVr">The OpenVR paths file and OpenComposite's log, added as <c>openvrpaths.vrpath</c> and
+    /// <c>opencomposite.log</c> (Mirador.md §4.6 item 23); null leaves them out.</param>
     public static DiagnosticsZip Collect(
-        AppPaths paths, Profile profile, IReadOnlyDictionary<string, string>? lastEnvironment, string versions, IHeadsetModule? module, ModuleContext ctx)
+        AppPaths paths, Profile profile, IReadOnlyDictionary<string, string>? lastEnvironment, string versions, IHeadsetModule? module, ModuleContext ctx,
+        OpenVrFiles? openVr = null)
     {
         var zip = new DiagnosticsZip();
         if (NewestMonadoLog(paths.LogsDir) is { } monadoLog)
@@ -57,6 +63,12 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
                 ? "Monado hasn't been started since Mirador started.\n"
                 : string.Concat(lastEnvironment.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => $"{kv.Key}={kv.Value}\n")));
         zip.AddText("versions.txt", versions);
+        if (openVr is not null)
+        {
+            zip.AddFile("openvrpaths.vrpath", openVr.PathsFile);
+            zip.AddFile("opencomposite.log", openVr.LogFile);
+        }
+
         module?.AddDiagnostics(ctx, profile, zip);
         return zip;
     }

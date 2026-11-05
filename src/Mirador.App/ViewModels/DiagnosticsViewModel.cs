@@ -5,6 +5,7 @@ using Microsoft.UI.Dispatching;
 using Mirador.App.Services;
 using Mirador.Core;
 using Mirador.Core.Diagnostics;
+using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Session;
 using Mirador.DreamAir;
@@ -196,7 +197,8 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             var module = profile.ModuleId is { } id ? host.Modules.GetValueOrDefault(id) : null;
             var versions = AppInfo.Versions(profile, host.AppDir);
             var environment = host.Session.LastMiradorEnvironment;
-            await Task.Run(() => DiagnosticsZip.Collect(host.Paths, profile, environment, versions, module, host.Context).Save(path));
+            var openVr = new OpenVrFiles(OpenVrPaths.DefaultFile, OpenCompositeCopy.LogFile);
+            await Task.Run(() => DiagnosticsZip.Collect(host.Paths, profile, environment, versions, module, host.Context, openVr).Save(path));
             Saved = $"Saved {path}.";
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
