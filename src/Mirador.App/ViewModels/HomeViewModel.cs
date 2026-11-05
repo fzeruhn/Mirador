@@ -7,6 +7,7 @@ using Mirador.App.Services;
 using Mirador.Core;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
+using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Runtime;
 using Mirador.Core.Session;
@@ -24,6 +25,8 @@ public sealed partial class HomeViewModel : ObservableObject
     private readonly DispatcherQueue ui;
     private CancellationTokenSource? checking;
     private bool loading;
+    private bool offersMonado = true;
+    private string? openVrSwitchProblem;
 
     public HomeViewModel(AppHost host, DispatcherQueue ui)
     {
@@ -32,6 +35,11 @@ public sealed partial class HomeViewModel : ObservableObject
         foreach (var notice in host.StartupNotices)
         {
             Notices.Add(new NoticeItem("startup", "Settings", notice, InfoBarSeverity.Warning));
+        }
+
+        if (host.OpenCompositeNotice is { } openComposite)
+        {
+            Notices.Add(new NoticeItem("opencomposite", "OpenVR games", openComposite, InfoBarSeverity.Warning));
         }
 
         host.Session.Changed += () => ui.TryEnqueue(OnSessionChanged);
@@ -87,6 +95,23 @@ public sealed partial class HomeViewModel : ObservableObject
     public partial string? RuntimeProblem { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowOpenVr { get; set; }
+
+    [ObservableProperty]
+    public partial string OpenVrText { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string OpenVrButtonText { get; set; } = OpenVrGames.UseMonadoLabel;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpenVrProblem))]
+    public partial string? OpenVrProblem { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpenVrWarning))]
+    public partial string? OpenVrWarning { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUpdate))]
     public partial string? UpdateText { get; set; }
 
@@ -100,6 +125,10 @@ public sealed partial class HomeViewModel : ObservableObject
     public bool HasRuntimeNotice => RuntimeNotice is not null;
 
     public bool HasRuntimeProblem => RuntimeProblem is not null;
+
+    public bool HasOpenVrProblem => OpenVrProblem is not null;
+
+    public bool HasOpenVrWarning => OpenVrWarning is not null;
 
     public bool HasUpdate => UpdateText is not null;
 
@@ -299,6 +328,48 @@ public sealed partial class HomeViewModel : ObservableObject
         RuntimeText = RuntimeLine.Describe(active, install, isActive);
         CanSetRuntime = install is not null && !isActive;
         RuntimeNotice = host.Session.RuntimeNotice;
+        RefreshOpenVr(isActive, active);
+    }
+
+    /// <summary>The "OpenVR games" row (Mirador.md §4.6 item 21), read from the paths file each time.</summary>
+    private void RefreshOpenVr(bool openXrIsMonado, string? activeOpenXr)
+    {
+        ShowOpenVr = host.OpenVr.Available;
+        if (!ShowOpenVr)
+        {
+            return;
+        }
+
+        var view = host.OpenVr.View(openXrIsMonado, activeOpenXr);
+        OpenVrText = view.Line;
+        offersMonado = view.OffersMonado;
+        OpenVrButtonText = view.OffersMonado ? OpenVrGames.UseMonadoLabel : OpenVrGames.UseSteamVrLabel;
+        OpenVrWarning = view.Warning;
+        OpenVrProblem = openVrSwitchProblem ?? view.Problem;
+    }
+
+    [RelayCommand]
+    private async Task SwitchOpenVrAsync()
+    {
+        var toMonado = offersMonado;
+        try
+        {
+            openVrSwitchProblem = await Task.Run(() => toMonado ? host.OpenVr.UseMonado() : host.OpenVr.UseSteamVr());
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write("Switching OpenVR games failed", e);
+            openVrSwitchProblem = $"Switching OpenVR games failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
+        }
+
+        if (openVrSwitchProblem is not null)
+        {
+            AppLog.Write("Switching OpenVR games: " + openVrSwitchProblem);
+        }
+
+        // Through null, so that the same problem again opens the bar again after it was closed.
+        OpenVrProblem = null;
+        RefreshRuntime();
     }
 
     /// <summary>Runs the selected profile's headset checks and shows those that need a look.</summary>
