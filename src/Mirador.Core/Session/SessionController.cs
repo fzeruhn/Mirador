@@ -234,7 +234,7 @@ public sealed class SessionController(SessionDeps deps)
                         stopFirst = stopping;
                         break;
                     default:
-                        shared = BeginStart(gameStandIn);
+                        shared = BeginStart(reason, gameStandIn);
                         break;
                 }
             }
@@ -506,9 +506,9 @@ public sealed class SessionController(SessionDeps deps)
             : $"Mirador couldn't undo what its last session left behind ({Trimmed(e.Message)}). It tries again the next time Mirador starts.";
 
     /// <summary>Moves to Starting and sets the Start off. Called under the lock.</summary>
-    private Task<StartOutcome> BeginStart(string? gameStandIn)
+    private Task<StartOutcome> BeginStart(StartReason reason, string? gameStandIn)
     {
-        var run = new Run { GameStandIn = gameStandIn };
+        var run = new Run { ForGame = reason == StartReason.Game, GameStandIn = gameStandIn };
         var cancel = new CancellationTokenSource(); // not disposed: it has no timer, and a late Stop may still cancel it
         var done = new TaskCompletionSource<StartOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
         state = SessionState.Starting;
@@ -624,6 +624,13 @@ public sealed class SessionController(SessionDeps deps)
         if (run.GameStandIn is { } gameStandIn && !StandIn.BelongsTo(gameStandIn, install))
         {
             return Fail(OtherMonado(gameStandIn, install, profile));
+        }
+
+        // A game that only asks whether a headset is there starts Monado (OpenComposite does, Mirador.md §4.6 item 25):
+        // with the headset unplugged, refuse before any step, so Pimax is never touched and the game goes on without VR.
+        if (run.ForGame && module is not null && !module.IsPresent(deps.Context.Usb.Present()))
+        {
+            return Fail($"Monado wasn't started: the {module.DisplayName} isn't connected.");
         }
 
         var usesLighthouse = LighthouseConflicts.UsesLighthouse(profile, module?.UsesSteamVrLighthouse ?? false);
@@ -1133,6 +1140,9 @@ public sealed class SessionController(SessionDeps deps)
     /// <summary>One Start and, if it succeeds, the session that follows it.</summary>
     private sealed class Run
     {
+        /// <summary>A game asked for this Start (through its stand-in), whether or not the stand-in is known.</summary>
+        public bool ForGame { get; init; }
+
         /// <summary>The stand-in of the game that asked for this Start; null when someone else did.</summary>
         public string? GameStandIn { get; init; }
 

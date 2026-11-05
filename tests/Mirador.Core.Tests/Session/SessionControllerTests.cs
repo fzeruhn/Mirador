@@ -329,6 +329,77 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task Game_start_refused_when_headset_unplugged()
+    {
+        await using var h = new Harness();
+        h.Pipe.Up = true;
+        h.Module.UsesSteamVrLighthouse = true;
+        h.Processes.Running.Add(new ProcInfo("vrserver", 42)); // a later step would refuse with its own words
+        h.Usb.Devices.Clear();
+        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(false, "Monado wasn't started: the Fake headset isn't connected."), outcome);
+        Assert.Equal(0, h.Module.BeforeStartCalls);
+        Assert.Equal(0, h.Launcher.Starts);
+        Assert.Equal(SessionState.Stopped, h.Controller.State);
+        Assert.False(File.Exists(h.Paths.SessionFile));
+    }
+
+    [Fact]
+    public async Task Game_start_with_unknown_stand_in_refused_too()
+    {
+        await using var h = new Harness();
+        h.Pipe.Up = true;
+        h.Usb.Devices.Clear();
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, null, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(false, "Monado wasn't started: the Fake headset isn't connected."), outcome);
+        Assert.Equal(0, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task Button_start_ignores_presence()
+    {
+        await using var h = new Harness();
+        h.Usb.Devices.Clear();
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.Equal(new StartOutcome(true, "Monado is running."), outcome);
+    }
+
+    [Fact]
+    public async Task Game_start_on_custom_profile_ignores_presence()
+    {
+        await using var h = new Harness();
+        h.UseProfile(Harness.DreamAir with { Name = "Custom", ModuleId = null });
+        h.Pipe.Up = true;
+        h.Usb.Devices.Clear();
+        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(true, "Monado is running."), outcome);
+    }
+
+    [Fact]
+    public async Task Game_joins_running_session_with_headset_unplugged()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        h.Usb.Devices.Clear();
+        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new StartOutcome(true, "Monado is already running."), outcome);
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
+    [Fact]
     public async Task A_game_of_another_monado_is_refused_before_any_step()
     {
         await using var h = new Harness();
