@@ -92,6 +92,20 @@ public class OpenVrPathsTests
     }
 
     [Fact]
+    public void Use_steamvr_on_finn_s_file_puts_it_back_as_it_was()
+    {
+        using var dir = new TempDir();
+        var paths = With(dir, FinnsFile);
+        var before = JsonNode.Parse(FinnsFile)!.AsObject();
+        Assert.Null(paths.UseMonado());
+
+        Assert.Null(paths.UseSteamVr());
+
+        Assert.True(JsonNode.DeepEquals(before, Json(dir)));
+        Assert.Equal(OpenVrTarget.SteamVr, paths.Read().Target);
+    }
+
+    [Fact]
     public void Use_steamvr_removes_ours_and_moves_steamvr_first()
     {
         using var dir = new TempDir();
@@ -161,6 +175,7 @@ public class OpenVrPathsTests
     [InlineData("{ \"runtime\": \"x\" }")]
     [InlineData("[]")]
     [InlineData("{ \"runtime\": [1] }")]
+    [InlineData("{ \"runtime\": [\"C:\\\\a\"], \"runtime\": [\"C:\\\\b\"] }")]
     public void Unparsable_file_is_never_overwritten(string content)
     {
         using var dir = new TempDir();
