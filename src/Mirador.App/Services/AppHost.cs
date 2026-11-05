@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using Mirador.Core;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
+using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Runtime;
 using Mirador.Core.Session;
@@ -49,6 +50,10 @@ public sealed class AppHost : IAsyncDisposable
             Calibrations));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
         CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
+        OpenVr = new OpenVrGames(
+            new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir),
+            new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir),
+            Settings);
 
         launcher = new JobProcessLauncher();
         Session = new SessionController(new SessionDeps(
@@ -145,6 +150,12 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>What went wrong while Mirador started that the user should read on Home: settings reset, files it couldn't read.</summary>
     public IReadOnlyList<string> StartupNotices => notices;
 
+    /// <summary>The "OpenVR games" switch (Mirador.md §4.6).</summary>
+    public OpenVrGames OpenVr { get; }
+
+    /// <summary>Why the OpenComposite copy couldn't be brought up to date at launch; null when it is.</summary>
+    public string? OpenCompositeNotice { get; private set; }
+
     /// <summary>
     /// Puts Mirador together and reads its settings once, so that a file it had to set aside, or couldn't read, is
     /// known from the start.
@@ -156,6 +167,7 @@ public sealed class AppHost : IAsyncDisposable
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
         host.CheckStore("Monado settings", paths.MonadoSettingsFile, () => host.MonadoSettings.Load());
         host.CheckStore("settings", paths.SettingsFile, () => host.Settings.Load());
+        host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
     }
 

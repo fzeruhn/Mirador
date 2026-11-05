@@ -135,7 +135,10 @@ public class OpenCompositeCopyTests
         }
 
         Assert.Equal(File.ReadAllBytes(system), File.ReadAllBytes(d.CopyBin(Dll)));
-        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+
+        // Windows (or a virus scanner looking at the new DLL) may hold the freed image for a moment: "in use" until then.
+        Assert.True(SpinWait.SpinUntil(() => d.Copy().Update() == CopyOutcome.Updated, TimeSpan.FromSeconds(5)));
+        Assert.Equal([9, 9], File.ReadAllBytes(d.CopyBin(Dll)));
     }
 
     [Fact]

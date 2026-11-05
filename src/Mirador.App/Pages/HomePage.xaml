@@ -93,6 +93,28 @@
                 Message="{x:Bind ViewModel.RuntimeNotice, Mode=OneWay}"
                 Severity="Warning" />
 
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="12"
+                Visibility="{x:Bind ViewModel.ShowOpenVr, Mode=OneWay}">
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.OpenVrText, Mode=OneWay}" />
+                <Button Command="{x:Bind ViewModel.SwitchOpenVrCommand}" Content="{x:Bind ViewModel.OpenVrButtonText, Mode=OneWay}" />
+            </StackPanel>
+
+            <InfoBar
+                Title="OpenVR games"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.HasOpenVrProblem, Mode=OneWay}"
+                Message="{x:Bind ViewModel.OpenVrProblem, Mode=OneWay}"
+                Severity="Error" />
+
+            <InfoBar
+                Title="OpenVR games"
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasOpenVrWarning, Mode=OneWay}"
+                Message="{x:Bind ViewModel.OpenVrWarning, Mode=OneWay}"
+                Severity="Warning" />
+
             <ItemsControl ItemsSource="{x:Bind ViewModel.Notices}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:NoticeItem">

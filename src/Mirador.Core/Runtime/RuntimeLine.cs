@@ -24,8 +24,11 @@ public static class RuntimeLine
             return "No OpenXR runtime is set";
         }
 
-        // Split on both separators: the registry may hold either.
-        var name = activeManifest.Trim().Trim('"').Split('\\', '/').LastOrDefault(part => part.Length > 0) ?? activeManifest;
-        return $"Active OpenXR runtime: {name}";
+        return $"Active OpenXR runtime: {ManifestName(activeManifest)}";
     }
+
+    /// <summary>A runtime manifest's file name, as the runtime line shows it: <c>PiOpenXR_64.json</c>.</summary>
+    public static string ManifestName(string manifest) =>
+        // Split on both separators: the registry may hold either.
+        manifest.Trim().Trim('"').Split('\\', '/').LastOrDefault(part => part.Length > 0) ?? manifest;
 }
