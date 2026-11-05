@@ -20,6 +20,9 @@ public sealed class AppPaths(string root)
     public string ChecksDir { get; } = Path.Combine(root, "checks");
     public string BackupsDir { get; } = Path.Combine(root, "calibration-backups");
 
+    /// <summary>The per-user copy of the bundled OpenComposite, the runtime folder OpenVR games load it from.</summary>
+    public string OpenCompositeDir { get; } = Path.Combine(root, "OpenComposite");
+
     /// <summary>The log file for a Monado session that starts at <paramref name="now"/>.</summary>
     public string NewMonadoLogFile(DateTime now) =>
         Path.Combine(LogsDir, $"monado-{now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)}.log");

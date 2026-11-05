@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using Mirador.Core;
+using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 
 namespace Mirador.App.Services;
@@ -59,5 +61,7 @@ public static class AppInfo
 
     /// <summary>The lines of versions.txt and the Diagnostics page.</summary>
     public static string Versions(Profile profile, string appDir) =>
-        $"Mirador {Version}\n{Windows()}\nMonado: {Monado(profile, appDir)}\nProfile: {profile.Name}\n";
+        $"Mirador {Version}\n{Windows()}\nMonado: {Monado(profile, appDir)}\n" +
+        $"{new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), AppPaths.Default.OpenCompositeDir).VersionLine()}\n" +
+        $"Profile: {profile.Name}\n";
 }

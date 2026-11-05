@@ -68,6 +68,40 @@ public class DiagnosticsZipTests
     }
 
     [Fact]
+    public async Task Adds_paths_file_and_opencomposite_log()
+    {
+        await using var h = new Harness();
+        var pathsFile = Path.Combine(h.Root, "openvrpaths.vrpath");
+        var log = Path.Combine(h.Root, "opencomposite.log");
+        File.WriteAllText(pathsFile, "{ \"runtime\": [] }");
+        File.WriteAllText(log, "Initializing OpenComposite");
+        var zipPath = Path.Combine(h.Root, "diagnostics.zip");
+
+        DiagnosticsZip.Collect(h.Paths, Harness.DreamAir, null, "Mirador 0.1.0\n", h.Module, Context(h), new OpenVrFiles(pathsFile, log)).Save(zipPath);
+
+        var entries = Read(zipPath);
+        Assert.Equal("{ \"runtime\": [] }", entries["openvrpaths.vrpath"]);
+        Assert.Equal("Initializing OpenComposite", entries["opencomposite.log"]);
+    }
+
+    [Fact]
+    public async Task Notes_missing_opencomposite_log()
+    {
+        await using var h = new Harness();
+        var zipPath = Path.Combine(h.Root, "diagnostics.zip");
+
+        DiagnosticsZip.Collect(
+            h.Paths, Harness.DreamAir, null, "Mirador 0.1.0\n", h.Module, Context(h),
+            new OpenVrFiles(Path.Combine(h.Root, "none.vrpath"), Path.Combine(h.Root, "none.log"))).Save(zipPath);
+
+        var entries = Read(zipPath);
+        Assert.False(entries.ContainsKey("opencomposite.log"));
+        Assert.False(entries.ContainsKey("openvrpaths.vrpath"));
+        Assert.Contains("opencomposite.log: ", entries["missing.txt"]);
+        Assert.Contains("openvrpaths.vrpath: ", entries["missing.txt"]);
+    }
+
+    [Fact]
     public void The_newest_monado_log_is_the_one()
     {
         using var dir = new TempDir();
