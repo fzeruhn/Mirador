@@ -23,6 +23,14 @@ public class AppArgsTests
     }
 
     [Fact]
+    public void Parse_restore_openvr()
+    {
+        Assert.Equal(new AppArgs(false, false, null, RestoreOpenVr: true), AppArgs.Parse(["--restore-openvr"]));
+        Assert.True(AppArgs.Parse(["--Restore-OpenVR"]).RestoreOpenVr);
+        Assert.False(AppArgs.Parse(["--start"]).RestoreOpenVr);
+    }
+
+    [Fact]
     public void Set_runtime_without_a_manifest_is_empty_not_missing()
     {
         Assert.Equal(new AppArgs(false, false, ""), AppArgs.Parse(["--set-runtime"]));

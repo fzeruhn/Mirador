@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Mirador.Core;
+using Mirador.Core.OpenVr;
 using Mirador.Core.Runtime;
 using Mirador.Ipc;
 
@@ -25,6 +26,13 @@ public static partial class Program
         if (parsed.SetRuntime is { } manifest)
         {
             return SetRuntimeCommand.Run(manifest, ActiveRuntimeWriter.Write);
+        }
+
+        // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.
+        if (parsed.RestoreOpenVr)
+        {
+            var copy = AppPaths.Default.OpenCompositeDir;
+            return RestoreOpenVrCommand.Run(new OpenVrPaths(OpenVrPaths.DefaultFile, copy), copy);
         }
 
         if (IsElevated())

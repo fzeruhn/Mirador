@@ -62,6 +62,13 @@ public sealed class OpenVrPaths(string file, string ourRuntimeDir)
         return first is null ? new OpenVrState(OpenVrTarget.None, null, null) : new OpenVrState(Classify(first), first, null);
     }
 
+    /// <summary>Whether Mirador's copy is anywhere in the <c>runtime</c> list; false when the file can't be read.</summary>
+    public bool NamesOurs()
+    {
+        var (doc, problem) = Load();
+        return problem is null && doc is not null && RuntimeList(doc).Any(entry => SamePath(entry, ourRuntimeDir));
+    }
+
     /// <summary>Puts Mirador's copy first; every other entry follows in its order.</summary>
     /// <returns>Null when written, else why nothing was written.</returns>
     public string? UseMonado()
