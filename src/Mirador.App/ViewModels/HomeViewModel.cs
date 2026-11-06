@@ -33,13 +33,16 @@ public sealed partial class HomeViewModel : ObservableObject
         this.ui = ui;
         foreach (var notice in host.StartupNotices)
         {
-            Notices.Add(new NoticeItem("startup", "Settings", notice, InfoBarSeverity.Warning));
+            Notices.Add(new NoticeItem("startup", "Settings", notice, InfoBarSeverity.Warning, IsClosable: true));
         }
 
         if (host.OpenCompositeNotice is { } openComposite)
         {
-            Notices.Add(new NoticeItem("opencomposite", "OpenVR games", openComposite, InfoBarSeverity.Warning));
+            Notices.Add(new NoticeItem("opencomposite", "OpenVR runtime", openComposite, InfoBarSeverity.Warning, IsClosable: true));
         }
+
+        // A headset plugged in or out: the checks say so at once, not at the next visit to Home.
+        host.DevicesChanged += () => ui.TryEnqueue(() => _ = RunChecksAsync());
 
         host.Session.Changed += () => ui.TryEnqueue(OnSessionChanged);
         host.Session.StatusChanged += () => ui.TryEnqueue(RefreshStatus);
@@ -151,9 +154,6 @@ public sealed partial class HomeViewModel : ObservableObject
 
     /// <summary>Takes a notice away when its bar is closed.</summary>
     public void Dismiss(NoticeItem notice) => Notices.Remove(notice);
-
-    /// <summary>The failure bar was closed.</summary>
-    public void DismissFailure() => LastFailure = null;
 
     // Concurrent: pressing "Starting…" must reach Stop while the Start it began still runs.
     [RelayCommand(AllowConcurrentExecutions = true)]
@@ -293,6 +293,8 @@ public sealed partial class HomeViewModel : ObservableObject
         RefreshRuntime();
         if (State == SessionState.Stopped && previous != SessionState.Stopped)
         {
+            // "While Monado runs" no longer holds; how it ended is the "ended" notice.
+            ClearWarnings();
             _ = RunChecksAsync();
         }
     }
@@ -329,6 +331,12 @@ public sealed partial class HomeViewModel : ObservableObject
         var isActive = install is not null && host.Runtime.IsActive(install.Manifest);
         OpenXrRow = new StatusItem("OpenXR runtime", RuntimeLine.Describe(active, install, isActive), isActive ? StatusLevel.Ok : StatusLevel.Info);
         CanSetRuntime = install is not null && !isActive;
+        if (isActive)
+        {
+            // Why setting it failed no longer matters once it is set.
+            RuntimeProblem = null;
+        }
+
         RuntimeNotice = host.Session.RuntimeNotice;
         RefreshOpenVr(isActive, active);
     }
@@ -357,6 +365,12 @@ public sealed partial class HomeViewModel : ObservableObject
             // Never let this stop the rest of Home (the checks run after it).
             AppLog.Write("Reading where OpenVR games go failed", e);
             view = new OpenVrView("Unknown", false, null, $"Mirador couldn't read where OpenVR games go ({e.Message.Trim().TrimEnd('.')}).");
+        }
+
+        if (!view.OffersOpenComposite && view.Problem is null)
+        {
+            // Why setting it failed no longer matters once it is set.
+            openCompositeProblem = null;
         }
 
         var level = view.Problem is not null ? StatusLevel.Error : view.OffersOpenComposite ? StatusLevel.Info : StatusLevel.Ok;
@@ -442,7 +456,8 @@ public sealed partial class HomeViewModel : ObservableObject
                 "check:" + r.Label,
                 r.Label,
                 r.Fix is null ? r.Text : $"{r.Text} {r.Fix}",
-                r.Level == StatusLevel.Error ? InfoBarSeverity.Error : InfoBarSeverity.Warning));
+                r.Level == StatusLevel.Error ? InfoBarSeverity.Error : InfoBarSeverity.Warning,
+                IsClosable: false));
         }
     }
 
@@ -459,7 +474,7 @@ public sealed partial class HomeViewModel : ObservableObject
     private void ShowNotice(string key, string title, string message, InfoBarSeverity severity)
     {
         RemoveNotice(key);
-        Notices.Insert(0, new NoticeItem(key, title, message, severity));
+        Notices.Insert(0, new NoticeItem(key, title, message, severity, IsClosable: true));
     }
 
     private void RemoveNotice(string key)
@@ -477,7 +492,7 @@ public sealed partial class HomeViewModel : ObservableObject
     {
         var key = "warning:" + w.Key;
         var existing = Notices.FirstOrDefault(n => n.Key == key);
-        var item = new NoticeItem(key, "While Monado runs", w.Text, InfoBarSeverity.Warning);
+        var item = new NoticeItem(key, "While Monado runs", w.Text, InfoBarSeverity.Warning, IsClosable: false);
         if (existing is null)
         {
             Notices.Add(item);

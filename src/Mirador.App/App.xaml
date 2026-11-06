@@ -10,6 +10,35 @@
             </ResourceDictionary.MergedDictionaries>
             <vm:PassThroughConverter x:Key="ProfileConverter" />
             <vm:VisibleWhenTrueConverter x:Key="VisibleWhenTrue" />
+
+            <!--
+                The pages' common layout, after the Windows 11 Settings pages and the Community Toolkit's settings
+                controls: cards 4 apart, a section set off by its header (Body Strong, 30 above, 6 below). A page's
+                stack goes in a PageColumn, which keeps it at most 900 wide.
+            -->
+            <Style x:Key="PageStack" TargetType="StackPanel">
+                <Setter Property="Padding" Value="36,24,36,36" />
+                <Setter Property="Spacing" Value="4" />
+            </Style>
+            <Style
+                x:Key="PageTitle"
+                BasedOn="{StaticResource TitleTextBlockStyle}"
+                TargetType="TextBlock">
+                <Setter Property="Margin" Value="0,0,0,8" />
+            </Style>
+            <Style
+                x:Key="SectionHeader"
+                BasedOn="{StaticResource BodyStrongTextBlockStyle}"
+                TargetType="TextBlock">
+                <Setter Property="Margin" Value="1,30,0,6" />
+            </Style>
+            <!-- The first section's header, right under the title. -->
+            <Style
+                x:Key="FirstSectionHeader"
+                BasedOn="{StaticResource SectionHeader}"
+                TargetType="TextBlock">
+                <Setter Property="Margin" Value="1,8,0,6" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -36,6 +36,8 @@ public sealed partial class MainWindow : Window
         var scale = GetDpiForWindow(handle) / 96.0;
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(1100 * scale), (int)(760 * scale)));
         minimumSize = new MinimumSize(handle, MinimumWidth, MinimumHeight);
+        deviceChanges = new DeviceChanges(handle);
+        deviceChanges.Changed += App.Current.Host.NotifyDevicesChanged;
         AppWindow.Closing += OnClosing;
         NavView.SelectedItem = NavView.MenuItems[0];
         App.Current.Host.ProfilesChanged += ShowHeadsetPages;
@@ -48,6 +50,8 @@ public sealed partial class MainWindow : Window
     private const int MinimumHeight = 500;
 
     private readonly MinimumSize minimumSize;
+
+    private readonly DeviceChanges deviceChanges;
 
     /// <summary>Whether the window is on screen (not hidden in the tray).</summary>
     public bool IsShown => AppWindow.IsVisible;

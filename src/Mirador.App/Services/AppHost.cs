@@ -106,6 +106,12 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>Raised on the UI thread after the profiles or the selected one changed (Home, the Profiles page).</summary>
     public event Action? ProfilesChanged;
 
+    /// <summary>Raised on the UI thread a second after devices were plugged in or out.</summary>
+    public event Action? DevicesChanged;
+
+    /// <summary>Says that devices were plugged in or out; call on the UI thread.</summary>
+    public void NotifyDevicesChanged() => DevicesChanged?.Invoke();
+
     /// <summary>Says that the profiles changed, and puts the stand-in below the selected build; call on the UI thread.</summary>
     public void NotifyProfilesChanged()
     {
