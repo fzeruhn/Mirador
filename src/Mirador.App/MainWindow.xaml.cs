@@ -17,7 +17,12 @@ public sealed partial class MainWindow : Window
         ["MonadoSettings"] = typeof(MonadoSettingsPage),
         ["Profiles"] = typeof(ProfilesPage),
         ["Diagnostics"] = typeof(DiagnosticsPage),
+        ["Settings"] = typeof(SettingsPage),
     };
+
+    /// <summary>The pane's items: the pages, then App settings at the foot.</summary>
+    private IEnumerable<NavigationViewItem> PaneItems =>
+        NavView.MenuItems.Concat(NavView.FooterMenuItems).OfType<NavigationViewItem>();
 
     public MainWindow()
     {
@@ -119,7 +124,7 @@ public sealed partial class MainWindow : Window
         }
 
         var widest = 0.0;
-        foreach (var item in NavView.MenuItems.OfType<NavigationViewItem>().Append(NavView.SettingsItem as NavigationViewItem))
+        foreach (var item in PaneItems)
         {
             if (item is not { Visibility: Visibility.Visible, Content: string text })
             {
@@ -184,7 +189,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Shows the page with <paramref name="tag"/> (Home, EyeTracking, …).</summary>
     public void Navigate(string tag)
     {
-        NavView.SelectedItem = NavView.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (string)i.Tag == tag);
+        NavView.SelectedItem = PaneItems.FirstOrDefault(i => (string)i.Tag == tag);
     }
 
     /// <summary>Closing hides the window when Mirador stays in the tray; otherwise it quits, asking first while Monado runs.</summary>
@@ -211,9 +216,7 @@ public sealed partial class MainWindow : Window
 
     private void OnSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        var page = args.IsSettingsSelected
-            ? typeof(SettingsPage)
-            : PagesByTag[(string)((NavigationViewItem)args.SelectedItem).Tag];
+        var page = PagesByTag[(string)((NavigationViewItem)args.SelectedItem).Tag];
         if (ContentFrame.CurrentSourcePageType != page)
         {
             ContentFrame.Navigate(page);

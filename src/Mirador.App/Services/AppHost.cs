@@ -52,8 +52,7 @@ public sealed class AppHost : IAsyncDisposable
         CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
         OpenVr = new OpenVrGames(
             new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir),
-            new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir),
-            Settings);
+            new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir));
 
         launcher = new JobProcessLauncher();
         Session = new SessionController(new SessionDeps(
@@ -150,10 +149,10 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>What went wrong while Mirador started that the user should read on Home: settings reset, files it couldn't read.</summary>
     public IReadOnlyList<string> StartupNotices => notices;
 
-    /// <summary>The "OpenVR games" switch (Mirador.md §4.6).</summary>
+    /// <summary>Home's "OpenVR runtime" row and its "Set OpenComposite" (Mirador.md §4.6).</summary>
     public OpenVrGames OpenVr { get; }
 
-    /// <summary>Why the OpenComposite copy couldn't be brought up to date at launch; null when it is.</summary>
+    /// <summary>Why OpenVR games couldn't be put on Monado, or the copy brought up to date, at launch; null when all is well.</summary>
     public string? OpenCompositeNotice { get; private set; }
 
     /// <summary>
