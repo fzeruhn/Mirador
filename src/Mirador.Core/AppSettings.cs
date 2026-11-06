@@ -6,10 +6,7 @@ namespace Mirador.Core;
 /// <param name="CloseToTray">Closing the window keeps Mirador in the tray (otherwise it quits).</param>
 /// <param name="CheckForUpdates">Ask GitHub for a newer release at most once a day.</param>
 /// <param name="LastUpdateCheck">When it last asked.</param>
-/// <param name="OpenVrOnMonado">The user switched OpenVR games to Monado (Mirador.md §4.6 item 22), so a paths file that
-/// no longer names Mirador's copy first was changed by another program.</param>
-public sealed record AppSettings(
-    bool CloseToTray = true, bool CheckForUpdates = true, DateTimeOffset? LastUpdateCheck = null, bool OpenVrOnMonado = false);
+public sealed record AppSettings(bool CloseToTray = true, bool CheckForUpdates = true, DateTimeOffset? LastUpdateCheck = null);
 
 /// <summary>Keeps the <see cref="AppSettings"/> in one JSON file.</summary>
 public sealed class AppSettingsStore(string path)

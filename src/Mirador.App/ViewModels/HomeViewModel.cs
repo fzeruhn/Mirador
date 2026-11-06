@@ -25,8 +25,7 @@ public sealed partial class HomeViewModel : ObservableObject
     private readonly DispatcherQueue ui;
     private CancellationTokenSource? checking;
     private bool loading;
-    private bool offersMonado = true;
-    private string? openVrSwitchProblem;
+    private string? openCompositeProblem;
 
     public HomeViewModel(AppHost host, DispatcherQueue ui)
     {
@@ -84,24 +83,27 @@ public sealed partial class HomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasRuntimeNotice))]
     public partial string? RuntimeNotice { get; set; }
 
+    /// <summary>The "OpenXR runtime" row of the runtimes card.</summary>
     [ObservableProperty]
-    public partial string RuntimeText { get; set; } = "";
+    public partial StatusItem OpenXrRow { get; set; } = new("OpenXR runtime", "", StatusLevel.Info);
 
     [ObservableProperty]
     public partial bool CanSetRuntime { get; set; }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRuntimeProblem))]
-    public partial string? RuntimeProblem { get; set; }
-
+    /// <summary>Whether the "OpenVR runtime" row shows: not in a dev run without OpenComposite.</summary>
     [ObservableProperty]
     public partial bool ShowOpenVr { get; set; }
 
+    /// <summary>The "OpenVR runtime" row of the runtimes card.</summary>
     [ObservableProperty]
-    public partial string OpenVrText { get; set; } = "";
+    public partial StatusItem OpenVrRow { get; set; } = new("OpenVR runtime", "", StatusLevel.Info);
 
     [ObservableProperty]
-    public partial string OpenVrButtonText { get; set; } = OpenVrGames.UseMonadoLabel;
+    public partial bool CanSetOpenComposite { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRuntimeProblem))]
+    public partial string? RuntimeProblem { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOpenVrProblem))]
@@ -325,18 +327,23 @@ public sealed partial class HomeViewModel : ObservableObject
 
         var active = host.Runtime.Active();
         var isActive = install is not null && host.Runtime.IsActive(install.Manifest);
-        RuntimeText = RuntimeLine.Describe(active, install, isActive);
+        OpenXrRow = new StatusItem("OpenXR runtime", RuntimeLine.Describe(active, install, isActive), isActive ? StatusLevel.Ok : StatusLevel.Info);
         CanSetRuntime = install is not null && !isActive;
         RuntimeNotice = host.Session.RuntimeNotice;
         RefreshOpenVr(isActive, active);
     }
 
-    /// <summary>The "OpenVR games" row (Mirador.md §4.6 item 21), read from the paths file each time.</summary>
+    /// <summary>
+    /// The "OpenVR runtime" row (Mirador.md §4.6 item 21), read from the paths file each time, and what needs a look.
+    /// </summary>
     private void RefreshOpenVr(bool openXrIsMonado, string? activeOpenXr)
     {
         ShowOpenVr = host.OpenVr.Available;
         if (!ShowOpenVr)
         {
+            CanSetOpenComposite = false;
+            OpenVrWarning = null;
+            OpenVrProblem = null;
             return;
         }
 
@@ -347,35 +354,36 @@ public sealed partial class HomeViewModel : ObservableObject
         }
         catch (Exception e)
         {
-            // Never let this row stop the rest of Home (the checks run after it).
+            // Never let this stop the rest of Home (the checks run after it).
             AppLog.Write("Reading where OpenVR games go failed", e);
-            view = new OpenVrView("OpenVR games: unknown", true, null, $"Mirador couldn't read where OpenVR games go ({e.Message.Trim().TrimEnd('.')}).");
+            view = new OpenVrView("Unknown", false, null, $"Mirador couldn't read where OpenVR games go ({e.Message.Trim().TrimEnd('.')}).");
         }
 
-        OpenVrText = view.Line;
-        offersMonado = view.OffersMonado;
-        OpenVrButtonText = view.OffersMonado ? OpenVrGames.UseMonadoLabel : OpenVrGames.UseSteamVrLabel;
+        var level = view.Problem is not null ? StatusLevel.Error : view.OffersOpenComposite ? StatusLevel.Info : StatusLevel.Ok;
+        OpenVrRow = new StatusItem("OpenVR runtime", view.Runtime, level);
+        CanSetOpenComposite = view.OffersOpenComposite;
         OpenVrWarning = view.Warning;
-        OpenVrProblem = openVrSwitchProblem ?? view.Problem;
+        OpenVrProblem = openCompositeProblem ?? view.Problem;
     }
 
+    /// <summary>"Set OpenComposite": OpenComposite first for OpenVR games, until the owner or SteamVR changes it.</summary>
     [RelayCommand]
-    private async Task SwitchOpenVrAsync()
+    private async Task SetOpenCompositeAsync()
     {
-        var toMonado = offersMonado;
+        CanSetOpenComposite = false;
         try
         {
-            openVrSwitchProblem = await Task.Run(() => toMonado ? host.OpenVr.UseMonado() : host.OpenVr.UseSteamVr());
+            openCompositeProblem = await Task.Run(host.OpenVr.UseMonado);
         }
         catch (Exception e)
         {
-            AppLog.Write("Switching OpenVR games failed", e);
-            openVrSwitchProblem = $"Switching OpenVR games failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
+            AppLog.Write("Setting OpenComposite failed", e);
+            openCompositeProblem = $"Setting OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
         }
 
-        if (openVrSwitchProblem is not null)
+        if (openCompositeProblem is not null)
         {
-            AppLog.Write("Switching OpenVR games: " + openVrSwitchProblem);
+            AppLog.Write("Setting OpenComposite: " + openCompositeProblem);
         }
 
         // Through null, so that the same problem again opens the bar again after it was closed.

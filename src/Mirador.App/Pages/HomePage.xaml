@@ -5,8 +5,24 @@
     xmlns:vm="using:Mirador.App.ViewModels"
     NavigationCacheMode="Required">
 
+    <Page.Resources>
+        <!-- The cards: Monado's status and the runtimes. -->
+        <Style x:Key="HomeCard" TargetType="Border">
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+    </Page.Resources>
+
+    <!--
+        Spacing from Microsoft's "Content layout and spacing": 12 between content areas, 8 between controls of one
+        group. Every message (InfoBar) is in one group under the cards, so a message coming or going never moves the
+        controls above it, and a closed bar takes no room.
+    -->
     <ScrollViewer>
-        <StackPanel MaxWidth="900" Padding="36,24,36,36" HorizontalAlignment="Stretch" Spacing="16">
+        <StackPanel MaxWidth="900" Padding="36,24,36,36" HorizontalAlignment="Stretch" Spacing="12">
             <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Home" />
 
             <Grid ColumnSpacing="12">
@@ -30,39 +46,29 @@
                     Style="{StaticResource AccentButtonStyle}" />
             </Grid>
 
-            <InfoBar
-                Title="Monado didn't start"
-                Closed="OnFailureClosed"
-                IsClosable="True"
-                IsOpen="{x:Bind ViewModel.HasFailure, Mode=OneWay}"
-                Message="{x:Bind ViewModel.LastFailure, Mode=OneWay}"
-                Severity="Error" />
-
-            <Border
-                Padding="16"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="8">
+            <Border Style="{StaticResource HomeCard}">
                 <ItemsControl ItemsSource="{x:Bind ViewModel.Status}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:StatusItem">
-                            <Grid Padding="0,4" ColumnSpacing="12">
+                            <Grid MinHeight="36" ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="16" />
                                     <ColumnDefinition Width="140" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <FontIcon
+                                    VerticalAlignment="Center"
                                     FontSize="16"
                                     Foreground="{x:Bind Brush}"
                                     Glyph="{x:Bind Glyph}" />
                                 <TextBlock
                                     Grid.Column="1"
+                                    VerticalAlignment="Center"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"
                                     Text="{x:Bind Label}" />
                                 <TextBlock
                                     Grid.Column="2"
+                                    VerticalAlignment="Center"
                                     Text="{x:Bind Text}"
                                     TextWrapping="Wrap" />
                             </Grid>
@@ -71,75 +77,151 @@
                 </ItemsControl>
             </Border>
 
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.RuntimeText, Mode=OneWay}" />
-                <Button
-                    Command="{x:Bind ViewModel.SetRuntimeCommand}"
-                    Content="Set Monado as OpenXR runtime"
-                    Visibility="{x:Bind ViewModel.CanSetRuntime, Mode=OneWay}" />
+            <!-- The runtimes games use. Each row is as tall with its button as without it. -->
+            <Border Style="{StaticResource HomeCard}">
+                <StackPanel>
+                    <Grid MinHeight="36" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontSize="16"
+                            Foreground="{x:Bind ViewModel.OpenXrRow.Brush, Mode=OneWay}"
+                            Glyph="{x:Bind ViewModel.OpenXrRow.Glyph, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="{x:Bind ViewModel.OpenXrRow.Label, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.OpenXrRow.Text, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <Button
+                            Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Command="{x:Bind ViewModel.SetRuntimeCommand}"
+                            Content="Set Monado"
+                            ToolTipService.ToolTip="Make this profile's Monado the OpenXR runtime"
+                            Visibility="{x:Bind ViewModel.CanSetRuntime, Mode=OneWay}" />
+                    </Grid>
+
+                    <Grid
+                        MinHeight="36"
+                        ColumnSpacing="12"
+                        Visibility="{x:Bind ViewModel.ShowOpenVr, Mode=OneWay}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontSize="16"
+                            Foreground="{x:Bind ViewModel.OpenVrRow.Brush, Mode=OneWay}"
+                            Glyph="{x:Bind ViewModel.OpenVrRow.Glyph, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="{x:Bind ViewModel.OpenVrRow.Label, Mode=OneWay}" />
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.OpenVrRow.Text, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <Button
+                            Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Command="{x:Bind ViewModel.SetOpenCompositeCommand}"
+                            Content="Set OpenComposite"
+                            ToolTipService.ToolTip="Send OpenVR (SteamVR) games to Monado through OpenComposite"
+                            Visibility="{x:Bind ViewModel.CanSetOpenComposite, Mode=OneWay}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Messages: each bar takes room only while open. -->
+            <StackPanel Spacing="8">
+                <InfoBar
+                    Title="Monado didn't start"
+                    Closed="OnFailureClosed"
+                    IsClosable="True"
+                    IsOpen="{x:Bind ViewModel.HasFailure, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.LastFailure, Mode=OneWay}"
+                    Severity="Error"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+                <InfoBar
+                    Title="OpenXR runtime"
+                    IsClosable="True"
+                    IsOpen="{x:Bind ViewModel.HasRuntimeProblem, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.RuntimeProblem, Mode=OneWay}"
+                    Severity="Error"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+                <InfoBar
+                    Title="OpenXR runtime"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasRuntimeNotice, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.RuntimeNotice, Mode=OneWay}"
+                    Severity="Warning"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+                <InfoBar
+                    Title="OpenVR runtime"
+                    IsClosable="True"
+                    IsOpen="{x:Bind ViewModel.HasOpenVrProblem, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.OpenVrProblem, Mode=OneWay}"
+                    Severity="Error"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+                <InfoBar
+                    Title="OpenVR runtime"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasOpenVrWarning, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.OpenVrWarning, Mode=OneWay}"
+                    Severity="Warning"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+                <InfoBar
+                    Title="A new version"
+                    IsClosable="True"
+                    IsOpen="{x:Bind ViewModel.HasUpdate, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.UpdateText, Mode=OneWay}"
+                    Severity="Informational"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
+                    <InfoBar.ActionButton>
+                        <HyperlinkButton Content="Release notes" NavigateUri="{x:Bind ViewModel.UpdateUrl, Mode=OneWay}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
+                <!-- Last, so that an empty list only adds room below everything. -->
+                <ItemsControl ItemsSource="{x:Bind ViewModel.Notices}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NoticeItem">
+                            <InfoBar
+                                Title="{x:Bind Title}"
+                                Closed="OnNoticeClosed"
+                                IsClosable="True"
+                                IsOpen="True"
+                                Message="{x:Bind Message}"
+                                Severity="{x:Bind Severity}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
-
-            <InfoBar
-                Title="OpenXR runtime"
-                IsClosable="True"
-                IsOpen="{x:Bind ViewModel.HasRuntimeProblem, Mode=OneWay}"
-                Message="{x:Bind ViewModel.RuntimeProblem, Mode=OneWay}"
-                Severity="Error" />
-
-            <InfoBar
-                Title="OpenXR runtime"
-                IsClosable="False"
-                IsOpen="{x:Bind ViewModel.HasRuntimeNotice, Mode=OneWay}"
-                Message="{x:Bind ViewModel.RuntimeNotice, Mode=OneWay}"
-                Severity="Warning" />
-
-            <StackPanel
-                Orientation="Horizontal"
-                Spacing="12"
-                Visibility="{x:Bind ViewModel.ShowOpenVr, Mode=OneWay}">
-                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.OpenVrText, Mode=OneWay}" />
-                <Button Command="{x:Bind ViewModel.SwitchOpenVrCommand}" Content="{x:Bind ViewModel.OpenVrButtonText, Mode=OneWay}" />
-            </StackPanel>
-
-            <InfoBar
-                Title="OpenVR games"
-                IsClosable="True"
-                IsOpen="{x:Bind ViewModel.HasOpenVrProblem, Mode=OneWay}"
-                Message="{x:Bind ViewModel.OpenVrProblem, Mode=OneWay}"
-                Severity="Error" />
-
-            <InfoBar
-                Title="OpenVR games"
-                IsClosable="False"
-                IsOpen="{x:Bind ViewModel.HasOpenVrWarning, Mode=OneWay}"
-                Message="{x:Bind ViewModel.OpenVrWarning, Mode=OneWay}"
-                Severity="Warning" />
-
-            <ItemsControl ItemsSource="{x:Bind ViewModel.Notices}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:NoticeItem">
-                        <InfoBar
-                            Title="{x:Bind Title}"
-                            Margin="0,0,0,8"
-                            Closed="OnNoticeClosed"
-                            IsClosable="True"
-                            IsOpen="True"
-                            Message="{x:Bind Message}"
-                            Severity="{x:Bind Severity}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <InfoBar
-                Title="A new version"
-                IsClosable="True"
-                IsOpen="{x:Bind ViewModel.HasUpdate, Mode=OneWay}"
-                Message="{x:Bind ViewModel.UpdateText, Mode=OneWay}"
-                Severity="Informational">
-                <InfoBar.ActionButton>
-                    <HyperlinkButton Content="Release notes" NavigateUri="{x:Bind ViewModel.UpdateUrl, Mode=OneWay}" />
-                </InfoBar.ActionButton>
-            </InfoBar>
         </StackPanel>
     </ScrollViewer>
 </Page>

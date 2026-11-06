@@ -2,12 +2,12 @@ using Mirador.Core.Monado;
 
 namespace Mirador.Core.Runtime;
 
-/// <summary>The line on Home that says which OpenXR runtime games will use.</summary>
+/// <summary>Home's "OpenXR runtime" row: which OpenXR runtime games will use.</summary>
 public static class RuntimeLine
 {
     /// <summary>
-    /// "Active OpenXR runtime: Monado, this profile" when <paramref name="isActive"/>; otherwise the active manifest's
-    /// file name, or "No OpenXR runtime is set".
+    /// "Monado, this profile" when <paramref name="isActive"/>; otherwise the active manifest's file name, or
+    /// "None set".
     /// </summary>
     /// <param name="activeManifest">The active runtime's manifest path, as the registry holds it; null when none is set.</param>
     /// <param name="install">The selected profile's Monado, when it could be found.</param>
@@ -16,15 +16,15 @@ public static class RuntimeLine
     {
         if (isActive && install is not null)
         {
-            return "Active OpenXR runtime: Monado, this profile";
+            return "Monado, this profile";
         }
 
         if (string.IsNullOrWhiteSpace(activeManifest))
         {
-            return "No OpenXR runtime is set";
+            return "None set";
         }
 
-        return $"Active OpenXR runtime: {ManifestName(activeManifest)}";
+        return ManifestName(activeManifest);
     }
 
     /// <summary>A runtime manifest's file name, as the runtime line shows it: <c>PiOpenXR_64.json</c>.</summary>

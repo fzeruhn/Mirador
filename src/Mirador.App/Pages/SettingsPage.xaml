@@ -6,7 +6,7 @@
 
     <ScrollViewer>
         <StackPanel MaxWidth="900" Padding="36,24,36,36" Spacing="4">
-            <TextBlock Margin="0,0,0,12" Style="{StaticResource TitleTextBlockStyle}" Text="Settings" />
+            <TextBlock Margin="0,0,0,12" Style="{StaticResource TitleTextBlockStyle}" Text="App settings" />
 
             <InfoBar
                 Margin="0,0,0,8"

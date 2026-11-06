@@ -4,7 +4,7 @@ using Mirador.Core;
 
 namespace Mirador.App.ViewModels;
 
-/// <summary>Mirador's own settings: close to the tray, the update check; and About.</summary>
+/// <summary>App settings: close to the tray, the update check; and About.</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly AppHost host;

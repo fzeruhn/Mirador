@@ -15,17 +15,17 @@ public class RuntimeLineTests
     [Fact]
     public void This_profiles_monado()
     {
-        Assert.Equal("Active OpenXR runtime: Monado, this profile", RuntimeLine.Describe(Bundled.Manifest, Bundled, isActive: true));
+        Assert.Equal("Monado, this profile", RuntimeLine.Describe(Bundled.Manifest, Bundled, isActive: true));
     }
 
     [Fact]
     public void Another_runtime_by_its_file_name()
     {
         Assert.Equal(
-            "Active OpenXR runtime: PiOpenXR_64.json",
+            "PiOpenXR_64.json",
             RuntimeLine.Describe(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", Bundled, isActive: false));
         Assert.Equal(
-            "Active OpenXR runtime: steamxr_win64.json",
+            "steamxr_win64.json",
             RuntimeLine.Describe("\"C:/Program Files (x86)/Steam/steamapps/common/SteamVR/steamxr_win64.json\"", null, isActive: false));
     }
 
@@ -35,6 +35,6 @@ public class RuntimeLineTests
     [InlineData("  ")]
     public void None_set(string? active)
     {
-        Assert.Equal("No OpenXR runtime is set", RuntimeLine.Describe(active, Bundled, isActive: false));
+        Assert.Equal("None set", RuntimeLine.Describe(active, Bundled, isActive: false));
     }
 }
