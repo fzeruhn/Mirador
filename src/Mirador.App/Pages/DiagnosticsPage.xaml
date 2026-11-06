@@ -2,64 +2,117 @@
     x:Class="Mirador.App.Pages.DiagnosticsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     NavigationCacheMode="Required">
 
-    <Grid Padding="36,24,36,24" RowSpacing="12">
+    <!--
+        The tools at the top, then the logs, one at a time, filling the rest of the window but never less than 240 high:
+        in a short window the page scrolls instead (DiagnosticsPage.FitLogs).
+    -->
+    <ScrollViewer x:Name="PageScroller" SizeChanged="FitLogs">
+    <Grid x:Name="PageGrid" Padding="36,24,36,24" RowSpacing="4">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Diagnostics" />
+        <TextBlock Style="{StaticResource PageTitle}" Text="Diagnostics" />
 
-        <StackPanel Grid.Row="1" Spacing="8">
-            <TextBlock IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.Versions, Mode=OneWay}" TextWrapping="Wrap" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Command="{x:Bind ViewModel.SaveDiagnosticsCommand}" Content="Save diagnostics…" Style="{StaticResource AccentButtonStyle}" />
-                <Button Command="{x:Bind ViewModel.OpenLogFolderCommand}" Content="Open log folder" />
-                <Button
-                    Command="{x:Bind ViewModel.CheckDisplayCommand}"
-                    Content="Check display"
-                    ToolTipService.ToolTip="Stops Pimax's software, checks that direct mode works with this NVIDIA driver (about 20 s), then starts Pimax's software again. Not while Monado runs."
-                    Visibility="{x:Bind ViewModel.IsDreamAir, Mode=OneWay}" />
-                <ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-                <TextBlock VerticalAlignment="Center" Text="Checking the display…" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
-            </StackPanel>
+        <StackPanel
+            Grid.Row="1"
+            SizeChanged="FitLogs"
+            Spacing="4">
+            <toolkit:SettingsExpander Description="Mirador, Windows, Monado, OpenComposite and the profile." Header="Versions">
+                <toolkit:SettingsExpander.Items>
+                    <toolkit:SettingsCard ContentAlignment="Left">
+                        <TextBlock
+                            IsTextSelectionEnabled="True"
+                            Text="{x:Bind ViewModel.Versions, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </toolkit:SettingsCard>
+                </toolkit:SettingsExpander.Items>
+            </toolkit:SettingsExpander>
+            <toolkit:SettingsCard Description="A zip with the logs, settings and versions, for a bug report." Header="Diagnostics file">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Command="{x:Bind ViewModel.OpenLogFolderCommand}" Content="Open log folder" />
+                    <Button
+                        Command="{x:Bind ViewModel.SaveDiagnosticsCommand}"
+                        Content="Save…"
+                        Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard
+                Description="Stops Pimax's software, checks that direct mode works with this NVIDIA driver (about 20 s), then starts Pimax's software again. Not while Monado runs."
+                Header="Display check"
+                Visibility="{x:Bind ViewModel.IsDreamAir, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing
+                        Width="20"
+                        Height="20"
+                        IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
+                    <Button Command="{x:Bind ViewModel.CheckDisplayCommand}" Content="Check" />
+                </StackPanel>
+            </toolkit:SettingsCard>
         </StackPanel>
 
-        <StackPanel Grid.Row="2" Spacing="8">
+        <!-- Outcomes of the buttons above: each happened once, so each can be closed. -->
+        <StackPanel
+            Grid.Row="2"
+            SizeChanged="FitLogs"
+            Spacing="4">
             <InfoBar
+                Margin="0,4,0,0"
                 Closed="OnCheckClosed"
                 IsClosable="True"
                 IsOpen="{x:Bind ViewModel.HasCheckResult, Mode=OneWay}"
                 Message="{x:Bind ViewModel.CheckResult, Mode=OneWay}"
-                Severity="{x:Bind SeverityFor(ViewModel.CheckPassed), Mode=OneWay}" />
+                Severity="{x:Bind SeverityFor(ViewModel.CheckPassed), Mode=OneWay}"
+                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
             <InfoBar
+                Margin="0,4,0,0"
                 Closed="OnSavedClosed"
                 IsClosable="True"
                 IsOpen="{x:Bind ViewModel.HasSaved, Mode=OneWay}"
                 Message="{x:Bind ViewModel.Saved, Mode=OneWay}"
-                Severity="Success" />
+                Severity="Success"
+                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
             <InfoBar
+                Margin="0,4,0,0"
                 Closed="OnMessageClosed"
                 IsClosable="True"
                 IsOpen="{x:Bind ViewModel.HasMessage, Mode=OneWay}"
                 Message="{x:Bind ViewModel.Message, Mode=OneWay}"
-                Severity="Error" />
+                Severity="Error"
+                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
         </StackPanel>
 
-        <Grid Grid.Row="3" ColumnSpacing="16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+        <TextBlock
+            Grid.Row="3"
+            Style="{StaticResource SectionHeader}"
+            Text="Logs" />
+
+        <Grid
+            x:Name="LogsArea"
+            Grid.Row="4"
+            Height="240"
+            RowSpacing="8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <SelectorBar x:Name="LogPicker" SelectionChanged="OnLogPicked">
+                <SelectorBarItem IsSelected="True" Text="Monado" />
+                <SelectorBarItem Text="Mirador" />
+            </SelectorBar>
             <TextBox
                 x:Name="MonadoBox"
+                Grid.Row="1"
+                AutomationProperties.Name="Monado's log"
                 FontFamily="Cascadia Mono, Consolas"
                 FontSize="12"
-                Header="Monado's log"
                 AcceptsReturn="True"
                 IsReadOnly="True"
                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -68,16 +121,18 @@
                 TextWrapping="NoWrap" />
             <TextBox
                 x:Name="MiradorBox"
-                Grid.Column="1"
+                Grid.Row="1"
+                AutomationProperties.Name="Mirador's log"
                 FontFamily="Cascadia Mono, Consolas"
                 FontSize="12"
-                Header="Mirador's log"
                 AcceptsReturn="True"
                 IsReadOnly="True"
                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 SelectionChanged="OnSelectionChanged"
-                TextWrapping="NoWrap" />
+                TextWrapping="NoWrap"
+                Visibility="Collapsed" />
         </Grid>
     </Grid>
+    </ScrollViewer>
 </Page>

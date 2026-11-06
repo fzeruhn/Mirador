@@ -36,4 +36,8 @@ public sealed record StatusItem(string Label, string Text, StatusLevel Level)
 }
 
 /// <summary>A message shown in an <see cref="InfoBar"/>: a check that failed, a warning, a notice.</summary>
-public sealed record NoticeItem(string Key, string Title, string Message, InfoBarSeverity Severity);
+/// <param name="IsClosable">
+/// Whether it has a close button: only something that happened once. A condition that holds now (a check, a warning
+/// while Monado runs) stays until it no longer holds.
+/// </param>
+public sealed record NoticeItem(string Key, string Title, string Message, InfoBarSeverity Severity, bool IsClosable);

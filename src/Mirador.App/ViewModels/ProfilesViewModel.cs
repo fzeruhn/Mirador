@@ -80,14 +80,14 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public partial HeadsetItem? Headset { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MonadoBundled))]
+    [NotifyPropertyChangedFor(nameof(MonadoBundled), nameof(MonadoSource))]
     public partial bool MonadoFromFolder { get; set; }
 
     [ObservableProperty]
     public partial string MonadoFolder { get; set; } = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LayerBundled))]
+    [NotifyPropertyChangedFor(nameof(LayerBundled), nameof(LayerSource))]
     public partial bool LayerFromFolder { get; set; }
 
     [ObservableProperty]
@@ -101,6 +101,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool HasProblems { get; set; }
+
+    /// <summary>The problems, one per line, for the page's message.</summary>
+    public string ProblemsText => string.Join(Environment.NewLine, Problems);
 
     [ObservableProperty]
     public partial bool IsRunning { get; set; }
@@ -121,6 +124,20 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         get => !LayerFromFolder;
         set => LayerFromFolder = !value;
+    }
+
+    /// <summary>The "Monado build" drop-down: 0 the one that comes with Mirador, 1 a build folder.</summary>
+    public int MonadoSource
+    {
+        get => MonadoFromFolder ? 1 : 0;
+        set => MonadoFromFolder = value == 1;
+    }
+
+    /// <summary>The "Vulkan layer" drop-down: 0 the one that comes with Mirador, 1 a layer folder.</summary>
+    public int LayerSource
+    {
+        get => LayerFromFolder ? 1 : 0;
+        set => LayerFromFolder = value == 1;
     }
 
     /// <summary>Whether another profile may be picked: not while the editor holds unsaved changes.</summary>
@@ -390,6 +407,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         HasProblems = problems.Count > 0;
+        OnPropertyChanged(nameof(ProblemsText));
         return !HasProblems;
     }
 

@@ -55,6 +55,45 @@ public sealed partial class DiagnosticsPage : Page
         }
     }
 
+    /// <summary>The logs' least height; a window too short for it scrolls the page instead.</summary>
+    private const double LogsMinHeight = 240;
+
+    /// <summary>
+    /// Makes the logs fill what the window has left under the tools, but never less than <see cref="LogsMinHeight"/>:
+    /// a star row can't do that inside a scrolling page.
+    /// </summary>
+    private void FitLogs(object sender, SizeChangedEventArgs e)
+    {
+        if (LogsArea is null || PageGrid is null || PageScroller is null)
+        {
+            return;
+        }
+
+        var top = LogsArea.TransformToVisual(PageGrid).TransformPoint(default).Y;
+        var left = PageScroller.ViewportHeight - top - PageGrid.Padding.Bottom;
+        LogsArea.Height = Math.Max(LogsMinHeight, Math.Floor(left));
+    }
+
+    /// <summary>Shows the log picked above the box, at its end.</summary>
+    private void OnLogPicked(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        if (MonadoBox is null || MiradorBox is null)
+        {
+            // The first item is picked while the page is still being built.
+            return;
+        }
+
+        var showMonado = sender.Items.IndexOf(sender.SelectedItem) <= 0;
+        MonadoBox.Visibility = showMonado ? Visibility.Visible : Visibility.Collapsed;
+        MiradorBox.Visibility = showMonado ? Visibility.Collapsed : Visibility.Visible;
+        var shown = showMonado ? MonadoBox : MiradorBox;
+        shown.UpdateLayout();
+        if (Find<ScrollViewer>(shown) is { } viewer)
+        {
+            viewer.ChangeView(null, viewer.ScrollableHeight, null, disableAnimation: true);
+        }
+    }
+
     private void OnSelectionChanged(object sender, RoutedEventArgs e)
     {
         if (sender is TextBox { SelectionLength: 0 } box && waiting.Remove(box, out var text))

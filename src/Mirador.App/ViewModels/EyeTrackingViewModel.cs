@@ -34,10 +34,21 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCheckCommand))]
+    [NotifyPropertyChangedFor(nameof(CheckDescription))]
     public partial bool IsChecking { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CheckDescription))]
     public partial string? Progress { get; set; }
+
+    /// <summary>The check card's description: what to do, or how far the check is while it runs.</summary>
+    public string CheckDescription => IsChecking && Progress is { } progress
+        ? progress
+        : "Put the headset on and look at each dot in turn. The check takes about a minute.";
+
+    /// <summary>The variant card's description: where the variant came from, and why it matters.</summary>
+    public string VariantDescription =>
+        $"{VariantSource.TrimEnd('.')}. The eye tracker's geometry differs between variants; Mirador uploads the one for yours at every Start.";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasResult))]
@@ -57,6 +68,7 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
     public partial VariantItem? SelectedVariant { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VariantDescription))]
     public partial string VariantSource { get; set; } = "";
 
     public ObservableCollection<string> Serials { get; } = [];
@@ -274,7 +286,7 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         LoadSerials();
         ShowVariant(state);
         LastCheck = state.LastCheck is { } last
-            ? $"Last check {last.When.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {CalibrationCheck.Describe(last.MedianDeg, last.WorstDotDeg, last.Dots).Text}"
+            ? $"{last.When.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {CalibrationCheck.Describe(last.MedianDeg, last.WorstDotDeg, last.Dots).Text}"
             : "Not checked yet.";
     }
 
