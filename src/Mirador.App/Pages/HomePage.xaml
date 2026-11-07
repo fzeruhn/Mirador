@@ -79,6 +79,47 @@
                 </ItemsControl>
             </Border>
 
+            <!-- The controllers and trackers Monado found, while it runs with the Lighthouse receiver. -->
+            <Border Style="{StaticResource HomeCard}" Visibility="{x:Bind ViewModel.ShowDevices, Mode=OneWay}">
+                <StackPanel Padding="0,4" Spacing="8">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Controllers and trackers" />
+                    <ItemsRepeater ItemsSource="{x:Bind ViewModel.Devices}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout
+                                MinColumnSpacing="8"
+                                MinItemWidth="160"
+                                MinRowSpacing="8" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DeviceItem">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon
+                                        VerticalAlignment="Center"
+                                        FontSize="20"
+                                        Glyph="{x:Bind Glyph}" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Kind}" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind Serial}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="None found yet."
+                        Visibility="{x:Bind ViewModel.HasNoDevices, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+
             <!-- The runtimes games use. Each row is as tall with its button as without it. -->
             <Border Style="{StaticResource HomeCard}">
                 <StackPanel>
@@ -147,6 +188,59 @@
                             Visibility="{x:Bind ViewModel.CanSetOpenComposite, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
+            </Border>
+
+            <!--
+                The base stations of the selected profile, switched together. While they change state (a command being
+                sent, one waking up) a spinner takes the icon's place.
+            -->
+            <Border Style="{StaticResource HomeCard}" Visibility="{x:Bind ViewModel.ShowStations, Mode=OneWay}">
+                <Grid MinHeight="36" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Foreground="{x:Bind ViewModel.StationsRow.Brush, Mode=OneWay}"
+                        Glyph="{x:Bind ViewModel.StationsRow.Glyph, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.ShowStationsIcon, Mode=OneWay}" />
+                    <ProgressRing
+                        Width="16"
+                        Height="16"
+                        VerticalAlignment="Center"
+                        IsActive="{x:Bind ViewModel.StationsBusy, Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind ViewModel.StationsRow.Label, Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Text="{x:Bind ViewModel.StationsRow.Text, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <StackPanel
+                        Grid.Column="3"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind ViewModel.ShowStationButtons, Mode=OneWay}">
+                        <Button
+                            AutomationProperties.Name="Switch the selected base stations on"
+                            Command="{x:Bind ViewModel.SwitchStationsOnCommand}"
+                            Content="On"
+                            IsEnabled="{x:Bind ViewModel.CanSwitchStations, Mode=OneWay}" />
+                        <Button
+                            AutomationProperties.Name="Switch the selected base stations off"
+                            Command="{x:Bind ViewModel.SwitchStationsOffCommand}"
+                            Content="Off"
+                            IsEnabled="{x:Bind ViewModel.CanSwitchStations, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!--

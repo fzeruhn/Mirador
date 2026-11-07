@@ -4,21 +4,9 @@ namespace Mirador.Core.Tests.Lighthouse;
 
 public class LighthouseLogParserTests
 {
-    private static string Added(string serial) => $" INFO [TrackedDeviceAdded] New device added: {serial}";
+    private static string Controller(string serial) => $" INFO [TrackedDeviceAdded] Found lighthouse controller: {serial}";
+    private static string Tracker(string serial) => $" INFO [TrackedDeviceAdded] Found lighthouse tracker: {serial}";
     private static string Hmd(string serial) => $" INFO [TrackedDeviceAdded] Found lighthouse HMD: {serial}";
-
-    [Fact]
-    public void Reads_the_headset_and_counts_the_other_devices()
-    {
-        var p = new LighthouseLogParser();
-
-        p.Feed(" INFO [TrackedDeviceAdded] New device added: LHR-2A2E5F48");
-        p.Feed(" INFO [TrackedDeviceAdded] Found lighthouse HMD: LHR-2A2E5F48");
-        p.Feed(" INFO [TrackedDeviceAdded] New device added: LHR-AAAA0001");
-
-        Assert.Equal("LHR-2A2E5F48", p.HmdSerial);
-        Assert.Equal(1, p.OtherDevices);
-    }
 
     [Fact]
     public void Nothing_is_known_at_first()
@@ -26,24 +14,64 @@ public class LighthouseLogParserTests
         var p = new LighthouseLogParser();
 
         Assert.Null(p.HmdSerial);
-        Assert.Equal(0, p.OtherDevices);
+        Assert.Empty(p.Devices);
     }
 
     [Fact]
-    public void The_headset_is_not_counted_among_the_others_whichever_line_comes_first()
+    public void Reads_the_headset()
     {
-        var hmdFirst = new LighthouseLogParser();
-        hmdFirst.Feed(Hmd("LHR-2A2E5F48"));
-        hmdFirst.Feed(Added("LHR-2A2E5F48"));
+        var p = new LighthouseLogParser();
 
-        var addedFirst = new LighthouseLogParser();
-        addedFirst.Feed(Added("LHR-2A2E5F48"));
-        addedFirst.Feed(Hmd("LHR-2A2E5F48"));
+        Assert.True(p.Feed("12:00:01.234 [I] steamvr_lh: Found lighthouse HMD: LHR-2A2E5F48"));
 
-        Assert.Equal(0, hmdFirst.OtherDevices);
-        Assert.Equal(0, addedFirst.OtherDevices);
-        Assert.Equal("LHR-2A2E5F48", hmdFirst.HmdSerial);
-        Assert.Equal("LHR-2A2E5F48", addedFirst.HmdSerial);
+        Assert.Equal("LHR-2A2E5F48", p.HmdSerial);
+        Assert.Empty(p.Devices);
+    }
+
+    [Fact]
+    public void Controllers_and_trackers_are_listed()
+    {
+        var p = new LighthouseLogParser();
+
+        p.Feed(Hmd("LHR-2A2E5F48"));
+        p.Feed(Controller("LHR-AAAA0001"));
+        p.Feed(Tracker("LHR-BBBB0002"));
+        p.Feed(Controller("LHR-CCCC0003"));
+
+        Assert.Equal(
+            new[]
+            {
+                new TrackedDevice(TrackedKind.Controller, "LHR-AAAA0001"),
+                new TrackedDevice(TrackedKind.Tracker, "LHR-BBBB0002"),
+                new TrackedDevice(TrackedKind.Controller, "LHR-CCCC0003"),
+            },
+            p.Devices);
+    }
+
+    [Fact]
+    public void A_serial_counts_once()
+    {
+        var p = new LighthouseLogParser();
+
+        Assert.True(p.Feed(Controller("LHR-AAAA0001")));
+        Assert.False(p.Feed(Controller("LHR-AAAA0001")));
+        Assert.False(p.Feed(Tracker("LHR-AAAA0001")));
+        Assert.True(p.Feed(Tracker("LHR-BBBB0002")));
+        Assert.False(p.Feed(Tracker("LHR-BBBB0002")));
+
+        Assert.Equal(2, p.Devices.Count);
+    }
+
+    [Fact]
+    public void Base_station_lines_are_ignored()
+    {
+        var p = new LighthouseLogParser();
+
+        Assert.False(p.Feed(" INFO [TrackedDeviceAdded] Found lighthouse base station: LHB-1234ABCD"));
+        Assert.False(p.Feed(" INFO [TrackedDeviceAdded] New device added: LHR-AAAA0001"));
+
+        Assert.Null(p.HmdSerial);
+        Assert.Empty(p.Devices);
     }
 
     [Fact]
@@ -51,13 +79,11 @@ public class LighthouseLogParserTests
     {
         var p = new LighthouseLogParser();
 
-        Assert.True(p.Feed(Added("LHR-2A2E5F48")));  // one other device
-        Assert.True(p.Feed(Hmd("LHR-2A2E5F48")));    // it is the headset: headset set, others back to none
-        Assert.True(p.Feed(Added("LHR-AAAA0001")));
-        Assert.False(p.Feed(Added("LHR-AAAA0001")));  // seen already
-        Assert.False(p.Feed(Hmd("LHR-2A2E5F48")));    // same headset again
-        Assert.False(p.Feed(Added("LHR-2A2E5F48")));  // the headset again
-        Assert.True(p.Feed(Added("LHR-BBBB0002")));
+        Assert.True(p.Feed(Hmd("LHR-2A2E5F48")));
+        Assert.False(p.Feed(Hmd("LHR-2A2E5F48")));  // same headset again
+        Assert.True(p.Feed(Hmd("LHR-CCCC0003")));   // a different one
+        Assert.True(p.Feed(Controller("LHR-AAAA0001")));
+        Assert.False(p.Feed(Controller("LHR-AAAA0001")));
     }
 
     [Fact]
@@ -68,37 +94,25 @@ public class LighthouseLogParserTests
         Assert.False(p.Feed(""));
         Assert.False(p.Feed(" INFO [client_connected] Client 1 connected"));
         Assert.False(p.Feed(" INFO [TrackedDeviceAdded] Something else happened"));
-        Assert.False(p.Feed(" INFO [TrackedDeviceAdded] New device added:")); // no serial
+        Assert.False(p.Feed(" INFO [TrackedDeviceAdded] Found lighthouse controller:")); // no serial
+        Assert.False(p.Feed(" INFO [TrackedDeviceAdded] Found lighthouse tracker: "));
         Assert.False(p.Feed(" INFO [TrackedDeviceAdded] Found lighthouse HMD: "));
 
         Assert.Null(p.HmdSerial);
-        Assert.Equal(0, p.OtherDevices);
+        Assert.Empty(p.Devices);
     }
 
     [Fact]
-    public void Each_other_device_is_counted_once()
+    public void Devices_is_a_snapshot()
     {
         var p = new LighthouseLogParser();
+        p.Feed(Controller("LHR-AAAA0001"));
+        var before = p.Devices;
 
-        p.Feed(Added("LHR-AAAA0001"));
-        p.Feed(Added("LHR-AAAA0001"));
-        p.Feed(Added("LHR-BBBB0002"));
-        p.Feed(Added("LHR-AAAA0001"));
+        p.Feed(Tracker("LHR-BBBB0002"));
 
-        Assert.Equal(2, p.OtherDevices);
-    }
-
-    [Fact]
-    public void A_different_headset_replaces_the_first_and_the_old_one_counts_as_another_device()
-    {
-        var p = new LighthouseLogParser();
-        p.Feed(Added("LHR-2A2E5F48"));
-        p.Feed(Hmd("LHR-2A2E5F48"));
-
-        Assert.True(p.Feed(Hmd("LHR-CCCC0003")));
-
-        Assert.Equal("LHR-CCCC0003", p.HmdSerial);
-        Assert.Equal(1, p.OtherDevices);
+        Assert.Single(before);
+        Assert.Equal(2, p.Devices.Count);
     }
 
     [Fact]
@@ -107,7 +121,9 @@ public class LighthouseLogParserTests
         var p = new LighthouseLogParser();
 
         p.Feed(Hmd("LHR-2A2E5F48") + "\r");
+        p.Feed(Controller("LHR-AAAA0001") + "\r");
 
         Assert.Equal("LHR-2A2E5F48", p.HmdSerial);
+        Assert.Equal("LHR-AAAA0001", p.Devices[0].Serial);
     }
 }

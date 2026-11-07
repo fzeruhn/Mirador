@@ -11,6 +11,7 @@ public sealed class AppPaths(string root)
     public string MonadoSettingsFile { get; } = Path.Combine(root, "monado-settings.json");
     public string SettingsFile { get; } = Path.Combine(root, "settings.json");
     public string SessionFile { get; } = Path.Combine(root, "session.json");
+    public string BaseStationsFile { get; } = Path.Combine(root, "basestations.json");
     public string DreamAirFile { get; } = Path.Combine(root, "dreamair.json");
 
     public string LogsDir { get; } = Path.Combine(root, "logs");

@@ -19,7 +19,14 @@ public static class JsonFile
             return null;
         }
 
-        var text = File.ReadAllText(path);
+        // Shared with writers and deleters, so that a save can move a new file over this one while it is being read.
+        string text;
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (var reader = new StreamReader(stream))
+        {
+            text = reader.ReadToEnd();
+        }
+
         T? value;
         try
         {
@@ -49,9 +56,14 @@ public static class JsonFile
     /// </summary>
     public static void KeepCopyAsBad(string path) => File.Copy(path, path + ".bad", overwrite: true);
 
+    private const int MoveAttempts = 10;
+    private const int MoveRetryMilliseconds = 20;
+
     /// <summary>
     /// Writes <paramref name="value"/> to <c>&lt;path&gt;.tmp</c> and onto the disk, then moves it over
-    /// <paramref name="path"/>: a crash or power cut leaves the old file or the new one, never one half written or empty.
+    /// <paramref name="path"/>: a crash or power cut leaves the old file or the new one, never one half written or empty,
+    /// and a reader never finds the file missing. If a reader holds the old file the move is tried up to 10 times, 20 ms
+    /// apart; after that the exception is thrown.
     /// </summary>
     public static void Save<T>(string path, T value, JsonTypeInfo<T> typeInfo)
     {
@@ -68,7 +80,20 @@ public static class JsonFile
             stream.Flush(flushToDisk: true);
         }
 
-        File.Move(temp, path, overwrite: true);
+        // The move is atomic, but Windows refuses it for a moment while a reader has the old file open, so it is
+        // tried again a few times before the failure is passed on.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(temp, path, overwrite: true);
+                return;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException && attempt < MoveAttempts)
+            {
+                Thread.Sleep(MoveRetryMilliseconds);
+            }
+        }
     }
 
     /// <summary><paramref name="value"/> as the JSON <see cref="Save"/> writes.</summary>

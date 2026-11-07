@@ -16,6 +16,7 @@ namespace Mirador.Core.Session;
 /// <param name="Runtime">Tells whether the profile's Monado is the active OpenXR runtime.</param>
 /// <param name="StandInExe">Mirador's own copy of the stand-in, copied into build folders.</param>
 /// <param name="InheritedEnvironment">The environment <c>monado-service</c> starts from: the user's default one (<c>UserEnvironment.Default</c>), not Mirador's, which may be a game's.</param>
+/// <param name="Hook">Told when a session starts and when it ends (the base stations); null: nobody.</param>
 public sealed record SessionDeps(
     ProfileStore Profiles,
     MonadoSettingsStore MonadoSettings,
@@ -26,4 +27,5 @@ public sealed record SessionDeps(
     IMonadoPipe Pipe,
     OpenXrRuntime Runtime,
     string StandInExe,
-    IReadOnlyDictionary<string, string> InheritedEnvironment);
+    IReadOnlyDictionary<string, string> InheritedEnvironment,
+    ISessionHook? Hook = null);

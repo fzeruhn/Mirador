@@ -1,3 +1,4 @@
+using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.Profiles;
@@ -108,6 +109,193 @@ public class SessionControllerTests
         Assert.Equal(
             new[] { MonadoLine(StatusLevel.Ok, "Running (Custom)"), new StatusLine("apps", "Apps", StatusLevel.Info, "No apps") },
             h.Controller.Status);
+    }
+
+    [Fact]
+    public async Task Hook_starts_after_the_refusals_and_before_the_module()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        h.Module.UsesSteamVrLighthouse = true;
+        var moduleCallsAtStart = -1;
+        hook.OnStarted = () => moduleCallsAtStart = h.Module.BeforeStartCalls;
+
+        // Refused by SteamVR running, or by a Monado outside Mirador: the hook is never told.
+        h.Processes.Running.Add(new ProcInfo("vrserver", 42));
+        Assert.False((await Start(h).WaitAsync(Limit)).Ok);
+        h.Processes.Running.Clear();
+        h.Processes.Add("monado-service", 1234, Harness.OtherMonado);
+        Assert.False((await Start(h).WaitAsync(Limit)).Ok);
+        Assert.Empty(hook.Calls);
+        h.Processes.Running.Clear();
+
+        await h.StartRunningAsync();
+
+        Assert.Equal(new[] { "started:p1:fake" }, hook.Calls);
+        Assert.Equal(0, moduleCallsAtStart);
+        Assert.Equal(1, h.Module.BeforeStartCalls);
+    }
+
+    [Fact]
+    public async Task No_hook_for_a_game_start_with_the_headset_off()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        h.Pipe.Up = true;
+        h.Usb.Devices.Clear();
+        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+
+        var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.Empty(hook.Calls);
+    }
+
+    [Fact]
+    public async Task No_hook_when_the_headset_is_unplugged_for_a_button_start()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        h.Usb.Devices.Clear();
+
+        await h.StartRunningAsync(); // goes on as before: the module's steps run
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(1, h.Module.BeforeStartCalls);
+        Assert.Empty(hook.Calls);
+    }
+
+    [Fact]
+    public async Task Hook_ends_after_stop()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        var endsAtEnded = -1;
+        var killedAtEnded = false;
+        hook.OnEnded = () =>
+        {
+            endsAtEnded = h.Module.Session!.Ends;
+            killedAtEnded = h.Launcher.Last!.Killed;
+        };
+        await h.StartRunningAsync();
+        Assert.Equal(new[] { "started:p1:fake" }, hook.Calls);
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new[] { "started:p1:fake", "ended:p1:fake" }, hook.Calls);
+        Assert.Equal(1, endsAtEnded); // last of all: after the module's session ended
+        Assert.True(killedAtEnded);
+    }
+
+    [Fact]
+    public async Task Current_profile_is_the_sessions_until_it_has_ended()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        SessionProfile? atStarted = null, atEnded = null;
+        hook.OnStarted = () => atStarted = h.Controller.CurrentProfile;
+        hook.OnEnded = () => atEnded = h.Controller.CurrentProfile;
+        Assert.Null(h.Controller.CurrentProfile);
+
+        await h.StartRunningAsync();
+
+        Assert.Equal(Harness.DreamAir.Id, atStarted?.Profile.Id);
+        Assert.Same(h.Module, atStarted?.Module);
+        Assert.Equal(Harness.DreamAir.Id, h.Controller.CurrentProfile?.Profile.Id);
+        Assert.Same(h.Module, h.Controller.CurrentProfile?.Module);
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        // While it stops, until the very end.
+        Assert.Equal(Harness.DreamAir.Id, atEnded?.Profile.Id);
+        Assert.Same(h.Module, atEnded?.Module);
+        Assert.Null(h.Controller.CurrentProfile);
+    }
+
+    [Fact]
+    public async Task Hook_ends_after_a_failed_start()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        h.Module.Refusal = new MiradorException("The headset refused.");
+
+        var outcome = await Start(h).WaitAsync(Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.Equal(new[] { "started:p1:fake", "ended:p1:fake" }, hook.Calls);
+    }
+
+    [Fact]
+    public async Task Hook_ends_when_monado_stops_by_itself()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        await h.StartRunningAsync();
+
+        h.Launcher.Last!.Exit(5);
+        await h.HasEnded.Task.WaitAsync(Limit);
+
+        Assert.Equal(new[] { "started:p1:fake", "ended:p1:fake" }, hook.Calls);
+    }
+
+    [Fact]
+    public async Task Throwing_hook_is_a_warning()
+    {
+        var hook = new FakeHook { Failure = new InvalidOperationException("Bluetooth is off.") };
+        await using var h = new Harness(hook);
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok);
+        Assert.Equal(SessionState.Running, h.Controller.State);
+        Assert.Equal(new[] { new SessionWarning("basestations", "Mirador couldn't switch the base stations: Bluetooth is off.") }, h.Warnings);
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(SessionState.Stopped, h.Controller.State);
+        Assert.Equal(new[] { "started:p1:fake", "ended:p1:fake" }, hook.Calls);
+        Assert.Equal(2, h.Warnings.Count);
+        Assert.All(h.Warnings, w => Assert.Equal("basestations", w.Key));
+        Assert.Equal(1, h.Module.Session!.Ends);
+    }
+
+    [Fact]
+    public async Task Devices_null_without_lighthouse()
+    {
+        await using var h = new Harness();
+        Assert.Null(h.Controller.Devices);
+
+        await h.StartRunningAsync();
+        h.Launcher.Last!.Emit(" INFO [TrackedDeviceAdded] Found lighthouse controller: LHR-AAAA0001");
+
+        Assert.Null(h.Controller.Devices);
+    }
+
+    [Fact]
+    public async Task Devices_follow_the_log()
+    {
+        await using var h = new Harness();
+        h.Module.UsesSteamVrLighthouse = true;
+        Assert.Null(h.Controller.Devices);
+
+        await h.StartRunningAsync();
+        Assert.Empty(h.Controller.Devices!);
+
+        var changes = 0;
+        h.Controller.StatusChanged += () => changes++;
+        h.Launcher.Last!.Emit(
+            " INFO [TrackedDeviceAdded] Found lighthouse HMD: LHR-2A2E5F48",
+            " INFO [TrackedDeviceAdded] Found lighthouse controller: LHR-AAAA0001",
+            " INFO [TrackedDeviceAdded] Found lighthouse base station: LHB-1234ABCD",
+            " INFO [TrackedDeviceAdded] Found lighthouse tracker: LHR-BBBB0002");
+
+        Assert.Equal(
+            new[] { new TrackedDevice(TrackedKind.Controller, "LHR-AAAA0001"), new TrackedDevice(TrackedKind.Tracker, "LHR-BBBB0002") },
+            h.Controller.Devices);
+        Assert.True(changes >= 3, $"{changes} status changes");
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+        Assert.Null(h.Controller.Devices);
     }
 
     [Fact]
@@ -796,7 +984,7 @@ public class SessionControllerTests
             "\tapplication_name: 'VRChat'",
             " INFO [TrackedDeviceAdded] New device added: LHR-2A2E5F48",
             " INFO [TrackedDeviceAdded] Found lighthouse HMD: LHR-2A2E5F48",
-            " INFO [TrackedDeviceAdded] New device added: LHR-AAAA0001",
+            " INFO [TrackedDeviceAdded] Found lighthouse controller: LHR-AAAA0001",
         ];
         h.Launcher.Last!.Emit(lines);
 
@@ -805,7 +993,7 @@ public class SessionControllerTests
             {
                 MonadoLine(StatusLevel.Ok, "Running (Dream Air)"),
                 new StatusLine("apps", "Apps", StatusLevel.Ok, "hello_xr, VRChat"),
-                new StatusLine("tracking", "Tracking", StatusLevel.Ok, "HMD LHR-2A2E5F48, 1 more device"),
+                new StatusLine("tracking", "Tracking", StatusLevel.Ok, "HMD LHR-2A2E5F48"),
                 new StatusLine("fake", "Headset", StatusLevel.Ok, "Ready"),
             },
             h.Controller.Status);

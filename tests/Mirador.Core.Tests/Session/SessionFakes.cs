@@ -508,6 +508,58 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
     }
 }
 
+/// <summary>An <see cref="ISessionHook"/> that writes down what it is told, in order, from any thread.</summary>
+internal sealed class FakeHook : ISessionHook
+{
+    private readonly List<string> calls = [];
+
+    /// <summary>When set, both calls throw it (after writing themselves down).</summary>
+    public Exception? Failure { get; set; }
+
+    /// <summary>Run inside <see cref="Started"/>, before it writes itself down: tests look at the session from there.</summary>
+    public Action? OnStarted { get; set; }
+
+    /// <summary>Run inside <see cref="Ended"/>, before it writes itself down.</summary>
+    public Action? OnEnded { get; set; }
+
+    /// <summary>The calls so far: <c>started:profile-id:module-id</c> or <c>ended:profile-id:module-id</c> (module-id empty without a module).</summary>
+    public string[] Calls
+    {
+        get
+        {
+            lock (calls)
+            {
+                return [.. calls];
+            }
+        }
+    }
+
+    public void Started(Profile profile, IHeadsetModule? module)
+    {
+        OnStarted?.Invoke();
+        Add($"started:{profile.Id}:{module?.Id}");
+    }
+
+    public void Ended(Profile profile, IHeadsetModule? module)
+    {
+        OnEnded?.Invoke();
+        Add($"ended:{profile.Id}:{module?.Id}");
+    }
+
+    private void Add(string call)
+    {
+        lock (calls)
+        {
+            calls.Add(call);
+        }
+
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+    }
+}
+
 /// <summary>
 /// A <see cref="SessionController"/> on fakes, with a bundled Monado and a stand-in on disk in a temp folder whose
 /// path has a space and a non-ASCII letter. The selected profile is "Dream Air" on the bundled Monado with the fake module.
@@ -518,7 +570,7 @@ internal sealed class Harness : IAsyncDisposable
 
     private readonly TempDir dir = new();
 
-    public Harness()
+    public Harness(ISessionHook? hook = null)
     {
         Root = Path.Combine(dir.Path, "Zoë's data");
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
@@ -555,7 +607,8 @@ internal sealed class Harness : IAsyncDisposable
                 Pipe,
                 new OpenXrRuntime(Runtime),
                 StandInExe,
-                Inherited),
+                Inherited,
+                hook),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);
