@@ -1,4 +1,8 @@
-# Mirador
+<p align="center">
+  <img src=".github/mirador.png" width="128" height="128" alt="Mirador's icon: Monado's hexagon set into four window panes">
+</p>
+
+<h1 align="center">Mirador</h1>
 
 A Windows app for running [Monado](https://monado.freedesktop.org/), the open-source OpenXR runtime. Mirador installs
 Monado, starts and stops it, switches the active OpenXR runtime, starts Monado when a game needs it, and keeps
@@ -64,7 +68,8 @@ Every version is pinned in `Directory.Packages.props` (central package managemen
   `SettingsCard` holding a working `Slider`, and a tray icon with a one-item menu that Windows registered), so Mirador
   uses them as they are, with no `SettingsRow` of its own and no `Shell_NotifyIconW` code.
 - `CommunityToolkit.Mvvm` 8.4.2 for the pages' view models.
-- The icons in `src\Mirador.App\Assets` are drawn by `tools\make-icons.py` (Python with Pillow).
+- The icons in `src\Mirador.App\Assets`, and this README's `.github\mirador.png`, are drawn by `tools\make-icons.py`
+  (Python with Pillow).
 
 ## License
 

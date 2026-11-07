@@ -1,5 +1,5 @@
-"""Draws Mirador's icons (src/Mirador.App/Assets/*.ico): Monado's hexagon set into the Windows logo's four panes.
-Needs Pillow: pip install pillow.
+"""Draws Mirador's icons (src/Mirador.App/Assets/*.ico, and the README's .github/mirador.png): Monado's hexagon set
+into the Windows logo's four panes. Needs Pillow: pip install pillow.
 
 The hexagon and its M are the Monado logo from Monado's Android launcher icon
 (src/xrt/targets/openxr_android/src/main/res/drawable/ic_logo_launcher.xml), Copyright 2023, Collabora, Ltd.,
@@ -11,7 +11,9 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw
 
-ASSETS = Path(__file__).resolve().parent.parent / "src" / "Mirador.App" / "Assets"
+REPO = Path(__file__).resolve().parent.parent
+ASSETS = REPO / "src" / "Mirador.App" / "Assets"
+README_IMAGE = REPO / ".github" / "mirador.png"  # shown at 128, so 256 stays sharp on high-DPI screens
 
 # The design is laid out on a 256 grid, drawn at 1024 and scaled down to each icon size.
 BIG = 1024
@@ -174,6 +176,8 @@ def main():
     for name, look in ICONS.items():
         sizes = APP_SIZES if name == "Mirador.ico" else TRAY_SIZES
         icon(*look).save(ASSETS / name, format="ICO", sizes=[(s, s) for s in sizes])
+    README_IMAGE.parent.mkdir(parents=True, exist_ok=True)
+    icon(*ICONS["Mirador.ico"]).resize((256, 256), Image.Resampling.LANCZOS).save(README_IMAGE, optimize=True)
 
 
 if __name__ == "__main__":
