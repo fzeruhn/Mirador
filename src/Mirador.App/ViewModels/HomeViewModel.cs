@@ -91,6 +91,14 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial StatusItem StationsRow { get; set; } = new("Base stations", "", StatusLevel.Info);
 
+    /// <summary>Whether the selected stations are changing state (a command being sent, one waking up): a spinner in place of the row's icon.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowStationsIcon))]
+    public partial bool StationsBusy { get; set; }
+
+    /// <summary>Whether the row's icon shows: while the stations aren't changing state.</summary>
+    public bool ShowStationsIcon => !StationsBusy;
+
     /// <summary>Whether the On and Off buttons show: not when this PC has no Bluetooth.</summary>
     [ObservableProperty]
     public partial bool ShowStationButtons { get; set; }
@@ -302,7 +310,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [RelayCommand]
     private void SwitchStationsOn() => SwitchStations(() => StationCommand.On);
 
-    /// <summary>Off as "Off means" in the App settings says.</summary>
+    /// <summary>Off: the selected stations sleep.</summary>
     [RelayCommand]
     private void SwitchStationsOff() => SwitchStations(host.Stations.OffCommand);
 
@@ -349,6 +357,7 @@ public sealed partial class HomeViewModel : ObservableObject
             {
                 var summary = host.Stations.Summary;
                 StationsRow = new StatusItem("Base stations", summary.Text, summary.Level);
+                StationsBusy = summary.Busy;
                 var bluetooth = host.Stations.Bluetooth;
                 ShowStationButtons = bluetooth != BluetoothState.Missing;
                 CanSwitchStations = bluetooth == BluetoothState.Ready

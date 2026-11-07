@@ -4,7 +4,7 @@ using Mirador.Core;
 
 namespace Mirador.App.ViewModels;
 
-/// <summary>App settings: close to the tray, the update check, the base stations with Monado; and About.</summary>
+/// <summary>App settings: close to the tray and the update check; and About. The base stations' settings are on the Lighthouse page.</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly AppHost host;
@@ -14,12 +14,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         this.host = host;
         loading = true;
-        var settings = Load();
+        var settings = Read(host, out var problem);
+        Problem = problem;
         CloseToTray = settings.CloseToTray;
         CheckForUpdates = settings.CheckForUpdates;
-        BaseStationsOnAtStart = settings.BaseStationsOnAtStart;
-        BaseStationsOffAtStop = settings.BaseStationsOffAtStop;
-        OffMeans = settings.BaseStationsOff == OffMode.Standby ? 1 : 0;
         loading = false;
     }
 
@@ -30,16 +28,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial bool CheckForUpdates { get; set; }
 
     [ObservableProperty]
-    public partial bool BaseStationsOnAtStart { get; set; }
-
-    [ObservableProperty]
-    public partial bool BaseStationsOffAtStop { get; set; }
-
-    /// <summary>The "Off means" drop-down: 0 sleep, 1 standby.</summary>
-    [ObservableProperty]
-    public partial int OffMeans { get; set; }
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProblem))]
     public partial string? Problem { get; set; }
 
@@ -47,45 +35,47 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string Version => $"Mirador {AppInfo.Version}";
 
-    partial void OnCloseToTrayChanged(bool value) => Save(s => s with { CloseToTray = value });
-
-    partial void OnCheckForUpdatesChanged(bool value) => Save(s => s with { CheckForUpdates = value });
-
-    partial void OnBaseStationsOnAtStartChanged(bool value) => Save(s => s with { BaseStationsOnAtStart = value });
-
-    partial void OnBaseStationsOffAtStopChanged(bool value) => Save(s => s with { BaseStationsOffAtStop = value });
-
-    partial void OnOffMeansChanged(int value) =>
-        Save(s => s with { BaseStationsOff = value == 1 ? OffMode.Standby : OffMode.Sleep });
-
-    private AppSettings Load()
+    /// <summary>
+    /// Reads Mirador's settings for a page whose settings save at once. When they can't be read, gives the defaults and
+    /// says why in <paramref name="problem"/>; null otherwise.
+    /// </summary>
+    internal static AppSettings Read(AppHost host, out string? problem)
     {
         try
         {
+            problem = null;
             return host.Settings.Load();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Problem = $"Mirador couldn't read its settings ({e.Message.Trim().TrimEnd('.')}).";
+            problem = $"Mirador couldn't read its settings ({e.Message.Trim().TrimEnd('.')}).";
             return new AppSettings();
         }
     }
 
-    private void Save(Func<AppSettings, AppSettings> change)
+    /// <summary>Applies <paramref name="change"/> to the settings as saved now and saves them: null when saved, else why not.</summary>
+    internal static string? Write(AppHost host, Func<AppSettings, AppSettings> change)
     {
-        if (loading)
-        {
-            return;
-        }
-
         try
         {
             host.Settings.Save(change(host.Settings.Load()));
-            Problem = null;
+            return null;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Problem = $"Mirador couldn't save its settings ({e.Message.Trim().TrimEnd('.')}).";
+            return $"Mirador couldn't save its settings ({e.Message.Trim().TrimEnd('.')}).";
+        }
+    }
+
+    partial void OnCloseToTrayChanged(bool value) => Save(s => s with { CloseToTray = value });
+
+    partial void OnCheckForUpdatesChanged(bool value) => Save(s => s with { CheckForUpdates = value });
+
+    private void Save(Func<AppSettings, AppSettings> change)
+    {
+        if (!loading)
+        {
+            Problem = Write(host, change);
         }
     }
 }

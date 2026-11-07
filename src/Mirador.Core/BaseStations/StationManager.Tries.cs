@@ -184,6 +184,15 @@ public sealed partial class StationManager
             stop.Cancel();
             return $"no answer within {TryLimit.TotalSeconds:0} seconds";
         }
+        catch (OperationCanceledException)
+        {
+            // Stopped or cancelled: the try's own token goes now, before the worker moves on to the next work. The
+            // work's token cancels it too, but its callbacks run newest first, and the worker may go on inside the
+            // first of them; a late link would then still find the try going and send the stopped command after the
+            // next one.
+            stop.Cancel();
+            throw;
+        }
     }
 
     /// <summary>Connects, sends, and closes the link whatever happens. Never throws: null when sent, else why not.</summary>
