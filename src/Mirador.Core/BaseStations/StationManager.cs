@@ -16,7 +16,8 @@ public sealed record StationsSummary(string Text, StatusLevel Level);
 /// <summary>
 /// Keeps the list of base stations Mirador has found, follows their states from their Bluetooth adverts, and switches
 /// the selected ones: on the user's On and Off, when a Monado session starts, and a few seconds after it ends. Commands
-/// run one at a time, in the order asked, each station tried up to <see cref="Tries"/> times.
+/// run one at a time, in the order asked, each station tried up to <see cref="Tries"/> times. A 2.0 station that took
+/// an On but stays stuck waking up gets it again, at most <see cref="Resends"/> times.
 /// </summary>
 /// <remarks>
 /// Everything here may be called from any thread. <see cref="Changed"/> is raised on whichever thread made the change
@@ -184,17 +185,19 @@ public sealed partial class StationManager : ISessionHook
                     return new StationsSummary($"{string.Join(", ", problems)} didn't answer.", StatusLevel.Warning);
                 }
 
-                if (selected.All(e => e.Power == StationPower.On))
+                var now = _time.GetTimestamp();
+                var powers = selected.Select(e => Shown(e, now)).ToList();
+                if (powers.All(p => p == StationPower.On))
                 {
                     return new StationsSummary("On", StatusLevel.Ok);
                 }
 
-                if (selected.All(e => e.Power == StationPower.Asleep))
+                if (powers.All(p => p == StationPower.Asleep))
                 {
                     return new StationsSummary("Asleep", StatusLevel.Info);
                 }
 
-                if (selected.All(e => e.Power is StationPower.On or StationPower.Waking))
+                if (powers.All(p => p is StationPower.On or StationPower.Waking))
                 {
                     return new StationsSummary("Waking up…", StatusLevel.Info);
                 }
@@ -275,6 +278,12 @@ public sealed partial class StationManager : ISessionHook
 
     private bool Seen(Entry entry, long now) =>
         entry.HeardAt is { } heard && _time.GetElapsedTime(heard, now) < SeenWindow;
+
+    /// <summary>Under the lock: the state Home counts for the station, waking for a while after an On reached it (<see cref="Entry.WokenAt"/>).</summary>
+    private StationPower Shown(Entry entry, long now) =>
+        entry.Power != StationPower.On && entry.WokenAt is { } woken && _time.GetElapsedTime(woken, now) < SettleTime
+            ? StationPower.Waking
+            : entry.Power;
 
     /// <summary>Under the lock: the stations by display name.</summary>
     private IEnumerable<Entry> Ordered() =>
@@ -479,6 +488,21 @@ public sealed partial class StationManager : ISessionHook
 
         public StationPower Power { get; set; }
 
+        /// <summary>The state byte of its last advert with Valve's data (2.0 only); null while there was none.</summary>
+        public byte? State { get; set; }
+
+        /// <summary>When <see cref="State"/> last changed.</summary>
+        public long StateSince { get; set; }
+
+        /// <summary>
+        /// When an On last reached it (2.0 only), until its advert says it is on or another command reaches it: for
+        /// <see cref="SettleTime"/> after it, Home counts it as waking, since the adverts lag behind. Null otherwise.
+        /// </summary>
+        public long? WokenAt { get; set; }
+
         public string? Problem { get; set; }
+
+        /// <summary>With <see cref="Problem"/>: what its advert says once it has done what it was told after all, which clears the problem; null when that can't be seen.</summary>
+        public StationPower? Told { get; set; }
     }
 }

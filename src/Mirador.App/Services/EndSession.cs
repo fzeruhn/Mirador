@@ -4,11 +4,14 @@ using Mirador.Core.Session;
 namespace Mirador.App.Services;
 
 /// <summary>
-/// Makes Windows wait, when it shuts down, restarts or signs out, while Mirador stops Monado and switches the base
-/// stations off. Windows asks every top-level window first (<c>WM_QUERYENDSESSION</c>), one hidden in the tray too: when Monado runs
-/// or the base stations' off is still to come, Mirador gives Windows its reason (shown on Windows' "these apps are
-/// preventing" screen), starts that work and agrees. When Windows then ends the session (<c>WM_ENDSESSION</c>), the
-/// window waits for the work at most <see cref="Limit"/>; the work itself runs off the window's thread.
+/// Switches the base stations off when Windows shuts down, restarts or signs out while their off is still to come,
+/// without waiting for Monado's session to end first (a headset's own end may take longer than Windows waits). Windows
+/// asks every top-level window first (<c>WM_QUERYENDSESSION</c>), one hidden in the tray too: when an off will be needed,
+/// Mirador gives Windows its reason (shown on Windows' "these apps are preventing" screen); it agrees either way and
+/// starts nothing yet. When Windows then ends the session (<c>WM_ENDSESSION</c> TRUE), the session's off is queued at
+/// once and sent while Monado stops beside it; without an off, a session that hasn't ended is stopped all the same,
+/// with no reason given. The window waits at most <see cref="Limit"/>; the work runs off the window's thread. A
+/// shutdown something else cancelled (<c>WM_ENDSESSION</c> FALSE) changes nothing.
 /// </summary>
 internal sealed class EndSession
 {
@@ -16,7 +19,7 @@ internal sealed class EndSession
     private const uint WmEndSession = 0x0016;
     private const string Reason = "Switching off the base stations";
 
-    /// <summary>The longest Windows' ending waits for Monado and the base stations.</summary>
+    /// <summary>The longest Windows' ending waits for the base stations and Monado.</summary>
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
 
     private readonly AppHost host;
@@ -25,7 +28,7 @@ internal sealed class EndSession
     private readonly SubclassProc proc;
 
     // On the window's thread.
-    private Task? work;
+    private bool offNeeded;
     private bool blocking;
 
     /// <param name="window">The main window's handle.</param>
@@ -35,23 +38,25 @@ internal sealed class EndSession
         this.host = host;
         proc = OnMessage;
 
-        // Should it fail, Windows ends Mirador without the wait: not worth stopping Mirador for.
-        SetWindowSubclass(window, proc, 3, 0);
+        // Should it fail, Windows ends Mirador without the off: not worth stopping Mirador for.
+        if (!SetWindowSubclass(window, proc, 3, 0))
+        {
+            AppLog.Write("Mirador can't tell when Windows shuts down or signs out, so it doesn't switch the base stations off then");
+        }
     }
 
     private IntPtr OnMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, nuint id, nuint data)
     {
-        if (message == WmQueryEndSession && (work is { IsCompleted: false } || MustFinish()))
+        if (message == WmQueryEndSession)
         {
-            if (!blocking)
+            offNeeded = OffNeeded();
+            if (offNeeded && !blocking)
             {
                 blocking = ShutdownBlockReasonCreate(window, Reason);
-            }
-
-            if (work is not { IsCompleted: false })
-            {
-                AppLog.Write("Windows is ending the session: Mirador stops Monado and switches off the base stations");
-                work = Task.Run(FinishAsync);
+                if (!blocking)
+                {
+                    AppLog.Write($"Windows is ending the session: Mirador couldn't give Windows its reason (error {Marshal.GetLastPInvokeError()})");
+                }
             }
 
             return 1;
@@ -59,12 +64,19 @@ internal sealed class EndSession
 
         if (message == WmEndSession)
         {
-            // TRUE: the session ends now. FALSE: something else cancelled it; the work goes on anyway.
-            if (wParam != 0 && work is { } finishing)
+            // TRUE: the session ends now. FALSE: something else cancelled it, and nothing was started.
+            if (wParam != 0 && (offNeeded || OffNeeded()))
             {
-                Wait(finishing);
+                Finish();
+            }
+            else if (wParam != 0 && host.Session.State != SessionState.Stopped)
+            {
+                // No off to send, but Monado still runs: the headset's steps are undone now, not at the next launch.
+                AppLog.Write("Windows is ending the session: Mirador stops Monado");
+                Wait(Task.Run(StopAsync));
             }
 
+            offNeeded = false;
             if (blocking)
             {
                 ShutdownBlockReasonDestroy(window);
@@ -75,11 +87,56 @@ internal sealed class EndSession
         return DefSubclassProc(window, message, wParam, lParam);
     }
 
-    /// <summary>Monado runs (or is starting or stopping), or the base stations' off is still to come.</summary>
-    private bool MustFinish() => host.Session.State != SessionState.Stopped || host.Stations.OffPending;
+    /// <summary>
+    /// The base stations' off is still to come: the one after a session is waiting or being sent, or a session that
+    /// hasn't ended switches them off when it does (its profile has base stations, and "Switch off when Monado stops").
+    /// </summary>
+    private bool OffNeeded() =>
+        host.Stations.OffPending
+        || (host.Session.CurrentProfile is { } running && host.Stations.OffFollows(running.Profile, running.Module));
 
-    /// <summary>As quitting does: the session's end schedules the off, and the flush sends it at once.</summary>
-    private async Task FinishAsync()
+    /// <summary>
+    /// Queues the session's off at once and waits for it to be sent, with Monado's stop beside it, at most
+    /// <see cref="Limit"/> in all.
+    /// </summary>
+    private void Finish()
+    {
+        AppLog.Write("Windows is ending the session: Mirador switches off the base stations and stops Monado");
+        try
+        {
+            // Before the stop: the session's end, which may come at once, then finds its off on its way.
+            if (host.Session.CurrentProfile is { } running)
+            {
+                host.Stations.EndingNow(running.Profile, running.Module);
+            }
+
+            var off = Task.Run(() => host.Stations.FlushAsync(Limit));
+            var stop = Task.Run(StopAsync);
+            Wait(Task.WhenAll(off, stop));
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Windows is ending the session: finishing failed", e);
+        }
+    }
+
+    /// <summary>Waits for the work at most <see cref="Limit"/>, on the window's thread; logs when it stops waiting or the work fails.</summary>
+    private static void Wait(Task work)
+    {
+        try
+        {
+            if (!work.Wait(Limit))
+            {
+                AppLog.Write($"Windows is ending the session: Mirador stopped waiting after {Limit.TotalSeconds:0} s");
+            }
+        }
+        catch (AggregateException e)
+        {
+            AppLog.Write("Windows is ending the session: finishing failed", e);
+        }
+    }
+
+    private async Task StopAsync()
     {
         try
         {
@@ -88,23 +145,6 @@ internal sealed class EndSession
         catch (Exception e)
         {
             AppLog.Write("Stopping Monado as Windows ends the session failed", e);
-        }
-
-        await host.Stations.FlushAsync(Limit).ConfigureAwait(false);
-    }
-
-    private static void Wait(Task finishing)
-    {
-        try
-        {
-            if (!finishing.Wait(Limit))
-            {
-                AppLog.Write($"Windows is ending the session: Mirador stopped waiting after {Limit.TotalSeconds:0} s");
-            }
-        }
-        catch (AggregateException e)
-        {
-            AppLog.Write("Windows is ending the session: finishing failed", e);
         }
     }
 
@@ -116,7 +156,7 @@ internal sealed class EndSession
     [DllImport("comctl32.dll")]
     private static extern IntPtr DefSubclassProc(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool ShutdownBlockReasonCreate(IntPtr window, string reason);
 
     [DllImport("user32.dll")]

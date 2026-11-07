@@ -60,6 +60,9 @@ internal sealed class FakeStationRadio : IStationRadio
     /// <summary>Called at the start of every connection, before it succeeds or fails, with the address.</summary>
     public Action<ulong>? OnConnect { get; set; }
 
+    /// <summary>Called after every write the station took (it is recorded already), with the address, before the write returns.</summary>
+    public Action<ulong>? OnWrite { get; set; }
+
     /// <summary>When set, <see cref="Watch"/> throws what it makes instead of watching.</summary>
     public Func<Exception>? WatchFailure { get; set; }
 
@@ -367,6 +370,7 @@ internal sealed class FakeStationRadio : IStationRadio
             var text = StationProtocol.FormatAddress(address);
             var hex = Convert.ToHexString(value);
             radio.Record($"write {text} {hex}", new Write(text, service, characteristic, hex));
+            radio.OnWrite?.Invoke(address);
         }
 
         public ValueTask DisposeAsync()

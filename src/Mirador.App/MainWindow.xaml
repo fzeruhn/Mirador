@@ -42,7 +42,8 @@
                 </NavigationViewItem>
                 <NavigationViewItem Content="Lighthouse" Tag="Lighthouse">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xEA80;" />
+                        <!-- A base station, as SteamVR draws it: a rounded square with a dot at the top centre. -->
+                        <PathIcon Data="F1 M4,1 H12 A3,3 0 0 1 15,4 V12 A3,3 0 0 1 12,15 H4 A3,3 0 0 1 1,12 V4 A3,3 0 0 1 4,1 Z M4,2 A2,2 0 0 0 2,4 V12 A2,2 0 0 0 4,14 H12 A2,2 0 0 0 14,12 V4 A2,2 0 0 0 12,2 Z M8,3.5 A1.5,1.5 0 1 1 7.99,3.5 Z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Monado settings" Tag="MonadoSettings">

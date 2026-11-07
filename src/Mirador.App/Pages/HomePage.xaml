@@ -221,10 +221,12 @@
                         Spacing="8"
                         Visibility="{x:Bind ViewModel.ShowStationButtons, Mode=OneWay}">
                         <Button
+                            AutomationProperties.Name="Switch the selected base stations on"
                             Command="{x:Bind ViewModel.SwitchStationsOnCommand}"
                             Content="On"
                             IsEnabled="{x:Bind ViewModel.CanSwitchStations, Mode=OneWay}" />
                         <Button
+                            AutomationProperties.Name="Switch the selected base stations off"
                             Command="{x:Bind ViewModel.SwitchStationsOffCommand}"
                             Content="Off"
                             IsEnabled="{x:Bind ViewModel.CanSwitchStations, Mode=OneWay}" />

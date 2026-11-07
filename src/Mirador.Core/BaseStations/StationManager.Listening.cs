@@ -82,7 +82,7 @@ public sealed partial class StationManager
 
             var address = StationProtocol.FormatAddress(advert.Address);
             EnsureLoaded();
-            bool save = false, changed = false;
+            bool save = false, changed = false, stateChanged = false;
             TaskCompletionSource? newlyHeard = null;
             lock (_lock)
             {
@@ -123,6 +123,26 @@ public sealed partial class StationManager
                     var power = StationProtocol.AdvertState(data);
                     changed |= power != entry.Power;
                     entry.Power = power;
+                    var state = StationProtocol.AdvertStateByte(data);
+                    if (state != entry.State)
+                    {
+                        entry.State = state;
+                        entry.StateSince = now;
+                        stateChanged = true;
+                    }
+
+                    if (power == StationPower.On)
+                    {
+                        entry.WokenAt = null;
+                    }
+
+                    // The command got through after all.
+                    if (entry.Problem is not null && entry.Told == power)
+                    {
+                        entry.Problem = null;
+                        entry.Told = null;
+                        changed = true;
+                    }
                 }
             }
 
@@ -130,6 +150,11 @@ public sealed partial class StationManager
             if (save)
             {
                 Save();
+            }
+
+            if (stateChanged)
+            {
+                CheckWakes();
             }
 
             if (changed)
@@ -212,7 +237,19 @@ public sealed partial class StationManager
         UpdateWatch();
     }
 
-    /// <summary>Sets a timer for the next moment <see cref="Looking"/> ends or a station stops being seen.</summary>
+    /// <summary>Under the lock: makes <paramref name="due"/> <paramref name="left"/> when that is sooner and still to come.</summary>
+    private static void Earliest(ref TimeSpan? due, TimeSpan left)
+    {
+        if (left > TimeSpan.Zero && (due is null || left < due))
+        {
+            due = left;
+        }
+    }
+
+    /// <summary>
+    /// Sets a timer for the next moment <see cref="Looking"/> ends, a station stops being seen or Home stops counting a
+    /// station as waking after an On.
+    /// </summary>
     private void ScheduleTick()
     {
         lock (_lock)
@@ -230,6 +267,11 @@ public sealed partial class StationManager
                 {
                     Earliest(ref due, SeenWindow - _time.GetElapsedTime(heard, now));
                 }
+
+                if (entry.WokenAt is { } woken)
+                {
+                    Earliest(ref due, SettleTime - _time.GetElapsedTime(woken, now));
+                }
             }
 
             if (due is { } wait)
@@ -240,14 +282,6 @@ public sealed partial class StationManager
             else
             {
                 _tickTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-            }
-        }
-
-        static void Earliest(ref TimeSpan? due, TimeSpan left)
-        {
-            if (left > TimeSpan.Zero && (due is null || left < due))
-            {
-                due = left;
             }
         }
     }

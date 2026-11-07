@@ -96,24 +96,26 @@ public static class StationProtocol
         };
 
     /// <summary>
+    /// The state byte a waking second-generation station shows first (about 3 s after On, then 02 1.5 s later); one
+    /// that stays at it has stalled.
+    /// </summary>
+    public const byte StartingState = 0x01;
+
+    /// <summary>
     /// The power state in a second-generation station's Valve manufacturer data (without the company id): byte 4
     /// is 0 asleep, 1 or 2 waking, 3 on. Anything else, or fewer than 5 bytes, is <see cref="StationPower.Unknown"/>.
     /// </summary>
-    public static StationPower AdvertState(ReadOnlySpan<byte> valveData)
-    {
-        if (valveData.Length < 5)
-        {
-            return StationPower.Unknown;
-        }
-
-        return valveData[4] switch
+    public static StationPower AdvertState(ReadOnlySpan<byte> valveData) =>
+        AdvertStateByte(valveData) switch
         {
             0x00 => StationPower.Asleep,
-            0x01 or 0x02 => StationPower.Waking,
+            StartingState or 0x02 => StationPower.Waking,
             0x03 => StationPower.On,
             _ => StationPower.Unknown,
         };
-    }
+
+    /// <summary>The state byte itself (byte 4 of the Valve manufacturer data, see <see cref="AdvertState"/>); null with fewer than 5 bytes.</summary>
+    public static byte? AdvertStateByte(ReadOnlySpan<byte> valveData) => valveData.Length < 5 ? null : valveData[4];
 
     /// <summary>
     /// The 20 bytes to write to <see cref="V1PowerCharacteristic"/>. On ignores <paramref name="id"/>. Standby and
