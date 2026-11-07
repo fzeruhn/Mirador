@@ -185,6 +185,11 @@
                     </Grid>
                 </toolkit:SettingsCard>
 
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Lighthouse" />
+                <toolkit:SettingsCard Description="This setup tracks with base stations: Home gets their On and Off, and Mirador can switch them with Monado (App settings)." Header="Lighthouse base stations">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.UsesBaseStations, Mode=TwoWay}" />
+                </toolkit:SettingsCard>
+
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Extra environment" />
                 <toolkit:SettingsCard
                     ContentAlignment="Vertical"

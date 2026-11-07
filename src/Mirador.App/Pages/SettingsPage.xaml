@@ -25,6 +25,20 @@
                 <ToggleSwitch IsOn="{x:Bind ViewModel.CheckForUpdates, Mode=TwoWay}" />
             </toolkit:SettingsCard>
 
+            <TextBlock Style="{StaticResource SectionHeader}" Text="Base stations" />
+            <toolkit:SettingsCard Description="For profiles with Lighthouse base stations on: Mirador switches on the ones selected on the Lighthouse page." Header="Switch on when Monado starts">
+                <ToggleSwitch IsOn="{x:Bind ViewModel.BaseStationsOnAtStart, Mode=TwoWay}" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard Description="A few seconds after Monado stops, so that a restart doesn't switch them off and on." Header="Switch off when Monado stops">
+                <ToggleSwitch IsOn="{x:Bind ViewModel.BaseStationsOffAtStop, Mode=TwoWay}" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard Description="Sleep saves the most power; standby wakes faster. 1.0 base stations always sleep." Header="Off means">
+                <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.OffMeans, Mode=TwoWay}">
+                    <ComboBoxItem Content="Sleep" />
+                    <ComboBoxItem Content="Standby" />
+                </ComboBox>
+            </toolkit:SettingsCard>
+
             <TextBlock Style="{StaticResource SectionHeader}" Text="About" />
             <toolkit:SettingsCard Description="Runs Monado, the open-source OpenXR runtime, on Windows. Boost Software License 1.0." Header="{x:Bind ViewModel.Version}">
                 <HyperlinkButton Content="github.com/fzeruhn/Mirador" NavigateUri="https://github.com/fzeruhn/Mirador" />
