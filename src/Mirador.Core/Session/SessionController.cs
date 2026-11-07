@@ -145,6 +145,21 @@ public sealed class SessionController(SessionDeps deps)
         }
     }
 
+    /// <summary>
+    /// The controllers and trackers Monado has found in the current session, in the order found; null unless a session
+    /// whose profile uses the Lighthouse receiver is starting or running. A snapshot, safe to read from any thread.
+    /// </summary>
+    public IReadOnlyList<TrackedDevice>? Devices
+    {
+        get
+        {
+            lock (gate)
+            {
+                return current is { UsesLighthouse: true } run ? run.Lighthouse.Devices : null;
+            }
+        }
+    }
+
     /// <summary>The last lines of Monado's output in the current or last session (up to 200), oldest first.</summary>
     public IReadOnlyList<string> LogTail
     {
@@ -650,6 +665,13 @@ public sealed class SessionController(SessionDeps deps)
             return Fail(LighthouseConflicts.Message(conflicts));
         }
 
+        // A headset that isn't plugged in skips the hook, whatever started the session; the steps below go on as before.
+        if (module is null || module.IsPresent(deps.Context.Usb.Present()))
+        {
+            run.HookStarted = true;
+            CallHook(profile, module, started: true);
+        }
+
         run.Settings = deps.MonadoSettings.Load();
         if (module is not null)
         {
@@ -875,6 +897,36 @@ public sealed class SessionController(SessionDeps deps)
                     $"Mirador couldn't delete {deps.Context.Paths.SessionFile} ({Trimmed(e.Message)}). It tries again the next time Mirador starts."));
             }
         }
+
+        if (run.HookStarted)
+        {
+            CallHook(run.Profile!, run.Module, started: false);
+        }
+    }
+
+    /// <summary>Tells the hook (<paramref name="started"/>, else ended). It returns at once and never throws; if it does anyway, that is a warning.</summary>
+    private void CallHook(Profile profile, IHeadsetModule? module, bool started)
+    {
+        if (deps.Hook is not { } hook)
+        {
+            return;
+        }
+
+        try
+        {
+            if (started)
+            {
+                hook.Started(profile, module);
+            }
+            else
+            {
+                hook.Ended(profile, module);
+            }
+        }
+        catch (Exception e)
+        {
+            RaiseWarning(new SessionWarning("basestations", $"Mirador couldn't switch the base stations: {e.Message}"));
+        }
     }
 
     /// <summary>Follows the module session's status and warnings until <see cref="EndRunAsync"/>.</summary>
@@ -1000,14 +1052,7 @@ public sealed class SessionController(SessionDeps deps)
             return new StatusLine("tracking", "Tracking", StatusLevel.Info, "Waiting for the headset");
         }
 
-        var others = lighthouse.OtherDevices;
-        var more = others switch
-        {
-            0 => "",
-            1 => ", 1 more device",
-            _ => $", {Number(others)} more devices",
-        };
-        return new StatusLine("tracking", "Tracking", StatusLevel.Ok, $"HMD {hmd}{more}");
+        return new StatusLine("tracking", "Tracking", StatusLevel.Ok, $"HMD {hmd}");
     }
 
     /// <summary>
@@ -1152,6 +1197,9 @@ public sealed class SessionController(SessionDeps deps)
         public IHeadsetModule? Module { get; set; }
 
         public bool UsesLighthouse { get; set; }
+
+        /// <summary>The hook was told this session started, so it is told it ended.</summary>
+        public bool HookStarted { get; set; }
 
         public string? Progress { get; set; }
 
