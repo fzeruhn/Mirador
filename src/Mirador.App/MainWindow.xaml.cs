@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Mirador.App.Pages;
 using Mirador.App.Services;
 
@@ -30,6 +31,16 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Mirador.ico"));
+
+        // The icon left of the title, decoded at the title bar's 16 px times the display's scale so it stays sharp.
+        AppTitleBar.IconSource = new ImageIconSource
+        {
+            ImageSource = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "Mirador.png")))
+            {
+                DecodePixelType = DecodePixelType.Logical,
+                DecodePixelWidth = 16,
+            },
+        };
 
         // AppWindow sizes are in physical pixels: scale the size meant at 100 % to the window's display.
         var handle = WinRT.Interop.WindowNative.GetWindowHandle(this);

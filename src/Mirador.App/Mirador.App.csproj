@@ -15,7 +15,7 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="Assets\*.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\*.ico;Assets\*.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- gaze_world (the dots of "Check my calibration") and its OpenXR loader, when a build of it is at GazeWorldDir. -->
   <PropertyGroup>
