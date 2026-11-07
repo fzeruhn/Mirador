@@ -31,6 +31,10 @@ public sealed partial class HomeViewModel : ObservableObject
     private bool pageShown;
     private int stationsRefreshQueued;
 
+    // The selected profile as it was last read (LoadProfiles) or picked here, so that the base stations' frequent
+    // changes don't read profiles.json each time; null while the profiles couldn't be read.
+    private Profile? selected;
+
     public HomeViewModel(AppHost host, DispatcherQueue ui)
     {
         this.host = host;
@@ -272,10 +276,15 @@ public sealed partial class HomeViewModel : ObservableObject
         try
         {
             var set = host.Profiles.Load();
-            if (set.SelectedId != value.Id && set.Profiles.Any(p => p.Id == value.Id))
+            if (set.Profiles.FirstOrDefault(p => p.Id == value.Id) is { } picked)
             {
-                host.Profiles.Save(set.Select(value.Id));
-                host.NotifyProfilesChanged();
+                if (set.SelectedId != value.Id)
+                {
+                    host.Profiles.Save(set.Select(value.Id));
+                    host.NotifyProfilesChanged();
+                }
+
+                selected = picked;
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -327,15 +336,11 @@ public sealed partial class HomeViewModel : ObservableObject
     /// <summary>Shows the base stations card (or not) for the selected profile, and what the manager says now.</summary>
     private void RefreshStations()
     {
-        try
+        // Without a profile read, the notice about the profiles is shown elsewhere; the card stays as it is.
+        if (selected is { } profile)
         {
-            var profile = SelectedSet().Selected;
             var uses = profile.ModuleId is { } id && host.Modules.TryGetValue(id, out var module) && module.UsesSteamVrLighthouse;
             ShowStations = profile.UsesBaseStations(uses);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // The notice about the profiles is shown elsewhere; keep the card as it is.
         }
 
         if (ShowStations)
@@ -400,6 +405,7 @@ public sealed partial class HomeViewModel : ObservableObject
             }
 
             SelectedProfile = Profiles.FirstOrDefault(p => p.Id == set.SelectedId);
+            selected = set.Profiles.FirstOrDefault(p => p.Id == set.SelectedId);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

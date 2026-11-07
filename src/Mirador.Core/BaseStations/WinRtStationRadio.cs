@@ -7,11 +7,13 @@ using Windows.Devices.Radios;
 namespace Mirador.Core.BaseStations;
 
 /// <summary>The Windows Bluetooth radio. The only class that calls Windows' Bluetooth APIs.</summary>
-public sealed class WinRtStationRadio : IStationRadio
+/// <param name="log">Takes a line for Mirador's log; null for none.</param>
+public sealed class WinRtStationRadio(Action<string>? log = null) : IStationRadio
 {
     private readonly object _gate = new();
     private readonly List<Watching> _watching = [];
     private BluetoothState _state = BluetoothState.Ready;
+    private Task? _looking;
 
     // Kept in fields so Windows can't release the radio, which would end its StateChanged subscription.
     private BluetoothAdapter? _adapter;
@@ -33,33 +35,18 @@ public sealed class WinRtStationRadio : IStationRadio
     public event Action? StateChanged;
 
     /// <inheritdoc />
-    public async Task StartAsync()
+    /// <remarks>A call while one is still looking shares its look; once the radio is found, a call only reads its state again.</remarks>
+    public Task StartAsync()
     {
-        try
+        lock (_gate)
         {
-            var adapter = await BluetoothAdapter.GetDefaultAsync();
-            if (adapter is null || !adapter.IsLowEnergySupported)
+            // On the pool, so that no state change is raised under the gate.
+            if (_looking is not { IsCompleted: false })
             {
-                SetState(BluetoothState.Missing);
-                return;
+                _looking = Task.Run(LookAsync);
             }
 
-            var radio = await adapter.GetRadioAsync();
-            if (radio is null)
-            {
-                SetState(BluetoothState.Missing);
-                return;
-            }
-
-            _adapter = adapter;
-            _radio = radio;
-            radio.StateChanged += OnRadioStateChanged;
-            SetState(Map(radio.State));
-        }
-        catch (Exception)
-        {
-            // Windows could not tell us about Bluetooth at all; treat it as not there.
-            SetState(BluetoothState.Missing);
+            return _looking;
         }
     }
 
@@ -111,6 +98,53 @@ public sealed class WinRtStationRadio : IStationRadio
     }
 
     private static BluetoothState Map(RadioState state) => state == RadioState.On ? BluetoothState.Ready : BluetoothState.Off;
+
+    /// <summary>Finds the Bluetooth LE adapter and its radio, once; never throws.</summary>
+    private async Task LookAsync()
+    {
+        try
+        {
+            if (_radio is { } known)
+            {
+                SetState(Map(known.State));
+                return;
+            }
+
+            var adapter = await BluetoothAdapter.GetDefaultAsync();
+            if (adapter is null || !adapter.IsLowEnergySupported)
+            {
+                SetState(BluetoothState.Missing);
+                return;
+            }
+
+            var radio = await adapter.GetRadioAsync();
+            if (radio is null)
+            {
+                SetState(BluetoothState.Missing);
+                return;
+            }
+
+            _adapter = adapter;
+            _radio = radio;
+            radio.StateChanged += OnRadioStateChanged;
+            SetState(Map(radio.State));
+        }
+        catch (Exception e)
+        {
+            // Windows could not tell us about Bluetooth at all; treat it as not there.
+            try
+            {
+                var reason = e.Message.Trim().TrimEnd('.');
+                log?.Invoke($"Base stations: Windows couldn't say whether this PC has Bluetooth ({(reason.Length > 0 ? reason : e.GetType().Name)}); Mirador treats it as missing");
+            }
+            catch (Exception)
+            {
+                // The log is only for reading later.
+            }
+
+            SetState(BluetoothState.Missing);
+        }
+    }
 
     private void SetState(BluetoothState state)
     {

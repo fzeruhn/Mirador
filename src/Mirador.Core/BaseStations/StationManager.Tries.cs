@@ -76,10 +76,11 @@ public sealed partial class StationManager
                 }
 
                 var reason = reasons.GetValueOrDefault(address, "no reason given");
-                var station = $"Base stations: {Name(work)} {entry.Station.DisplayName} ({address})";
+                var station = Line(work, entry.Station.DisplayName, address);
                 if (tried.Contains(address))
                 {
                     entry.Problem = NoAnswer;
+                    entry.Told = work.Kind == WorkKind.Switch ? Shows(work.Command) : null;
                     named = true;
                     lines.Add($"{station}: didn't answer ({reason})");
                 }
@@ -101,24 +102,62 @@ public sealed partial class StationManager
         }
     }
 
-    /// <summary>A station took the command: its problem goes, and a 1.0 station's state is what it was told.</summary>
+    /// <summary>How the log names the work for one station: <c>Base stations: On Desk (CE:…)</c>, with "again (stuck waking up)" for an On sent again.</summary>
+    private static string Line(Work work, string display, string address) =>
+        $"Base stations: {Name(work)} {display} ({address}){(work.ResendOf is null ? string.Empty : " again (stuck waking up)")}";
+
+    /// <summary>What a 2.0 station's advert says once it has done the command; null for standby, which shows nothing Mirador can see.</summary>
+    private static StationPower? Shows(StationCommand command) =>
+        command switch
+        {
+            StationCommand.On => StationPower.On,
+            StationCommand.Sleep => StationPower.Asleep,
+            _ => null,
+        };
+
+    /// <summary>
+    /// A station took the command: its problem goes, a 1.0 station's state is what it was told, and a 2.0 station an
+    /// On reached is watched while it wakes up.
+    /// </summary>
     private void Answered(KnownStation station, Work work)
     {
         var display = station.DisplayName;
+        var woken = false;
         lock (_lock)
         {
             if (Lookup(station.Address) is { } entry)
             {
                 entry.Problem = null;
+                entry.Told = null;
                 display = entry.Station.DisplayName;
-                if (work.Kind == WorkKind.Switch && StationProtocol.VersionOf(entry.Station.Name) == StationVersion.V1)
+                if (work.Kind == WorkKind.Switch)
                 {
-                    entry.Power = work.Command == StationCommand.On ? StationPower.On : StationPower.Asleep;
+                    if (StationProtocol.VersionOf(entry.Station.Name) == StationVersion.V1)
+                    {
+                        entry.Power = work.Command == StationCommand.On ? StationPower.On : StationPower.Asleep;
+                    }
+                    else if (work.IsOn)
+                    {
+                        WokenLocked(entry, work, _time.GetTimestamp());
+                        woken = true;
+                    }
+                    else
+                    {
+                        // Told to go off: it isn't waking any more, whatever its advert still says.
+                        entry.WokenAt = null;
+                        _wakes.RemoveAll(w => w.Address == entry.Station.Address);
+                    }
                 }
             }
         }
 
-        Log($"Base stations: {Name(work)} {display} ({station.Address}): done");
+        Log($"Base stations: {Name(work)} {display} ({station.Address}): {(work.ResendOf is null ? "done" : "sent again (stuck waking up)")}");
+        if (woken)
+        {
+            CheckWakes();
+        }
+
+        ScheduleTick();
         Raise();
     }
 

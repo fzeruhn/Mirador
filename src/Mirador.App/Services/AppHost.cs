@@ -61,7 +61,7 @@ public sealed class AppHost : IAsyncDisposable
             new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir),
             new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir));
 
-        radio = new WinRtStationRadio();
+        radio = new WinRtStationRadio(text => AppLog.Write(text));
         stationStore = new StationStore(paths.BaseStationsFile);
         Stations = new StationManager(radio, stationStore, StationSettings, TimeProvider.System, text => AppLog.Write(text));
 
@@ -121,8 +121,18 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>Raised on the UI thread a second after devices were plugged in or out.</summary>
     public event Action? DevicesChanged;
 
-    /// <summary>Says that devices were plugged in or out; call on the UI thread.</summary>
-    public void NotifyDevicesChanged() => DevicesChanged?.Invoke();
+    /// <summary>
+    /// Says that devices were plugged in or out; call on the UI thread. With no Bluetooth found so far, Mirador looks
+    /// for it again: an adapter may just have been plugged in or its driver installed.
+    /// </summary>
+    public void NotifyDevicesChanged()
+    {
+        DevicesChanged?.Invoke();
+        if (radio.State == BluetoothState.Missing)
+        {
+            _ = Task.Run(StartRadioAsync);
+        }
+    }
 
     /// <summary>Says that the profiles changed, and puts the stand-in below the selected build; call on the UI thread.</summary>
     public void NotifyProfilesChanged()
@@ -243,7 +253,10 @@ public sealed class AppHost : IAsyncDisposable
         launcher.Dispose();
     }
 
-    /// <summary>Looks at the PC's Bluetooth once; the window doesn't wait for it, and Bluetooth stays "Ready" until then.</summary>
+    /// <summary>
+    /// Looks at the PC's Bluetooth (at start, and when devices change while it is missing); the window doesn't wait for
+    /// it, and Bluetooth stays "Ready" until the first look.
+    /// </summary>
     private async Task StartRadioAsync()
     {
         try

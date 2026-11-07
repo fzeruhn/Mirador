@@ -188,6 +188,31 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task Current_profile_is_the_sessions_until_it_has_ended()
+    {
+        var hook = new FakeHook();
+        await using var h = new Harness(hook);
+        SessionProfile? atStarted = null, atEnded = null;
+        hook.OnStarted = () => atStarted = h.Controller.CurrentProfile;
+        hook.OnEnded = () => atEnded = h.Controller.CurrentProfile;
+        Assert.Null(h.Controller.CurrentProfile);
+
+        await h.StartRunningAsync();
+
+        Assert.Equal(Harness.DreamAir.Id, atStarted?.Profile.Id);
+        Assert.Same(h.Module, atStarted?.Module);
+        Assert.Equal(Harness.DreamAir.Id, h.Controller.CurrentProfile?.Profile.Id);
+        Assert.Same(h.Module, h.Controller.CurrentProfile?.Module);
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        // While it stops, until the very end.
+        Assert.Equal(Harness.DreamAir.Id, atEnded?.Profile.Id);
+        Assert.Same(h.Module, atEnded?.Module);
+        Assert.Null(h.Controller.CurrentProfile);
+    }
+
+    [Fact]
     public async Task Hook_ends_after_a_failed_start()
     {
         var hook = new FakeHook();

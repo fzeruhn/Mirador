@@ -1359,6 +1359,558 @@ public class StationManagerTests
 
         Assert.Equal(new KnownStation(LeftAddress, LeftName), h.View(Left).Station);
     }
+
+    [Fact]
+    public async Task A_station_stuck_waking_up_gets_the_on_again()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Right, RightName, 0x00);
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Clock.Advance(TimeSpan.FromSeconds(3));
+        h.Hear(Right, RightName, 0x01);
+
+        // A healthy one is at 02 1.5 s later; this one stays at 01.
+        h.Clock.Advance(StationManager.StallTime - TimeSpan.FromMilliseconds(1));
+        h.Hear(Right, RightName, 0x01);
+        await h.QueueDrained();
+        Assert.Equal(["01"], h.Radio.WritesTo(Right));
+
+        h.Clock.Advance(TimeSpan.FromMilliseconds(1));
+        await h.Radio.Until(r => r.WritesTo(Right).Length == 2).WaitAsync(Limit);
+        await h.QueueDrained();
+
+        // Sent again, it wakes.
+        h.Clock.Advance(TimeSpan.FromSeconds(1));
+        h.Hear(Right, RightName, 0x02);
+        h.Clock.Advance(TimeSpan.FromSeconds(9));
+        h.Hear(Right, RightName, 0x03);
+        h.Clock.Advance(StationManager.SettleTime);
+        await h.QueueDrained();
+
+        Assert.Equal(["01", "01"], h.Radio.WritesTo(Right));
+        Assert.Equal(StationPower.On, h.View(Right).Power);
+        Assert.Equal(
+            [$"Base stations: On {RightName} ({RightAddress}): done", $"Base stations: On {RightName} ({RightAddress}): sent again (stuck waking up)"],
+            h.Logged.Where(l => l.StartsWith($"Base stations: On {RightName}", StringComparison.Ordinal)));
+        Assert.Equal(new StationsSummary("On", StatusLevel.Ok), h.Manager.Summary);
+    }
+
+    [Fact]
+    public async Task A_station_that_keeps_waking_up_is_not_sent_the_on_again()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(RightAddress, RightName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Right, RightName, 0x00);
+        }
+
+        // As Finn's stations wake: 01 at 3 s, 02 at 4.5 s, 03 at 13.6 s (Mirador listens after a command).
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Clock.Advance(TimeSpan.FromSeconds(3));
+        h.Hear(Right, RightName, 0x01);
+        h.Clock.Advance(TimeSpan.FromSeconds(1.5));
+        h.Hear(Right, RightName, 0x02);
+        h.Clock.Advance(TimeSpan.FromSeconds(9.1));
+        h.Hear(Right, RightName, 0x03);
+        h.Clock.Advance(StationManager.SettleTime);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Right));
+        Assert.DoesNotContain(h.Logged, l => l.Contains("sent again", StringComparison.Ordinal));
+        Assert.False(h.Radio.Watching);
+    }
+
+    [Fact]
+    public async Task The_on_is_sent_again_at_most_twice()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(RightAddress, RightName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Right, RightName, 0x00);
+        }
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Right, RightName, 0x01);
+        for (var sent = 2; sent <= 1 + StationManager.Resends; sent++)
+        {
+            h.Clock.Advance(StationManager.StallTime);
+            var expected = sent;
+            await h.Radio.Until(r => r.WritesTo(Right).Length == expected).WaitAsync(Limit);
+            await h.QueueDrained();
+        }
+
+        // Still stuck: nothing more, and listening ends as after any command.
+        h.Clock.Advance(StationManager.StallTime);
+        await h.QueueDrained();
+        h.Clock.Advance(StationManager.SettleTime);
+        await h.QueueDrained();
+
+        Assert.Equal(["01", "01", "01"], h.Radio.WritesTo(Right));
+        Assert.Equal(2, h.Logged.Count(l => l.EndsWith("sent again (stuck waking up)", StringComparison.Ordinal)));
+        Assert.False(h.Radio.Watching);
+    }
+
+    [Fact]
+    public async Task A_station_no_longer_selected_is_never_sent_the_on_again()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x00);
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x01);
+        h.Hear(Right, RightName, 0x01);
+        h.Manager.SetSelected(LeftAddress, false);
+        h.Clock.Advance(StationManager.StallTime * 2);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Left));
+        Assert.Empty(h.Radio.ConnectionsTo(Right));
+
+        // One the user picked on its own is still wanted.
+        await h.Manager.SwitchAsync(RightAddress, StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Clock.Advance(StationManager.StallTime);
+        await h.Radio.Until(r => r.WritesTo(Right).Length == 2).WaitAsync(Limit);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Left));
+    }
+
+    [Fact]
+    public async Task Flush_cancels_a_pending_resend()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x03);
+
+        // Still to come.
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x01);
+        await h.Manager.FlushAsync(TimeSpan.FromSeconds(15)).WaitAsync(Limit);
+        h.Clock.Advance(StationManager.StallTime);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Left));
+
+        // Queued behind Identify.
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        var hold = h.Radio.Hold(Right);
+        var identify = h.Manager.IdentifyAsync(RightAddress, CancellationToken.None);
+        await h.Time.Set(StationManager.TryLimit, 3).WaitAsync(Limit);
+        h.Clock.Advance(StationManager.StallTime);
+        var flush = h.Manager.FlushAsync(TimeSpan.FromSeconds(15));
+        hold.SetResult();
+        await Task.WhenAll(identify, flush).WaitAsync(Limit);
+        await h.QueueDrained();
+
+        Assert.Equal(["01", "01"], h.Radio.WritesTo(Left));
+        Assert.Contains($"Base stations: On {LeftAddress}: not sent again (Mirador is quitting)", h.Logged);
+    }
+
+    [Theory]
+    [InlineData(OffMode.Sleep)]
+    [InlineData(OffMode.Standby)]
+    public async Task An_off_asked_for_while_an_on_is_sending_is_not_followed_by_the_on_again(OffMode mode)
+    {
+        using var h = new StationHarness();
+        h.Settings = new AppSettings(BaseStationsOff: mode);
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x00);
+
+        // Right (first by name) takes the On at once; Left is slow, and the Off is asked for meanwhile.
+        var hold = h.Radio.Hold(Left);
+        var on = h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None);
+        await h.Radio.Until(r => r.ConnectionsTo(Left).Length == 1).WaitAsync(Limit);
+        var off = h.Manager.SwitchSelectedAsync(h.Manager.OffCommand(), CancellationToken.None);
+        hold.SetResult();
+        await Task.WhenAll(on, off).WaitAsync(Limit);
+
+        // Left's advert stays at 01: it is stalling, or in standby, which the advert doesn't show.
+        h.Hear(Left, LeftName, 0x01);
+        h.Clock.Advance(StationManager.StallTime);
+        h.Hear(Left, LeftName, 0x01);
+        h.Clock.Advance(StationManager.StallTime);
+        await h.QueueDrained();
+
+        var offValue = mode == OffMode.Standby ? "02" : "00";
+        Assert.Equal(["01", offValue], h.Radio.WritesTo(Left));
+        Assert.Equal(["01", offValue], h.Radio.WritesTo(Right));
+        Assert.DoesNotContain(h.Logged, l => l.Contains("again (stuck", StringComparison.Ordinal) || l.Contains("sent again", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_off_that_did_not_reach_a_station_is_not_followed_by_the_on_again()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x00);
+
+        // Left takes the On late, after the Off was asked for, and then the Off doesn't get through to it.
+        var hold = h.Radio.Hold(Left);
+        var on = h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None);
+        await h.Radio.Until(r => r.ConnectionsTo(Left).Length == 1).WaitAsync(Limit);
+        var off = h.Manager.SwitchSelectedAsync(StationCommand.Sleep, CancellationToken.None);
+        h.Radio.Unreachable(Left);
+        hold.SetResult();
+        await on.WaitAsync(Limit);
+        await h.PassPauses(2);
+        await off.WaitAsync(Limit);
+        Assert.Equal("didn't answer", h.View(Left).Problem);
+
+        h.Hear(Left, LeftName, 0x01);
+        h.Clock.Advance(StationManager.StallTime * 2);
+        await h.QueueDrained();
+
+        Assert.Equal(1 + StationManager.Tries, h.Radio.ConnectionsTo(Left).Length);
+        Assert.Equal(["01"], h.Radio.WritesTo(Left));
+    }
+
+    [Fact]
+    public async Task Flush_while_an_on_is_sending_leaves_nothing_to_send_again()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x00);
+
+        // Mirador quits just as Left, the second, takes the On: the On may still see it answer.
+        Task? flush = null;
+        h.Radio.OnWrite = address =>
+        {
+            if (address == Left)
+            {
+                flush ??= h.Manager.FlushAsync(TimeSpan.FromSeconds(15));
+            }
+        };
+        var on = h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None);
+        await h.Radio.Until(r => r.WritesTo(Left).Length == 1).WaitAsync(Limit);
+        await on.WaitAsync(Limit);
+        await flush!.WaitAsync(Limit);
+        h.Radio.OnWrite = null;
+
+        h.Hear(Left, LeftName, 0x01);
+        h.Hear(Right, RightName, 0x01);
+        h.Clock.Advance(StationManager.StallTime * 2);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Left));
+        Assert.Equal(["01"], h.Radio.WritesTo(Right));
+    }
+
+    [Fact]
+    public async Task An_on_sent_again_that_does_not_get_through_says_so()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Right, RightName, 0x00);
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Right, RightName, 0x01);
+        h.Radio.Unreachable(Right);
+        h.Clock.Advance(StationManager.StallTime);
+        await h.Radio.Until(r => r.ConnectionsTo(Right).Length == 2).WaitAsync(Limit);
+        await h.PassPauses(2);
+        await h.QueueDrained();
+
+        Assert.Equal(1 + StationManager.Tries, h.Radio.ConnectionsTo(Right).Length);
+        Assert.Contains(
+            $"Base stations: On {RightName} ({RightAddress}) again (stuck waking up): didn't answer (Windows couldn't connect to the base station over Bluetooth)",
+            h.Logged);
+    }
+
+    [Fact]
+    public async Task An_on_sent_again_to_a_station_no_longer_selected_is_dropped_quietly()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(RightAddress, RightName, Selected: true), new KnownStation(LeftAddress, LeftName));
+        using var listen = h.Manager.Listen();
+        h.Hear(Right, RightName, 0x00);
+        h.Hear(Left, LeftName, 0x03);
+
+        // The On sent again waits behind Left's Identify, and Right is deselected meanwhile.
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Right, RightName, 0x01);
+        var hold = h.Radio.Hold(Left);
+        var identify = h.Manager.IdentifyAsync(LeftAddress, CancellationToken.None);
+        await h.Time.Set(StationManager.TryLimit, 2).WaitAsync(Limit);
+        h.Clock.Advance(StationManager.StallTime);
+        h.Manager.SetSelected(RightAddress, false);
+        var running = new List<StationCommand?>();
+        h.Manager.Changed += () =>
+        {
+            lock (running)
+            {
+                running.Add(h.Manager.Running);
+            }
+        };
+        hold.SetResult();
+        await identify.WaitAsync(Limit);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Right));
+        Assert.Single(h.Logged, l => l == $"Base stations: On {RightName} ({RightAddress}) again (stuck waking up): not sent (it is no longer selected)");
+        lock (running)
+        {
+            Assert.DoesNotContain(StationCommand.On, running);
+        }
+    }
+
+    [Fact]
+    public async Task A_later_command_and_a_start_cancel_a_pending_resend()
+    {
+        using var h = new StationHarness();
+        h.Settings = new AppSettings(BaseStationsOnAtStart: false);
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x03);
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x01);
+        await h.Manager.SwitchAsync(RightAddress, StationCommand.Standby, CancellationToken.None).WaitAsync(Limit);
+        h.Clock.Advance(StationManager.StallTime);
+        await h.QueueDrained();
+
+        Assert.Equal(["01"], h.Radio.WritesTo(Left));
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Manager.Started(StationHarness.Profile(true), null);
+        h.Clock.Advance(StationManager.StallTime);
+        await h.QueueDrained();
+
+        Assert.Equal(["01", "01"], h.Radio.WritesTo(Left));
+        Assert.DoesNotContain(h.Logged, l => l.Contains("sent again", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_problem_goes_once_the_advert_shows_what_the_station_was_told()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true, CustomName: "Desk"));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Radio.Unreachable(Left);
+
+        var on = h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None);
+        await h.PassPauses(2);
+        await on.WaitAsync(Limit);
+        Assert.Equal(new StationsSummary("Desk didn't answer.", StatusLevel.Warning), h.Manager.Summary);
+
+        // The write got through after all.
+        h.Hear(Left, LeftName, 0x01);
+        Assert.Equal("didn't answer", h.View(Left).Problem);
+        h.Hear(Left, LeftName, 0x03);
+        Assert.Null(h.View(Left).Problem);
+        Assert.Equal(new StationsSummary("On", StatusLevel.Ok), h.Manager.Summary);
+
+        var sleep = h.Manager.SwitchSelectedAsync(StationCommand.Sleep, CancellationToken.None);
+        await h.PassPauses(2);
+        await sleep.WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x03);
+        Assert.Equal("didn't answer", h.View(Left).Problem);
+        h.Hear(Left, LeftName, 0x00);
+        Assert.Null(h.View(Left).Problem);
+    }
+
+    [Fact]
+    public async Task Summary_says_waking_up_right_after_an_on()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x00);
+
+        // The adverts are about 3 s behind.
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        Assert.Equal(new StationsSummary("Waking up…", StatusLevel.Info), h.Manager.Summary);
+        h.Hear(Left, LeftName, 0x03);
+        h.Hear(Right, RightName, 0x00);
+        Assert.Equal(new StationsSummary("Waking up…", StatusLevel.Info), h.Manager.Summary);
+
+        // One that is still asleep once the On's time is up reads as it is, and Home hears of it.
+        var changed = 0;
+        h.Manager.Changed += () => Interlocked.Increment(ref changed);
+        h.Clock.Advance(StationManager.SettleTime - TimeSpan.FromSeconds(1));
+        h.Hear(Left, LeftName, 0x03);
+        h.Hear(Right, RightName, 0x00);
+        Assert.Equal(new StationsSummary("Waking up…", StatusLevel.Info), h.Manager.Summary);
+        changed = 0;
+        h.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(new StationsSummary("2 selected", StatusLevel.Info), h.Manager.Summary);
+        Assert.True(changed > 0);
+
+        // A station that didn't answer comes first.
+        h.Radio.Unreachable(Right);
+        var on = h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None);
+        await h.PassPauses(2);
+        await on.WaitAsync(Limit);
+        Assert.Equal(new StationsSummary($"{RightName} didn't answer.", StatusLevel.Warning), h.Manager.Summary);
+    }
+
+    [Fact]
+    public async Task Summary_after_an_on_still_counts_a_station_put_to_sleep()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName, Selected: true));
+        using var listen = h.Manager.Listen();
+        h.Hear(Left, LeftName, 0x00);
+        h.Hear(Right, RightName, 0x00);
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x03);
+        h.Hear(Right, RightName, 0x03);
+        Assert.Equal(new StationsSummary("On", StatusLevel.Ok), h.Manager.Summary);
+        await h.Manager.SwitchAsync(RightAddress, StationCommand.Sleep, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Right, RightName, 0x00);
+
+        Assert.Equal(new StationsSummary("2 selected", StatusLevel.Info), h.Manager.Summary);
+
+        // Only the station switched on is waking: the other one was left asleep.
+        h.Hear(Left, LeftName, 0x00);
+        await h.Manager.SwitchAsync(LeftAddress, StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+
+        Assert.Equal(new StationsSummary("2 selected", StatusLevel.Info), h.Manager.Summary);
+    }
+
+    [Fact]
+    public async Task A_queued_session_off_is_dropped_by_a_later_command_for_one_station()
+    {
+        using var h = new StationHarness();
+        h.Settings = new AppSettings(BaseStationsOnAtStart: false);
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Left, LeftName);
+            h.Hear(Right, RightName);
+        }
+
+        var hold = h.Radio.Hold(Right);
+        var first = h.Manager.SwitchAsync(RightAddress, StationCommand.On, CancellationToken.None);
+        await h.Time.Set(StationManager.TryLimit).WaitAsync(Limit);
+        h.Manager.Ended(StationHarness.Profile(true), null);
+        await h.Time.Set(StationManager.OffDelay).WaitAsync(Limit);
+        h.Clock.Advance(StationManager.OffDelay);
+        Assert.True(h.Manager.OffPending);
+
+        // Unlike the user's own Off of the selected, the session's off goes for a command for another station too.
+        var later = h.Manager.SwitchAsync(RightAddress, StationCommand.Standby, CancellationToken.None);
+        Assert.False(h.Manager.OffPending);
+        hold.SetResult();
+        await Task.WhenAll(first, later).WaitAsync(Limit);
+        await h.QueueDrained();
+
+        Assert.Empty(h.Radio.ConnectionsTo(Left));
+        Assert.Equal(["01", "02"], h.Radio.WritesTo(Right));
+        Assert.Contains("Base stations: Sleep not sent (a later command replaced it)", h.Logged);
+    }
+
+    [Fact]
+    public async Task Windows_ending_sends_the_off_at_once_and_once()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Left, LeftName);
+        }
+
+        // The session still runs (its module may take long to end): the off doesn't wait for its Ended.
+        h.Manager.EndingNow(StationHarness.Profile(true), null);
+        Assert.True(h.Manager.OffPending);
+        await h.Manager.FlushAsync(TimeSpan.FromSeconds(10)).WaitAsync(Limit);
+
+        Assert.Equal(["00"], h.Radio.WritesTo(Left));
+
+        // The session's own end then sends nothing.
+        h.Manager.Ended(StationHarness.Profile(true), null);
+        Assert.False(h.Manager.OffPending);
+        h.Clock.Advance(StationManager.OffDelay * 2);
+        await h.QueueDrained();
+
+        Assert.Equal(["00"], h.Radio.WritesTo(Left));
+        Assert.Contains("Base stations: the off after Monado stopped went out already (Windows is ending the session)", h.Logged);
+
+        // A session after that (Windows' ending was cancelled after all) is followed by its off again.
+        h.Manager.Started(StationHarness.Profile(true), null);
+        await h.Radio.Until(r => r.WritesTo(Left).Length == 2).WaitAsync(Limit);
+        h.Manager.Ended(StationHarness.Profile(true), null);
+        Assert.True(h.Manager.OffPending);
+        await h.Manager.FlushAsync(TimeSpan.FromSeconds(10)).WaitAsync(Limit);
+
+        Assert.Equal(["00", "01", "00"], h.Radio.WritesTo(Left));
+    }
+
+    [Fact]
+    public async Task Windows_ending_stops_a_running_on_first()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Left, LeftName);
+        }
+
+        // Monado's On is still sending when Windows ends: the off follows it, the flush stops it.
+        var hold = h.Radio.Hold(Left);
+        h.Manager.Started(StationHarness.Profile(true), null);
+        await h.Time.Set(StationManager.TryLimit).WaitAsync(Limit);
+        h.Manager.EndingNow(StationHarness.Profile(true), null);
+        await h.Manager.FlushAsync(TimeSpan.FromSeconds(10)).WaitAsync(Limit);
+        hold.SetResult();
+        await h.Radio.Until(r => r.Steps.Count(s => s == $"close {LeftAddress}") == 2).WaitAsync(Limit);
+
+        Assert.Equal(["00"], h.Radio.WritesTo(Left));
+        Assert.Contains("Base stations: On stopped (Mirador is quitting)", h.Logged);
+
+        h.Manager.Ended(StationHarness.Profile(true), null);
+        h.Clock.Advance(StationManager.OffDelay);
+        await h.QueueDrained();
+
+        Assert.Equal(["00"], h.Radio.WritesTo(Left));
+    }
+
+    [Fact]
+    public async Task Windows_ending_without_the_setting_or_the_profile_sends_nothing()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Left, LeftName);
+        }
+
+        Assert.True(h.Manager.OffFollows(StationHarness.Profile(true), null));
+        Assert.False(h.Manager.OffFollows(StationHarness.Profile(false), null));
+        h.Manager.EndingNow(StationHarness.Profile(false), null);
+        h.Settings = new AppSettings(BaseStationsOffAtStop: false);
+        Assert.False(h.Manager.OffFollows(StationHarness.Profile(true), null));
+        h.Manager.EndingNow(StationHarness.Profile(true), null);
+        Assert.False(h.Manager.OffPending);
+        await h.Manager.FlushAsync(TimeSpan.FromSeconds(10)).WaitAsync(Limit);
+
+        Assert.Empty(h.Radio.Connections);
+
+        // Nothing was sent, so the session's end isn't skipped.
+        h.Settings = new AppSettings();
+        h.Manager.Ended(StationHarness.Profile(true), null);
+        Assert.True(h.Manager.OffPending);
+    }
 }
 
 /// <summary>

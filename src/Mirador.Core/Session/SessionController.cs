@@ -29,6 +29,11 @@ public enum StartReason
 /// <param name="Message">What happened, in plain words; for a refusal or a failure, why and what to do.</param>
 public sealed record StartOutcome(bool Ok, string Message);
 
+/// <summary>What a session runs with.</summary>
+/// <param name="Profile">The profile, as it was read at the session's Start.</param>
+/// <param name="Module">Its headset module; null for a profile without one.</param>
+public sealed record SessionProfile(Profile Profile, IHeadsetModule? Module);
+
 /// <summary>
 /// Starts and stops Monado's service for the selected profile, with its headset module's steps before and after, and
 /// follows Monado's output for the log and the status lines.
@@ -181,6 +186,21 @@ public sealed class SessionController(SessionDeps deps)
     /// </summary>
     public string? RuntimeNotice =>
         CurrentInstall is { } install && !deps.Runtime.IsActive(install.Manifest) ? NotActiveNotice : null;
+
+    /// <summary>
+    /// The profile and headset module of the session that is starting (once the Start has read the profile), running or
+    /// stopping, until it has ended (after <see cref="ISessionHook.Ended"/>); null otherwise.
+    /// </summary>
+    public SessionProfile? CurrentProfile
+    {
+        get
+        {
+            lock (gate)
+            {
+                return current is { Profile: { } profile } run ? new SessionProfile(profile, run.Module) : null;
+            }
+        }
+    }
 
     /// <summary>The Monado build of the session that is starting or running; null when stopped.</summary>
     public MonadoInstall? CurrentInstall

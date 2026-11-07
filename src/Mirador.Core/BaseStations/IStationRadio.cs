@@ -36,7 +36,11 @@ public interface IStationRadio
     /// <summary>Raised, on any thread, whenever <see cref="State"/> changes.</summary>
     event Action? StateChanged;
 
-    /// <summary>Looks at the Bluetooth adapter once, at Mirador's start. Never throws for a PC without Bluetooth or with it off.</summary>
+    /// <summary>
+    /// Looks at the Bluetooth adapter: at Mirador's start, and again when devices change while Bluetooth is
+    /// <see cref="BluetoothState.Missing"/> (safe to call more than once). Never throws for a PC without Bluetooth or
+    /// with it off.
+    /// </summary>
     Task StartAsync();
 
     /// <summary>

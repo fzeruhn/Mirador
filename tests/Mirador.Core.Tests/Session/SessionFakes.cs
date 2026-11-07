@@ -508,10 +508,6 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
     }
 }
 
-/// <summary>
-/// A <see cref="SessionController"/> on fakes, with a bundled Monado and a stand-in on disk in a temp folder whose
-/// path has a space and a non-ASCII letter. The selected profile is "Dream Air" on the bundled Monado with the fake module.
-/// </summary>
 /// <summary>An <see cref="ISessionHook"/> that writes down what it is told, in order, from any thread.</summary>
 internal sealed class FakeHook : ISessionHook
 {
@@ -564,6 +560,10 @@ internal sealed class FakeHook : ISessionHook
     }
 }
 
+/// <summary>
+/// A <see cref="SessionController"/> on fakes, with a bundled Monado and a stand-in on disk in a temp folder whose
+/// path has a space and a non-ASCII letter. The selected profile is "Dream Air" on the bundled Monado with the fake module.
+/// </summary>
 internal sealed class Harness : IAsyncDisposable
 {
     public static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
