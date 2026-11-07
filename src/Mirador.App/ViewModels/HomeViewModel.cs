@@ -5,6 +5,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Controls;
 using Mirador.App.Services;
 using Mirador.Core;
+using Mirador.Core.BaseStations;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
@@ -26,6 +27,9 @@ public sealed partial class HomeViewModel : ObservableObject
     private CancellationTokenSource? checking;
     private bool loading;
     private string? openCompositeProblem;
+    private IDisposable? listening;
+    private bool pageShown;
+    private int stationsRefreshQueued;
 
     public HomeViewModel(AppHost host, DispatcherQueue ui)
     {
@@ -46,6 +50,7 @@ public sealed partial class HomeViewModel : ObservableObject
 
         host.Session.Changed += () => ui.TryEnqueue(OnSessionChanged);
         host.Session.StatusChanged += () => ui.TryEnqueue(RefreshStatus);
+        host.Stations.Changed += OnStationsChanged;
         host.Session.Warning += w => ui.TryEnqueue(() => AddWarning(w));
         host.Session.Ended += text => ui.TryEnqueue(() => OnEnded(text));
         App.Current.StartFailed += message =>
@@ -56,11 +61,39 @@ public sealed partial class HomeViewModel : ObservableObject
         };
         LoadProfiles();
         OnSessionChanged();
+        RefreshStations();
     }
 
     public ObservableCollection<ProfileItem> Profiles { get; } = [];
 
     public ObservableCollection<StatusItem> Status { get; } = [];
+
+    /// <summary>The controllers and trackers Monado found, for the devices card.</summary>
+    public ObservableCollection<DeviceItem> Devices { get; } = [];
+
+    /// <summary>Whether the devices card shows: while Monado runs with the Lighthouse receiver.</summary>
+    [ObservableProperty]
+    public partial bool ShowDevices { get; set; }
+
+    /// <summary>Whether "None found yet." shows in the devices card.</summary>
+    [ObservableProperty]
+    public partial bool HasNoDevices { get; set; }
+
+    /// <summary>Whether the base stations card shows: the selected profile uses base stations.</summary>
+    [ObservableProperty]
+    public partial bool ShowStations { get; set; }
+
+    /// <summary>The "Base stations" row of its card.</summary>
+    [ObservableProperty]
+    public partial StatusItem StationsRow { get; set; } = new("Base stations", "", StatusLevel.Info);
+
+    /// <summary>Whether the On and Off buttons show: not when this PC has no Bluetooth.</summary>
+    [ObservableProperty]
+    public partial bool ShowStationButtons { get; set; }
+
+    /// <summary>Whether On and Off work: Bluetooth ready, a station selected and no command being sent.</summary>
+    [ObservableProperty]
+    public partial bool CanSwitchStations { get; set; }
 
     /// <summary>Notices from Mirador's start, check results that need a look, and warnings while Monado runs.</summary>
     public ObservableCollection<NoticeItem> Notices { get; } = [];
@@ -142,7 +175,18 @@ public sealed partial class HomeViewModel : ObservableObject
     {
         LoadProfiles();
         RefreshRuntime();
+        RefreshStations();
         _ = RunChecksAsync();
+    }
+
+    /// <summary>
+    /// Home listens to the base stations while it is the current page, the base stations card shows and the window is on
+    /// screen; <paramref name="shown"/> is the first and the last of those.
+    /// </summary>
+    public void SetShown(bool shown)
+    {
+        pageShown = shown;
+        UpdateListening();
     }
 
     /// <summary>Shows a newer release (from the update check).</summary>
@@ -242,7 +286,103 @@ public sealed partial class HomeViewModel : ObservableObject
         }
 
         RefreshRuntime();
+        RefreshStations();
         _ = RunChecksAsync();
+    }
+
+    [RelayCommand]
+    private void SwitchStationsOn() => SwitchStations(() => StationCommand.On);
+
+    /// <summary>Off as "Off means" in the App settings says.</summary>
+    [RelayCommand]
+    private void SwitchStationsOff() => SwitchStations(host.Stations.OffCommand);
+
+    private async void SwitchStations(Func<StationCommand> command)
+    {
+        try
+        {
+            await host.Stations.SwitchSelectedAsync(command(), CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Switching the base stations failed", e);
+        }
+    }
+
+    /// <summary>On whichever thread the manager is on: shows the change on the UI thread, once for a burst of them.</summary>
+    private void OnStationsChanged()
+    {
+        if (Interlocked.Exchange(ref stationsRefreshQueued, 1) == 0 && !ui.TryEnqueue(StationsRefreshQueued))
+        {
+            Volatile.Write(ref stationsRefreshQueued, 0);
+        }
+    }
+
+    private void StationsRefreshQueued()
+    {
+        Volatile.Write(ref stationsRefreshQueued, 0);
+        RefreshStations();
+    }
+
+    /// <summary>Shows the base stations card (or not) for the selected profile, and what the manager says now.</summary>
+    private void RefreshStations()
+    {
+        try
+        {
+            var profile = SelectedSet().Selected;
+            var uses = profile.ModuleId is { } id && host.Modules.TryGetValue(id, out var module) && module.UsesSteamVrLighthouse;
+            ShowStations = profile.UsesBaseStations(uses);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // The notice about the profiles is shown elsewhere; keep the card as it is.
+        }
+
+        if (ShowStations)
+        {
+            try
+            {
+                var summary = host.Stations.Summary;
+                StationsRow = new StatusItem("Base stations", summary.Text, summary.Level);
+                var bluetooth = host.Stations.Bluetooth;
+                ShowStationButtons = bluetooth != BluetoothState.Missing;
+                CanSwitchStations = bluetooth == BluetoothState.Ready
+                    && host.Stations.Running is null
+                    && host.Stations.Stations.Any(s => s.Station.Selected);
+            }
+            catch (Exception e)
+            {
+                AppLog.Write("Reading the base stations failed", e);
+            }
+        }
+
+        UpdateListening();
+    }
+
+    private void UpdateListening()
+    {
+        var want = pageShown && ShowStations;
+        if (want == (listening is not null))
+        {
+            return;
+        }
+
+        if (want)
+        {
+            try
+            {
+                listening = host.Stations.Listen();
+            }
+            catch (Exception e)
+            {
+                AppLog.Write("Listening to the base stations failed", e);
+            }
+        }
+        else
+        {
+            listening!.Dispose();
+            listening = null;
+        }
     }
 
     private ProfileSet SelectedSet() => host.Profiles.Load();
@@ -310,6 +450,20 @@ public sealed partial class HomeViewModel : ObservableObject
                 Status.Add(line);
             }
         }
+
+        var devices = host.Session.Devices;
+        ShowDevices = devices is not null;
+        var items = (devices ?? []).Select(DeviceItem.From).ToList();
+        if (!items.SequenceEqual(Devices))
+        {
+            Devices.Clear();
+            foreach (var item in items)
+            {
+                Devices.Add(item);
+            }
+        }
+
+        HasNoDevices = items.Count == 0;
     }
 
     private void RefreshRuntime()

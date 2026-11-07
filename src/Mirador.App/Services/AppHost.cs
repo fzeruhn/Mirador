@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using Mirador.Core;
+using Mirador.Core.BaseStations;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
@@ -12,13 +13,19 @@ using Mirador.Ipc;
 namespace Mirador.App.Services;
 
 /// <summary>
-/// Everything Mirador is made of, put together once at start: the stores, the headset modules, the helper, the Monado
-/// session and the app pipe. Paths into the install follow its layout (<c>{app}\monado</c>, <c>{app}\layer</c>, …).
+/// Everything Mirador is made of, put together once at start: the stores, the headset modules, the helper, the base
+/// stations, the Monado session and the app pipe. Paths into the install follow its layout (<c>{app}\monado</c>,
+/// <c>{app}\layer</c>, …).
 /// </summary>
 public sealed class AppHost : IAsyncDisposable
 {
+    /// <summary>How long quitting waits for the base stations' off.</summary>
+    private static readonly TimeSpan StationsLimit = TimeSpan.FromSeconds(15);
+
     private readonly JobProcessLauncher launcher;
     private readonly List<string> notices = [];
+    private readonly WinRtStationRadio radio;
+    private readonly StationStore stationStore;
     private AppPipeServer? pipe;
 
     private AppHost(string appDir, AppPaths paths)
@@ -54,6 +61,10 @@ public sealed class AppHost : IAsyncDisposable
             new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir),
             new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir));
 
+        radio = new WinRtStationRadio();
+        stationStore = new StationStore(paths.BaseStationsFile);
+        Stations = new StationManager(radio, stationStore, StationSettings, TimeProvider.System, text => AppLog.Write(text));
+
         launcher = new JobProcessLauncher();
         Session = new SessionController(new SessionDeps(
             Profiles,
@@ -65,7 +76,8 @@ public sealed class AppHost : IAsyncDisposable
             new MonadoPipe(),
             Runtime,
             StandInExe,
-            UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e))));
+            UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e)),
+            Stations));
     }
 
     /// <summary>The folder Mirador.exe is in.</summary>
@@ -136,6 +148,9 @@ public sealed class AppHost : IAsyncDisposable
 
     public SessionController Session { get; }
 
+    /// <summary>The SteamVR base stations: the Lighthouse page's list, Home's On and Off, and the session's own.</summary>
+    public StationManager Stations { get; }
+
     /// <summary>Mirador's own stand-in, copied into Monado build folders (<c>{app}\standin\monado-service.exe</c>).</summary>
     public string StandInExe => Path.Combine(AppDir, "standin", "monado-service.exe");
 
@@ -172,6 +187,11 @@ public sealed class AppHost : IAsyncDisposable
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
         host.CheckStore("Monado settings", paths.MonadoSettingsFile, () => host.MonadoSettings.Load());
         host.CheckStore("settings", paths.SettingsFile, () => host.Settings.Load());
+
+        // Before anything reads the stations: the manager reads its list at first use, and a file it set aside then
+        // would go unnoticed here.
+        host.CheckStore("base stations", paths.BaseStationsFile, () => host.stationStore.Load());
+        _ = Task.Run(host.StartRadioAsync);
         host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
     }
@@ -217,8 +237,37 @@ public sealed class AppHost : IAsyncDisposable
             await pipe.DisposeAsync().ConfigureAwait(false);
         }
 
+        // The session's end has the base stations' off waiting its few seconds: the flush sends it at once.
         await Session.StopAsync(CancellationToken.None).ConfigureAwait(false);
+        await Stations.FlushAsync(StationsLimit).ConfigureAwait(false);
         launcher.Dispose();
+    }
+
+    /// <summary>Looks at the PC's Bluetooth once; the window doesn't wait for it, and Bluetooth stays "Ready" until then.</summary>
+    private async Task StartRadioAsync()
+    {
+        try
+        {
+            await radio.StartAsync().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Base stations: Mirador couldn't look at the PC's Bluetooth", e);
+        }
+    }
+
+    /// <summary>The settings for the base stations; never throws (the defaults when settings.json can't be read).</summary>
+    private AppSettings StationSettings()
+    {
+        try
+        {
+            return Settings.Load();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write($"Base stations: Mirador couldn't read its settings ({e.Message.Trim().TrimEnd('.')}); it uses the defaults");
+            return new AppSettings();
+        }
     }
 
     /// <summary>

@@ -1,0 +1,154 @@
+<Page
+    x:Class="Mirador.App.Pages.LighthousePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:Mirador.App.Controls"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Mirador.App.ViewModels"
+    NavigationCacheMode="Required">
+
+    <Page.Resources>
+        <!-- A card's command: an icon button without a frame until it is pointed at, like the Profiles list's. -->
+        <Style x:Key="CardCommand" TargetType="Button">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="FontSize" Value="16" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer>
+        <c:PageColumn>
+        <StackPanel Style="{StaticResource PageStack}">
+            <TextBlock Style="{StaticResource PageTitle}" Text="Lighthouse" />
+
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.BluetoothMissing, Mode=OneWay}"
+                Message="This PC has no Bluetooth, so Mirador can't switch base stations."
+                Severity="Error"
+                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.BluetoothOff, Mode=OneWay}"
+                Message="Bluetooth is off. Turn it on to find and switch base stations."
+                Severity="Warning"
+                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
+                <InfoBar.ActionButton>
+                    <Button Click="OnBluetoothSettings" Content="Bluetooth settings" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind ViewModel.HasSaveProblem, Mode=OneWay}"
+                Message="{x:Bind ViewModel.SaveProblem, Mode=OneWay}"
+                Severity="Error"
+                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+            <TextBlock Style="{StaticResource FirstSectionHeader}" Text="Base stations" />
+            <Grid Margin="1,0,0,4" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Text="Select your base stations: Mirador switches only those."
+                    TextWrapping="Wrap" />
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <ProgressRing
+                        Width="20"
+                        Height="20"
+                        Margin="0,0,4,0"
+                        IsActive="{x:Bind ViewModel.IsLooking, Mode=OneWay}" />
+                    <Button Command="{x:Bind ViewModel.ScanCommand}" Content="Scan" />
+                    <Button Command="{x:Bind ViewModel.SwitchOnCommand}" Content="On" />
+                    <Button Command="{x:Bind ViewModel.SwitchOffCommand}" Content="Off" />
+                </StackPanel>
+            </Grid>
+
+            <!--
+                Each station a card like a settings card: its check box where a card has its icon, the name with the
+                address and what it is doing under it, then Identify and its menu.
+            -->
+            <ItemsControl ItemsSource="{x:Bind ViewModel.Stations}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="4" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:StationItem">
+                        <toolkit:SettingsCard ContentAlignment="Vertical" HorizontalContentAlignment="Stretch">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox
+                                    MinWidth="0"
+                                    Margin="2,0,12,0"
+                                    Padding="0"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="{x:Bind DisplayName, Mode=OneWay}"
+                                    IsChecked="{x:Bind IsSelected, Mode=TwoWay}" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind DisplayName, Mode=OneWay}" TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind AddressLine, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind StateLine, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                                <!-- The tooltip is on a holder: a disabled button shows none of its own. -->
+                                <Grid
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
+                                    ToolTipService.ToolTip="{x:Bind IdentifyTip, Mode=OneWay}"
+                                    Visibility="{x:Bind IsV2, Mode=OneWay}">
+                                    <Button
+                                        AutomationProperties.HelpText="{x:Bind IdentifyTip, Mode=OneWay}"
+                                        AutomationProperties.Name="Identify"
+                                        Click="{x:Bind Identify}"
+                                        IsEnabled="{x:Bind CanIdentify, Mode=OneWay}"
+                                        Style="{StaticResource CardCommand}">
+                                        <FontIcon Glyph="&#xE890;" />
+                                    </Button>
+                                </Grid>
+                                <Button
+                                    Grid.Column="3"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="More options"
+                                    Click="OnMore"
+                                    Style="{StaticResource CardCommand}"
+                                    ToolTipService.ToolTip="More options">
+                                    <FontIcon Glyph="&#xE712;" />
+                                </Button>
+                            </Grid>
+                        </toolkit:SettingsCard>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock
+                Margin="1,4,0,0"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="No base stations found yet. They show up here when they're plugged in and in Bluetooth range."
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.HasNoStations, Mode=OneWay}" />
+        </StackPanel>
+        </c:PageColumn>
+    </ScrollViewer>
+</Page>

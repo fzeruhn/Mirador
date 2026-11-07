@@ -36,6 +36,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
     private Profile? editing;
     private bool loading;
 
+    /// <summary>The profile's "Lighthouse base stations" as the user set it; null while untouched (it follows the profile).</summary>
+    private bool? lighthouse;
+
     public ProfilesViewModel(AppHost host)
     {
         this.host = host;
@@ -138,6 +141,25 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         get => LayerFromFolder ? 1 : 0;
         set => LayerFromFolder = value == 1;
+    }
+
+    /// <summary>
+    /// The "Lighthouse base stations" toggle: the user's choice, else whether the headset and the variables being edited
+    /// use the base stations (so it follows them until it is flipped). Flipping it makes the choice the user's.
+    /// </summary>
+    public bool UsesBaseStations
+    {
+        get => lighthouse ?? Edited().UsesBaseStations(HeadsetUsesLighthouse());
+        set
+        {
+            if (value == UsesBaseStations)
+            {
+                return;
+            }
+
+            lighthouse = value;
+            Changed();
+        }
     }
 
     /// <summary>Whether another profile may be picked: not while the editor holds unsaved changes.</summary>
@@ -334,6 +356,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     private void Show(Profile? p)
     {
         editing = p;
+        lighthouse = p?.Lighthouse;
         loading = true;
         try
         {
@@ -357,6 +380,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
         IsDirty = false;
         Validate(Edited());
+        OnPropertyChanged(nameof(UsesBaseStations));
     }
 
     /// <summary>The profile as the editor shows it; options of the module it doesn't touch are kept.</summary>
@@ -378,8 +402,13 @@ public sealed partial class ProfilesViewModel : ObservableObject
             Headset?.Id,
             MonadoFromFolder ? new BuildSource(SourceKind.Folder, MonadoFolder.Trim()) : BuildSource.Bundled,
             [.. Extra.Select(r => new EnvVar(r.Name.Trim(), r.Value))],
-            options);
+            options,
+            lighthouse);
     }
+
+    /// <summary>Whether the headset being edited tracks with Lighthouse (its module says so).</summary>
+    private bool HeadsetUsesLighthouse() =>
+        Headset?.Id is { } id && host.Modules.TryGetValue(id, out var module) && module.UsesSteamVrLighthouse;
 
     private void Changed()
     {
@@ -390,6 +419,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
         IsDirty = true;
         Validate(Edited());
+
+        // While untouched, the toggle follows the headset and the variables.
+        OnPropertyChanged(nameof(UsesBaseStations));
     }
 
     private bool Validate(Profile p)

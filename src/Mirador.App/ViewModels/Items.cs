@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
 
 namespace Mirador.App.ViewModels;
@@ -33,6 +34,17 @@ public sealed record StatusItem(string Label, string Text, StatusLevel Level)
     public static StatusItem From(StatusLine line) => new(line.Label, line.Text, line.Level);
 
     internal static Brush Theme(string key) => (Brush)Application.Current.Resources[key];
+}
+
+/// <summary>A controller or tracker Monado found, as a tile on Home.</summary>
+/// <param name="Kind">"Controller" or "Tracker".</param>
+/// <param name="Serial">Its serial.</param>
+/// <param name="Glyph">The icon for its kind (Segoe Fluent Icons).</param>
+public sealed record DeviceItem(string Kind, string Serial, string Glyph)
+{
+    public static DeviceItem From(TrackedDevice device) => device.Kind == TrackedKind.Controller
+        ? new DeviceItem("Controller", device.Serial, "")
+        : new DeviceItem("Tracker", device.Serial, "");
 }
 
 /// <summary>A message shown in an <see cref="InfoBar"/>: a check that failed, a warning, a notice.</summary>

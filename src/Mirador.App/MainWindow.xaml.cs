@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
     {
         ["Home"] = typeof(HomePage),
         ["EyeTracking"] = typeof(EyeTrackingPage),
+        ["Lighthouse"] = typeof(LighthousePage),
         ["MonadoSettings"] = typeof(MonadoSettingsPage),
         ["Profiles"] = typeof(ProfilesPage),
         ["Diagnostics"] = typeof(DiagnosticsPage),
@@ -49,6 +50,7 @@ public sealed partial class MainWindow : Window
         minimumSize = new MinimumSize(handle, MinimumWidth, MinimumHeight);
         deviceChanges = new DeviceChanges(handle);
         deviceChanges.Changed += App.Current.Host.NotifyDevicesChanged;
+        endSession = new EndSession(handle, App.Current.Host);
         AppWindow.Closing += OnClosing;
         NavView.SelectedItem = NavView.MenuItems[0];
         App.Current.Host.ProfilesChanged += ShowHeadsetPages;
@@ -63,6 +65,8 @@ public sealed partial class MainWindow : Window
     private readonly MinimumSize minimumSize;
 
     private readonly DeviceChanges deviceChanges;
+
+    private readonly EndSession endSession;
 
     /// <summary>Whether the window is on screen (not hidden in the tray).</summary>
     public bool IsShown => AppWindow.IsVisible;
