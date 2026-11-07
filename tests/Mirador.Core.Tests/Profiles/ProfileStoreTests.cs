@@ -209,6 +209,33 @@ public class ProfileStoreTests
         Assert.Equal("Zoë's builds", new ProfileStore(path).Load().Profiles[0].Name);
     }
 
+    [Fact]
+    public void Profile_without_lighthouse_reads_null()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        File.WriteAllText(path, """
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}}],"selectedId":"a"}
+            """);
+
+        Assert.Null(new ProfileStore(path).Load().Profiles[0].Lighthouse);
+    }
+
+    [Fact]
+    public void Lighthouse_round_trips()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+        var defaults = ProfileSet.Defaults();
+        var set = defaults with { Profiles = [defaults.Profiles[0] with { Lighthouse = false }, defaults.Profiles[1] with { Lighthouse = true }] };
+
+        new ProfileStore(path).Save(set);
+        var loaded = new ProfileStore(path).Load();
+
+        Assert.False(loaded.Profiles[0].Lighthouse);
+        Assert.True(loaded.Profiles[1].Lighthouse);
+    }
+
     private static void AssertAreTheDefaults(ProfileSet loaded)
     {
         var defaults = ProfileSet.Defaults();
