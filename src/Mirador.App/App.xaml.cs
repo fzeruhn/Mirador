@@ -343,7 +343,9 @@ public partial class App : Application
 
         var (look, tooltip, action) = state switch
         {
-            SessionState.Running => (problem ? TrayState.Problem : TrayState.Running, "Mirador: Monado is running", "Stop"),
+            SessionState.Running => problem
+                ? (TrayState.RunningProblem, "Mirador: Monado is running with a problem", "Stop")
+                : (TrayState.Running, "Mirador: Monado is running", "Stop"),
             SessionState.Starting => (TrayState.Running, "Mirador: Monado is starting", "Stop"),
             SessionState.Stopping => (TrayState.Stopped, "Mirador: Monado is stopping", "Stop"),
             _ => (problem ? TrayState.Problem : TrayState.Stopped, problem ? (endedBadly ? "Mirador: Monado stopped by itself" : "Mirador: Monado didn't start") : "Mirador: Monado is stopped", "Start"),

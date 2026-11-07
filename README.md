@@ -69,3 +69,6 @@ Every version is pinned in `Directory.Packages.props` (central package managemen
 ## License
 
 [Boost Software License 1.0](LICENSE).
+
+The icons contain Monado's logo, from Monado's Android launcher icon, Copyright 2023, Collabora, Ltd.,
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); Mirador's icons recolour it and set it into four panes.

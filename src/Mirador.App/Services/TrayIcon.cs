@@ -10,8 +10,11 @@ public enum TrayState
     Stopped,
     Running,
 
-    /// <summary>The last Start failed, or a status line is an error.</summary>
+    /// <summary>Monado isn't running: the last Start failed, it stopped by itself, or a status line is an error.</summary>
     Problem,
+
+    /// <summary>Monado runs, but a status line is an error (it lost the headset, say).</summary>
+    RunningProblem,
 }
 
 /// <summary>
@@ -37,6 +40,7 @@ public sealed class TrayIcon : IDisposable
             [TrayState.Stopped] = Load("TrayStopped.ico"),
             [TrayState.Running] = Load("TrayRunning.ico"),
             [TrayState.Problem] = Load("TrayProblem.ico"),
+            [TrayState.RunningProblem] = Load("TrayRunningProblem.ico"),
         };
 
         // Stop must work while a Start from the tray still runs.
