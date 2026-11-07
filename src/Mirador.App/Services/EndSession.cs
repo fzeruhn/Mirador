@@ -8,10 +8,11 @@ namespace Mirador.App.Services;
 /// without waiting for Monado's session to end first (a headset's own end may take longer than Windows waits). Windows
 /// asks every top-level window first (<c>WM_QUERYENDSESSION</c>), one hidden in the tray too: when an off will be needed,
 /// Mirador gives Windows its reason (shown on Windows' "these apps are preventing" screen); it agrees either way and
-/// starts nothing yet. When Windows then ends the session (<c>WM_ENDSESSION</c> TRUE), the session's off is queued at
-/// once and sent while Monado stops beside it; without an off, a session that hasn't ended is stopped all the same,
-/// with no reason given. The window waits at most <see cref="Limit"/>; the work runs off the window's thread. A
-/// shutdown something else cancelled (<c>WM_ENDSESSION</c> FALSE) changes nothing.
+/// starts nothing yet. When Windows then ends the session (<c>WM_ENDSESSION</c> TRUE), the session's off, or Mirador's
+/// own as it quits, is queued at once and sent while Monado stops beside it (one off, not both); without an off, a
+/// session that hasn't ended is stopped all the same, with no reason given. The window waits at most
+/// <see cref="Limit"/>; the work runs off the window's thread. A shutdown something else cancelled
+/// (<c>WM_ENDSESSION</c> FALSE) changes nothing.
 /// </summary>
 internal sealed class EndSession
 {
@@ -88,28 +89,31 @@ internal sealed class EndSession
     }
 
     /// <summary>
-    /// The base stations' off is still to come: the one after a session is waiting or being sent, or a session that
-    /// hasn't ended switches them off when it does (its profile has base stations, and "Switch off when Monado stops").
+    /// The base stations' off is still to come: the one after a session is waiting or being sent, a session that hasn't
+    /// ended switches them off when it does (its profile has base stations, and "Power off when Monado stops"), or
+    /// Mirador switches them off as it quits ("Power off when Mirador quits", with a station selected).
     /// </summary>
     private bool OffNeeded() =>
         host.Stations.OffPending
+        || host.Stations.OffAtQuitWanted
         || (host.Session.CurrentProfile is { } running && host.Stations.OffFollows(running.Profile, running.Module));
 
     /// <summary>
-    /// Queues the session's off at once and waits for it to be sent, with Monado's stop beside it, at most
-    /// <see cref="Limit"/> in all.
+    /// Queues the off at once, the session's (for a session that hasn't ended) or else Mirador's own as it quits, and
+    /// waits for it to be sent, with Monado's stop beside it, at most <see cref="Limit"/> in all.
     /// </summary>
     private void Finish()
     {
         AppLog.Write("Windows is ending the session: Mirador switches off the base stations and stops Monado");
         try
         {
-            // Before the stop: the session's end, which may come at once, then finds its off on its way.
+            // Before the stop: the session's end, which may come at once, then finds its off, or Mirador's own, on its way.
             if (host.Session.CurrentProfile is { } running)
             {
                 host.Stations.EndingNow(running.Profile, running.Module);
             }
 
+            host.Stations.QuittingNow();
             var off = Task.Run(() => host.Stations.FlushAsync(Limit));
             var stop = Task.Run(StopAsync);
             Wait(Task.WhenAll(off, stop));

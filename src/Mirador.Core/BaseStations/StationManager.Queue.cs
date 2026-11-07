@@ -3,8 +3,8 @@ using Mirador.Core.Profiles;
 
 namespace Mirador.Core.BaseStations;
 
-// The queue of commands with its one worker, the listening a command does before and after it, the session's off and
-// the session's hook.
+// The queue of commands with its one worker, the listening a command does before and after it, the session's off, the
+// session's hook, and Mirador's own start and quit.
 public sealed partial class StationManager
 {
     private const string Quitting = "Mirador is quitting";
@@ -21,7 +21,17 @@ public sealed partial class StationManager
     private ITimer? _settleTimer;
     private ITimer? _offTimer;
     private object? _offToken;
+
+    // Under _lock: Windows' ending queued this session's off (EndingNow), so its Ended sends none and quitting sends no
+    // second one; until a session starts again.
     private bool _offSentAtEnding;
+
+    // Under _lock: Mirador is quitting (QuittingNow or FlushAsync ran), so Mirador's start sends no On any more.
+    private bool _quitting;
+
+    // Under _lock: the quit's off is decided: queued, or the session's off taken for it. Decided once; a session's end
+    // after it sends no second off.
+    private bool _quitOff;
 
     private enum WorkKind
     {
@@ -31,7 +41,7 @@ public sealed partial class StationManager
 
     /// <summary>
     /// Whether the off that follows a session is still to come: waiting its <see cref="OffDelay"/>, queued, or being
-    /// sent. An Off the user asked for doesn't count.
+    /// sent. An Off the user asked for doesn't count, nor Mirador's own as it quits (<see cref="OffAtQuitWanted"/>).
     /// </summary>
     public bool OffPending
     {
@@ -39,19 +49,73 @@ public sealed partial class StationManager
         {
             lock (_lock)
             {
-                return _offToken is not null || _queue.Exists(w => w.IsSessionOff) || _current is { IsSessionOff: true };
+                return _offToken is not null || SessionOffOutLocked();
             }
         }
     }
 
-    /// <summary>Whether the end of a session of this profile switches the base stations off: the profile has them, and "Switch off when Monado stops" is on.</summary>
+    /// <summary>
+    /// Whether quitting switches the base stations off (<see cref="QuittingNow"/>, <see cref="FlushAsync"/>): "Power off
+    /// when Mirador quits" is on and a station is selected.
+    /// </summary>
+    public bool OffAtQuitWanted
+    {
+        get
+        {
+            if (!_settings().BaseStationsOffAtMiradorQuit)
+            {
+                return false;
+            }
+
+            EnsureLoaded();
+            lock (_lock)
+            {
+                return AnySelectedLocked();
+            }
+        }
+    }
+
+    /// <summary>Whether the end of a session of this profile switches the base stations off: the profile has them, and "Power off when Monado stops" is on.</summary>
     public bool OffFollows(Profile profile, IHeadsetModule? module) =>
         profile.UsesBaseStations(module?.UsesSteamVrLighthouse ?? false) && _settings().BaseStationsOffAtStop;
 
     /// <summary>
+    /// For Mirador's start, whatever started it (its window, the tray at login, a game's stand-in): a scan, as
+    /// <see cref="ScanAsync"/>, then with "Power on when Mirador starts" an On to the selected stations, queued like the
+    /// user's own (<see cref="SwitchSelectedAsync"/>); it completes without waiting for that On. No On once Mirador is
+    /// quitting (<see cref="QuittingNow"/>): the queue refuses it. Never throws, also when cancelled through
+    /// <paramref name="ct"/>, which cancels the On too.
+    /// </summary>
+    public async Task StartupAsync(CancellationToken ct)
+    {
+        try
+        {
+            // "Constant" tracking listens from Mirador's start on.
+            SettingsChanged();
+            await ScanAsync(ct).ConfigureAwait(false);
+            if (!_settings().BaseStationsOnAtMiradorStart)
+            {
+                return;
+            }
+
+            Log("Base stations: switching on as Mirador starts");
+            _ = Ask(new Work(WorkKind.Switch, StationCommand.On, null, ct, fromStartup: true));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Mirador's start was called off; nothing to switch.
+        }
+        catch (Exception e)
+        {
+            Log($"Base stations: Mirador couldn't follow its own start ({Reason(e)})");
+        }
+    }
+
+    /// <summary>
     /// Switches every selected station, after the commands asked for before it. It drops the session's off (the delayed
     /// one, or one still queued) and an Off for the selected stations that the user asked for and is still queued; one
-    /// already sending goes on. Completes when the command has been sent, dropped or stopped (it never fails: a station
+    /// already sending goes on, and so does Mirador's own as it quits. Completes when the command has been sent, dropped
+    /// or stopped (it never fails: a station
     /// that doesn't answer gets its <see cref="StationView.Problem"/>); cancelled only through <paramref name="ct"/>,
     /// which also stops it while it runs.
     /// </summary>
@@ -75,7 +139,7 @@ public sealed partial class StationManager
     /// <inheritdoc />
     /// <remarks>
     /// For a profile with base stations: drops the session's off, delayed or queued (one already sending goes on), and
-    /// the Ons still to be sent again, then, with "Switch on when Monado starts", queues On.
+    /// the Ons still to be sent again, then, with "Power on when Monado starts", queues On.
     /// </remarks>
     public void Started(Profile profile, IHeadsetModule? module)
     {
@@ -97,7 +161,8 @@ public sealed partial class StationManager
             bool delayed, start = false;
             lock (_lock)
             {
-                dropped = TakeQueuedLocked(w => w.IsSessionOff);
+                // Not the session's off that is the quit's too.
+                dropped = TakeQueuedLocked(w => w.IsSessionOff && !w.AtQuit);
                 dropped.AddRange(CancelWakesLocked());
                 delayed = CancelDelayedOffLocked();
                 if (on)
@@ -120,9 +185,9 @@ public sealed partial class StationManager
 
     /// <inheritdoc />
     /// <remarks>
-    /// For a profile with base stations and with "Switch off when Monado stops": queues <see cref="OffCommand"/> after
+    /// For a profile with base stations and with "Power off when Monado stops": queues <see cref="OffCommand"/> after
     /// <see cref="OffDelay"/>, replacing an off still waiting; nothing when <see cref="EndingNow"/> sent this session's
-    /// off already.
+    /// off already, or Mirador's quit sent its own (<see cref="QuittingNow"/>).
     /// </remarks>
     public void Ended(Profile profile, IHeadsetModule? module)
     {
@@ -133,12 +198,13 @@ public sealed partial class StationManager
                 return;
             }
 
-            bool sent;
+            bool ending, quit;
             lock (_lock)
             {
-                sent = _offSentAtEnding;
-                _offSentAtEnding = false;
-                if (!sent)
+                // Left set until a session starts: quitting after it sends no second off either.
+                ending = _offSentAtEnding;
+                quit = _quitOff;
+                if (!ending && !quit)
                 {
                     CancelDelayedOffLocked();
                     var token = new object();
@@ -147,9 +213,13 @@ public sealed partial class StationManager
                 }
             }
 
-            if (sent)
+            if (ending)
             {
                 Log("Base stations: the off after Monado stopped went out already (Windows is ending the session)");
+            }
+            else if (quit)
+            {
+                Log("Base stations: the off after Monado stopped isn't sent (Mirador's off as it quits went out already)");
             }
         }
         catch (Exception e)
@@ -160,11 +230,11 @@ public sealed partial class StationManager
 
     /// <summary>
     /// For Windows ending the session (shutting down, restarting, signing out) while a Monado session hasn't ended: for
-    /// a profile with base stations and with "Switch off when Monado stops", queues the session's off at once, without
-    /// waiting for the session's end or <see cref="OffDelay"/>, unless one is queued or being sent already. It drops an
-    /// off still waiting and the Ons still to be sent again, and the session's own <see cref="Ended"/> after it sends
-    /// nothing. <see cref="FlushAsync"/> after it waits for the off and stops an On being sent. Returns at once and
-    /// never throws.
+    /// a profile with base stations and with "Power off when Monado stops", queues the session's off at once, without
+    /// waiting for the session's end or <see cref="OffDelay"/>, unless one is queued or being sent already, or Mirador's
+    /// quit sent its own. It drops an off still waiting and the Ons still to be sent again, and the session's own
+    /// <see cref="Ended"/> after it sends nothing. <see cref="QuittingNow"/> after it stops an On being sent, and
+    /// <see cref="FlushAsync"/> waits for the off. Returns at once and never throws.
     /// </summary>
     public void EndingNow(Profile profile, IHeadsetModule? module)
     {
@@ -183,7 +253,7 @@ public sealed partial class StationManager
                 dropped = CancelWakesLocked();
                 CancelDelayedOffLocked();
                 _offSentAtEnding = true;
-                if (!_queue.Exists(w => w.IsSessionOff) && _current is not { IsSessionOff: true })
+                if (!SessionOffOutLocked() && !_quitOff)
                 {
                     start = EnqueueLocked(new Work(WorkKind.Switch, command, null, CancellationToken.None, fromSession: true));
                 }
@@ -202,46 +272,36 @@ public sealed partial class StationManager
     }
 
     /// <summary>
-    /// For quitting: drops the queued Ons and those still to be sent again, stops one that is running (what it has sent
-    /// stays sent), queues the delayed off at once, and returns when the queue is empty or after
+    /// For Mirador's quit, before Monado is stopped (a headset's end can take long, and the quit's off is sent at once):
+    /// drops the queued Ons and those still to be sent again, stops one that is running (what it has sent stays sent),
+    /// and queues the delayed off at once. With "Power off when Mirador quits" (<see cref="OffAtQuitWanted"/>) it also
+    /// queues <see cref="OffCommand"/> for the selected stations at once, unless the session's off is queued, being sent,
+    /// or went out as Windows ends the session (<see cref="EndingNow"/>), which is then the quit's off too: one off, never
+    /// two. That is decided once; nothing drops the quit's off, and a session's end after it sends no second one. From
+    /// now on Mirador's start sends no On. Returns at once and never throws.
+    /// </summary>
+    public void QuittingNow()
+    {
+        try
+        {
+            _ = Quit();
+        }
+        catch (Exception e)
+        {
+            Log($"Base stations: Mirador couldn't switch the base stations for its quit ({Reason(e)})");
+        }
+    }
+
+    /// <summary>
+    /// For quitting, after Monado was stopped: does what <see cref="QuittingNow"/> does (again, for what came since:
+    /// the delayed off of a session that ended meanwhile is queued at once), and returns when the queue is empty or after
     /// <paramref name="limit"/>, whichever comes first. Never throws.
     /// </summary>
     public async Task FlushAsync(TimeSpan limit)
     {
         try
         {
-            var command = OffCommand();
-            List<Work> dropped;
-            Work? stopping;
-            var start = false;
-            Task idle;
-            lock (_lock)
-            {
-                dropped = CancelWakesLocked();
-                dropped.AddRange(TakeQueuedLocked(w => w.IsOn));
-                stopping = _current is { IsOn: true } running ? running : null;
-                if (CancelDelayedOffLocked())
-                {
-                    start = EnqueueLocked(new Work(WorkKind.Switch, command, null, CancellationToken.None, fromSession: true));
-                }
-
-                idle = _idle.Task;
-            }
-
-            Dropped(dropped, false, Quitting);
-
-            // On another thread: the stopped On's worker may go on right where it is stopped.
-            if (stopping is not null)
-            {
-                _ = Task.Run(stopping.Stop);
-            }
-
-            if (start)
-            {
-                StartWorker();
-            }
-
-            await idle.WaitAsync(limit, _time).ConfigureAwait(false);
+            await Quit().WaitAsync(limit, _time).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -251,6 +311,76 @@ public sealed partial class StationManager
         {
             Log($"Base stations: Mirador couldn't finish with the base stations ({Reason(e)})");
         }
+    }
+
+    /// <summary>The quit's step (<see cref="QuittingNow"/>); returns what completes once the queue is empty.</summary>
+    private Task Quit()
+    {
+        var command = OffCommand();
+        var quitOff = _settings().BaseStationsOffAtMiradorQuit;
+        EnsureLoaded();
+        List<Work> dropped;
+        Work? stopping;
+        var start = false;
+        string? quit = null;
+        Task idle;
+        lock (_lock)
+        {
+            _quitting = true;
+            dropped = CancelWakesLocked();
+            dropped.AddRange(TakeQueuedLocked(w => w.IsOn));
+            stopping = _current is { IsOn: true } running ? running : null;
+            if (CancelDelayedOffLocked())
+            {
+                start = EnqueueLocked(new Work(WorkKind.Switch, command, null, CancellationToken.None, fromSession: true));
+            }
+
+            if (quitOff && !_quitOff && AnySelectedLocked())
+            {
+                _quitOff = true;
+                if (_offSentAtEnding || SessionOffOutLocked())
+                {
+                    // The session's off is the quit's too: nothing drops it any more.
+                    foreach (var work in _queue.Where(w => w.IsSessionOff))
+                    {
+                        work.AtQuit = true;
+                    }
+
+                    if (_current is { IsSessionOff: true } sending)
+                    {
+                        sending.AtQuit = true;
+                    }
+
+                    quit = "Base stations: the off after Monado stopped is the one as Mirador quits";
+                }
+                else
+                {
+                    start |= EnqueueLocked(new Work(WorkKind.Switch, command, null, CancellationToken.None, atQuit: true));
+                    quit = "Base stations: switching off as Mirador quits";
+                }
+            }
+
+            idle = _idle.Task;
+        }
+
+        Dropped(dropped, false, Quitting);
+        if (quit is not null)
+        {
+            Log(quit);
+        }
+
+        // On another thread: the stopped On's worker may go on right where it is stopped.
+        if (stopping is not null)
+        {
+            _ = Task.Run(stopping.Stop);
+        }
+
+        if (start)
+        {
+            StartWorker();
+        }
+
+        return idle;
     }
 
     private static TaskCompletionSource Idle()
@@ -285,19 +415,32 @@ public sealed partial class StationManager
         // then sees the token.
         work.Registration = work.Ct.Register(() => Withdraw(work));
         List<Work> dropped = [];
-        bool delayed = false, start;
+        bool delayed = false, start = false, refused;
         lock (_lock)
         {
-            if (work.Kind == WorkKind.Switch)
+            // Checked in the same step as the queueing: a quit that comes first always wins.
+            refused = work.FromStartup && _quitting;
+            if (!refused)
             {
-                // The session's off and the Ons still to be sent again go for any command; the user's own Off only for
-                // one for the same stations.
-                dropped = TakeQueuedLocked(w => w.IsSessionOff || (w.IsOff && !w.FromSession && w.Address == work.Address));
-                dropped.AddRange(CancelWakesLocked());
-                delayed = CancelDelayedOffLocked();
-            }
+                if (work.Kind == WorkKind.Switch)
+                {
+                    // The session's off and the Ons still to be sent again go for any command; the user's own Off only
+                    // for one for the same stations; the quit's off never.
+                    dropped = TakeQueuedLocked(w => !w.AtQuit && (w.IsSessionOff || (w.IsOff && !w.FromSession && w.Address == work.Address)));
+                    dropped.AddRange(CancelWakesLocked());
+                    delayed = CancelDelayedOffLocked();
+                }
 
-            start = EnqueueLocked(work);
+                start = EnqueueLocked(work);
+            }
+        }
+
+        if (refused)
+        {
+            work.Release();
+            work.Done.TrySetResult();
+            Log($"Base stations: {Name(work)} not sent ({Quitting})");
+            return work.Done.Task;
         }
 
         Dropped(dropped, delayed, "a later command replaced it");
@@ -325,6 +468,12 @@ public sealed partial class StationManager
             Log($"Base stations: {Name(work)} cancelled");
         }
     }
+
+    /// <summary>Under the lock: whether a known station is selected.</summary>
+    private bool AnySelectedLocked() => _stations?.Exists(e => e.Station.Selected) ?? false;
+
+    /// <summary>Under the lock: whether the session's off is queued or being sent.</summary>
+    private bool SessionOffOutLocked() => _queue.Exists(w => w.IsSessionOff) || _current is { IsSessionOff: true };
 
     /// <summary>Under the lock: takes the queued (not started) work that <paramref name="match"/> picks out of the queue.</summary>
     private List<Work> TakeQueuedLocked(Predicate<Work> match)
@@ -647,7 +796,14 @@ public sealed partial class StationManager
 
     /// <summary>A command, or Identify, waiting in the queue or running.</summary>
     private sealed class Work(
-        WorkKind kind, StationCommand command, string? address, CancellationToken ct, bool fromSession = false, Wake? resendOf = null)
+        WorkKind kind,
+        StationCommand command,
+        string? address,
+        CancellationToken ct,
+        bool fromSession = false,
+        Wake? resendOf = null,
+        bool atQuit = false,
+        bool fromStartup = false)
     {
         private readonly Stopper _stopper = new(ct);
         private volatile bool _stopped;
@@ -667,6 +823,15 @@ public sealed partial class StationManager
 
         /// <summary>Queued by the session (its On or its off), not asked for by the user.</summary>
         public bool FromSession { get; } = fromSession;
+
+        /// <summary>
+        /// The quit's off ("Power off when Mirador quits"): Mirador's own, or the session's off taken for it (set under
+        /// the lock then). Never dropped.
+        /// </summary>
+        public bool AtQuit { get; set; } = atQuit;
+
+        /// <summary>The On of Mirador's start ("Power on when Mirador starts"): refused once Mirador is quitting.</summary>
+        public bool FromStartup { get; } = fromStartup;
 
         /// <summary>For an On sent again to one station that is stuck waking up: its watch; null otherwise.</summary>
         public Wake? ResendOf { get; } = resendOf;

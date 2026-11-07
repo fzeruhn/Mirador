@@ -201,7 +201,7 @@ public sealed class AppHost : IAsyncDisposable
         // Before anything reads the stations: the manager reads its list at first use, and a file it set aside then
         // would go unnoticed here.
         host.CheckStore("base stations", paths.BaseStationsFile, () => host.stationStore.Load());
-        _ = Task.Run(host.StartRadioAsync);
+        _ = Task.Run(host.StartStationsAsync);
         host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
     }
@@ -247,15 +247,34 @@ public sealed class AppHost : IAsyncDisposable
             await pipe.DisposeAsync().ConfigureAwait(false);
         }
 
-        // The session's end has the base stations' off waiting its few seconds: the flush sends it at once.
+        // Mirador's own off goes now, beside Monado's stop (a headset's end can take long). The session's end has its off
+        // waiting its few seconds when Mirador's isn't wanted: the flush sends it at once.
+        Stations.QuittingNow();
         await Session.StopAsync(CancellationToken.None).ConfigureAwait(false);
         await Stations.FlushAsync(StationsLimit).ConfigureAwait(false);
         launcher.Dispose();
     }
 
     /// <summary>
+    /// At Mirador's start, whatever started it: looks at the PC's Bluetooth, then scans for the base stations and, with
+    /// "Power on when Mirador starts", switches the selected ones on (Mirador.md §4.7). The window doesn't wait for it.
+    /// </summary>
+    private async Task StartStationsAsync()
+    {
+        await StartRadioAsync().ConfigureAwait(false);
+        try
+        {
+            await Stations.StartupAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Base stations: Mirador's start with the base stations failed", e);
+        }
+    }
+
+    /// <summary>
     /// Looks at the PC's Bluetooth (at start, and when devices change while it is missing); the window doesn't wait for
-    /// it, and Bluetooth stays "Ready" until the first look.
+    /// it, and Bluetooth stays "Ready" until the first look. Never throws.
     /// </summary>
     private async Task StartRadioAsync()
     {

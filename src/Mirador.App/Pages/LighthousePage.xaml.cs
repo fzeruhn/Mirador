@@ -68,7 +68,7 @@ public sealed partial class LighthousePage : Page
         }
     }
 
-    /// <summary>The station's "…" menu: switch it, rename it, its ID (1.0), forget it.</summary>
+    /// <summary>The station's "…" menu: power it on or off (it sleeps), rename it, its ID (1.0), forget it.</summary>
     private void OnMore(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: StationItem item } button)
@@ -77,13 +77,8 @@ public sealed partial class LighthousePage : Page
         }
 
         var menu = new MenuFlyout();
-        Add("Switch on", item.SwitchOn, item.CanSwitch);
-        if (item.IsV2)
-        {
-            Add("Standby", item.Standby, item.CanSwitch);
-        }
-
-        Add("Sleep", item.Sleep, item.CanSwitch);
+        Add("Power on", item.PowerOn, item.CanSwitch);
+        Add("Power off", item.PowerOff, item.CanSwitch);
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("Rename…", () => _ = RenameAsync(item), true);
         if (item.IsV1)

@@ -43,19 +43,57 @@ public class AppSettingsTests
         Assert.False(settings.CloseToTray);
         Assert.True(settings.BaseStationsOnAtStart);
         Assert.True(settings.BaseStationsOffAtStop);
-        Assert.Equal(OffMode.Sleep, settings.BaseStationsOff);
     }
 
     [Fact]
-    public void Off_mode_is_saved_as_text()
+    public void Old_file_with_off_mode_still_loads()
+    {
+        // Until 2026-11-07 "Off means: Sleep / Standby" was kept; off is always sleep now, and the old value is ignored.
+        using var dir = new TempDir();
+        var store = new AppSettingsStore(dir.File("settings.json"));
+        File.WriteAllText(dir.File("settings.json"), """{"closeToTray": false, "baseStationsOnAtStart": false, "baseStationsOff": "Standby", "baseStationsOffAtStop": false}""");
+
+        var settings = store.Load();
+
+        Assert.Equal(new AppSettings(CloseToTray: false, BaseStationsOnAtStart: false, BaseStationsOffAtStop: false), settings);
+        Assert.False(File.Exists(dir.File("settings.json.bad")));
+
+        // Saved again, it is gone.
+        store.Save(settings);
+
+        var text = File.ReadAllText(dir.File("settings.json"));
+        Assert.DoesNotContain("\"baseStationsOff\"", text);
+        Assert.Contains("\"baseStationsOffAtStop\": false", text);
+        Assert.Equal(settings, store.Load());
+    }
+
+    [Fact]
+    public void Old_file_gets_the_new_base_station_defaults()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("settings.json"), """{"closeToTray": false, "baseStationsOnAtStart": false, "baseStationsOff": "Standby"}""");
+
+        var settings = new AppSettingsStore(dir.File("settings.json")).Load();
+
+        Assert.False(settings.BaseStationsOnAtStart);
+        Assert.False(settings.BaseStationsOnAtMiradorStart);
+        Assert.False(settings.BaseStationsOffAtMiradorQuit);
+        Assert.Equal(StationStateMode.LastScan, settings.BaseStationsState);
+    }
+
+    [Fact]
+    public void State_mode_is_saved_as_text()
     {
         using var dir = new TempDir();
         var store = new AppSettingsStore(dir.File("settings.json"));
-        var settings = new AppSettings(BaseStationsOnAtStart: false, BaseStationsOff: OffMode.Standby);
+        var settings = new AppSettings(BaseStationsOnAtMiradorStart: true, BaseStationsOffAtMiradorQuit: true, BaseStationsState: StationStateMode.Live);
 
         store.Save(settings);
 
-        Assert.Contains("\"baseStationsOff\": \"Standby\"", File.ReadAllText(dir.File("settings.json")));
+        var text = File.ReadAllText(dir.File("settings.json"));
+        Assert.Contains("\"baseStationsState\": \"Live\"", text);
+        Assert.Contains("\"baseStationsOnAtMiradorStart\": true", text);
+        Assert.Contains("\"baseStationsOffAtMiradorQuit\": true", text);
         Assert.Equal(settings, store.Load());
     }
 }

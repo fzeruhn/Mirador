@@ -5,19 +5,30 @@ namespace Mirador.Core.BaseStations;
 
 /// <summary>One known base station as the Lighthouse page shows it.</summary>
 /// <param name="Station">What Mirador keeps about it.</param>
-/// <param name="Seen">Its advert was heard within <see cref="StationManager.SeenWindow"/>.</param>
+/// <param name="Seen">
+/// Its advert was heard in the last scan or since (before Mirador's first scan: since Mirador started). It doesn't
+/// lapse with time; only a scan that doesn't hear the station takes it away.
+/// </param>
 /// <param name="Power">What it is doing: a 2.0 station's from its adverts, a 1.0 station's from what Mirador last told it.</param>
 /// <param name="Problem">"didn't answer" when the last command or Identify didn't get through to it; null otherwise.</param>
 public sealed record StationView(KnownStation Station, bool Seen, StationPower Power, string? Problem);
 
 /// <summary>One line about the selected base stations, for Home.</summary>
-public sealed record StationsSummary(string Text, StatusLevel Level);
+/// <param name="Text">What the line says: Bluetooth's state, that none is selected, or how many of them are powered.</param>
+/// <param name="Level">Its icon: the check only when every selected station is on and none has a problem.</param>
+/// <param name="Busy">
+/// The stations are changing state: a command is being sent, or a selected station is waking up. Home shows a spinner
+/// in place of the icon then. Never while the line is about Bluetooth or about none being selected.
+/// </param>
+public sealed record StationsSummary(string Text, StatusLevel Level, bool Busy);
 
 /// <summary>
 /// Keeps the list of base stations Mirador has found, follows their states from their Bluetooth adverts, and switches
-/// the selected ones: on the user's On and Off, when a Monado session starts, and a few seconds after it ends. Commands
-/// run one at a time, in the order asked, each station tried up to <see cref="Tries"/> times. A 2.0 station that took
-/// an On but stays stuck waking up gets it again, at most <see cref="Resends"/> times.
+/// the selected ones: on the user's On and Off, when a Monado session starts, a few seconds after it ends, and with
+/// Mirador's start and quit. Commands run one at a time, in the order asked, each station tried up to
+/// <see cref="Tries"/> times. A 2.0 station that took an On but stays stuck waking up gets it again, at most
+/// <see cref="Resends"/> times. Mirador listens to the adverts only during a scan (<see cref="ScanAsync"/>: at
+/// Mirador's start and on "Scan"), around a command, and all the time with "Station state tracking rate: Constant".
 /// </summary>
 /// <remarks>
 /// Everything here may be called from any thread. <see cref="Changed"/> is raised on whichever thread made the change
@@ -28,11 +39,8 @@ public sealed record StationsSummary(string Text, StatusLevel Level);
 /// </remarks>
 public sealed partial class StationManager : ISessionHook
 {
-    /// <summary>How long after listening begins, or after <see cref="Rescan"/>, the page shows that Mirador is still looking.</summary>
+    /// <summary>How long a scan listens (<see cref="ScanAsync"/>), with <see cref="Looking"/> true meanwhile.</summary>
     public static readonly TimeSpan ScanTime = TimeSpan.FromSeconds(8);
-
-    /// <summary>A station heard within this long is <see cref="StationView.Seen"/>.</summary>
-    public static readonly TimeSpan SeenWindow = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// How long a command listens first for its stations that haven't been heard since Mirador started: Windows reaches
@@ -69,13 +77,14 @@ public sealed partial class StationManager : ISessionHook
     private readonly TimeProvider _time;
     private readonly Action<string> _log;
 
-    // Lock order: _watchGate or _saveGate first, then _lock. Nothing outside the manager is called under _lock except
-    // the clock's timers. Under _watchGate the radio's Watch and its watch's Dispose are called (WinRT returns from
-    // them at once and calls nothing back under them); under _saveGate the store's Save. No event is raised under any
-    // of them.
+    // Lock order: _watchGate, _saveGate or _liveGate first, then _lock. Nothing outside the manager is called under
+    // _lock except the clock's timers. Under _watchGate the radio's Watch and its watch's Dispose are called (WinRT
+    // returns from them at once and calls nothing back under them); under _saveGate the store's Save; under _liveGate
+    // the settings function, for "Station state". No event is raised under any of them.
     private readonly object _lock = new();
     private readonly object _watchGate = new();
     private readonly object _saveGate = new();
+    private readonly object _liveGate = new();
 
     // Under _lock.
     private List<Entry>? _stations;
@@ -122,8 +131,7 @@ public sealed partial class StationManager : ISessionHook
             EnsureLoaded();
             lock (_lock)
             {
-                var now = _time.GetTimestamp();
-                return [.. Ordered().Select(e => new StationView(e.Station, Seen(e, now), e.Power, e.Problem))];
+                return [.. Ordered().Select(e => new StationView(e.Station, e.Seen, e.Power, e.Problem))];
             }
         }
     }
@@ -152,7 +160,12 @@ public sealed partial class StationManager : ISessionHook
         }
     }
 
-    /// <summary>What Home says about the selected stations.</summary>
+    /// <summary>
+    /// What Home says about the selected stations: "1/2 Powered", the stations on (a 1.0 station by what Mirador last
+    /// told it) and <see cref="StationView.Seen"/> out of those selected, with " · Desk didn't answer." for the selected
+    /// ones whose last command or Identify didn't get through. A selected station not heard in the last scan counts
+    /// among the selected, never as powered.
+    /// </summary>
     public StationsSummary Summary
     {
         get
@@ -160,9 +173,9 @@ public sealed partial class StationManager : ISessionHook
             switch (_radio.State)
             {
                 case BluetoothState.Missing:
-                    return new StationsSummary("This PC has no Bluetooth.", StatusLevel.Info);
+                    return new StationsSummary("This PC has no Bluetooth.", StatusLevel.Info, false);
                 case BluetoothState.Off:
-                    return new StationsSummary("Bluetooth is off.", StatusLevel.Warning);
+                    return new StationsSummary("Bluetooth is off.", StatusLevel.Warning, false);
             }
 
             EnsureLoaded();
@@ -171,38 +184,21 @@ public sealed partial class StationManager : ISessionHook
                 var selected = Ordered().Where(e => e.Station.Selected).ToList();
                 if (selected.Count == 0)
                 {
-                    return new StationsSummary("None selected: choose yours on the Lighthouse page.", StatusLevel.Info);
-                }
-
-                if (_running is { } running)
-                {
-                    return new StationsSummary(running == StationCommand.On ? "Switching on…" : "Switching off…", StatusLevel.Info);
-                }
-
-                var problems = selected.Where(e => e.Problem is not null).Select(e => e.Station.DisplayName).ToList();
-                if (problems.Count > 0)
-                {
-                    return new StationsSummary($"{string.Join(", ", problems)} didn't answer.", StatusLevel.Warning);
+                    return new StationsSummary("None selected: choose yours on the Lighthouse page.", StatusLevel.Info, false);
                 }
 
                 var now = _time.GetTimestamp();
-                var powers = selected.Select(e => Shown(e, now)).ToList();
-                if (powers.All(p => p == StationPower.On))
+                var shown = selected.Select(e => Shown(e, now)).ToList();
+                var on = selected.Where((e, i) => e.Seen && shown[i] == StationPower.On).Count();
+                var busy = _running is not null || shown.Contains(StationPower.Waking);
+                var text = $"{on}/{selected.Count} Powered";
+                var problems = selected.Where(e => e.Problem is not null).Select(e => e.Station.DisplayName).ToList();
+                if (problems.Count > 0)
                 {
-                    return new StationsSummary("On", StatusLevel.Ok);
+                    return new StationsSummary($"{text} · {string.Join(", ", problems)} didn't answer.", StatusLevel.Warning, busy);
                 }
 
-                if (powers.All(p => p == StationPower.Asleep))
-                {
-                    return new StationsSummary("Asleep", StatusLevel.Info);
-                }
-
-                if (powers.All(p => p is StationPower.On or StationPower.Waking))
-                {
-                    return new StationsSummary("Waking up…", StatusLevel.Info);
-                }
-
-                return new StationsSummary(selected.Count == 1 ? "1 selected" : $"{selected.Count} selected", StatusLevel.Info);
+                return new StationsSummary(text, on == selected.Count ? StatusLevel.Ok : StatusLevel.Info, busy);
             }
         }
     }
@@ -260,9 +256,11 @@ public sealed partial class StationManager : ISessionHook
         Raise();
     }
 
-    /// <summary>The command for Off, from "Off means" in the settings.</summary>
-    public StationCommand OffCommand() =>
-        _settings().BaseStationsOff == OffMode.Standby ? StationCommand.Standby : StationCommand.Sleep;
+    /// <summary>
+    /// The command for every Off Mirador sends (the user's, the session's, as Mirador quits): always
+    /// <see cref="StationCommand.Sleep"/>. Standby needs newer firmware and did nothing visible on the stations tried.
+    /// </summary>
+    public StationCommand OffCommand() => StationCommand.Sleep;
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -275,9 +273,6 @@ public sealed partial class StationManager : ISessionHook
         var text = e.Message.Trim().TrimEnd('.');
         return text.Length > 0 ? text : e.GetType().Name;
     }
-
-    private bool Seen(Entry entry, long now) =>
-        entry.HeardAt is { } heard && _time.GetElapsedTime(heard, now) < SeenWindow;
 
     /// <summary>Under the lock: the state Home counts for the station, waking for a while after an On reached it (<see cref="Entry.WokenAt"/>).</summary>
     private StationPower Shown(Entry entry, long now) =>
@@ -480,8 +475,11 @@ public sealed partial class StationManager : ISessionHook
     {
         public KnownStation Station { get; set; } = station;
 
-        /// <summary>When it was last heard; null when not since Mirador started or since <see cref="Rescan"/>.</summary>
-        public long? HeardAt { get; set; }
+        /// <summary>Heard in the last scan or since (<see cref="StationView.Seen"/>).</summary>
+        public bool Seen { get; set; }
+
+        /// <summary>The manager's count of adverts at its last one, which tells whether a scan heard it; 0 while it hasn't been heard since Mirador started.</summary>
+        public long LastAdvert { get; set; }
 
         /// <summary>The address type of its last advert; null while it hasn't been heard since Mirador started.</summary>
         public bool? RandomAddress { get; set; }
