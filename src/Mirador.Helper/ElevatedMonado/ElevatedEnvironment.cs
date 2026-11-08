@@ -7,8 +7,40 @@ namespace Mirador.Helper.ElevatedMonado;
 /// <param name="UserProfile">The caller's <c>%USERPROFILE%</c>.</param>
 /// <param name="AppData">The caller's <c>%APPDATA%</c>.</param>
 /// <param name="LocalAppData">The caller's <c>%LOCALAPPDATA%</c>.</param>
-/// <param name="Temp">The caller's temp folder (<c>GetTempPath2</c> under the caller's token); Monado names its pipe from it.</param>
-public sealed record UserFolders(string UserProfile, string AppData, string LocalAppData, string Temp);
+/// <param name="Temp">The caller's temp folder, from the caller's environment block; Monado names its pipe from it.</param>
+public sealed record UserFolders(string UserProfile, string AppData, string LocalAppData, string Temp)
+{
+    /// <summary>
+    /// The folders from the caller's environment block (<c>CreateEnvironmentBlock</c> with the caller's token), the
+    /// block Mirador itself starts Monado from. The temp folder is the one <see cref="MonadoPipeName.TempPathFrom"/>
+    /// picks from that block (<c>TMP</c>, <c>TEMP</c>, <c>USERPROFILE</c>), so the elevated Monado's pipe is the name
+    /// Mirador and the user's games look for. Never the helper's own temp: a service's environment is SYSTEM's, and
+    /// impersonating the caller doesn't change it.
+    /// </summary>
+    public static UserFolders FromBlock(IReadOnlyDictionary<string, string> block)
+    {
+        var profile = Get(block, "USERPROFILE") ?? "";
+        var temp = Get(block, "TMP") ?? Get(block, "TEMP") ?? profile;
+        return new UserFolders(
+            profile,
+            Get(block, "APPDATA") ?? Path.Combine(profile, "AppData", "Roaming"),
+            Get(block, "LOCALAPPDATA") ?? Path.Combine(profile, "AppData", "Local"),
+            temp);
+    }
+
+    private static string? Get(IReadOnlyDictionary<string, string> block, string name)
+    {
+        foreach (var (key, value) in block)
+        {
+            if (value.Length > 0 && string.Equals(key, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+}
 
 /// <summary>
 /// Builds the environment the elevated <c>monado-service</c> is started with (Mirador.md section 4.10 item 46). The

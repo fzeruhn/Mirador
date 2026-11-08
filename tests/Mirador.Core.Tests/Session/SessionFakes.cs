@@ -570,7 +570,10 @@ internal sealed class Harness : IAsyncDisposable
 
     private readonly TempDir dir = new();
 
-    public Harness(ISessionHook? hook = null)
+    /// <param name="installedCopy">With a value, the user allowed Monado as administrator, and this says whether this
+    /// Mirador is the installed one; the elevated launcher then records its starts in <see cref="ElevatedStarts"/>
+    /// and runs them through <see cref="Launcher"/>.</param>
+    public Harness(ISessionHook? hook = null, bool? installedCopy = null)
     {
         Root = Path.Combine(dir.Path, "Zoë's data");
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
@@ -608,7 +611,14 @@ internal sealed class Harness : IAsyncDisposable
                 new OpenXrRuntime(Runtime),
                 StandInExe,
                 Inherited,
-                hook),
+                hook,
+                ElevatedConsented: installedCopy is null ? null : () => true,
+                ElevatedLauncher: installedCopy is null ? null : start =>
+                {
+                    ElevatedStarts.Enqueue(start);
+                    return Launcher;
+                },
+                ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);
@@ -658,6 +668,9 @@ internal sealed class Harness : IAsyncDisposable
     public FakeModule Module { get; }
 
     public FakeLauncher Launcher { get; }
+
+    /// <summary>The Starts that went to the elevated launcher (with <c>installedCopy</c> given).</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<ElevatedStart> ElevatedStarts { get; } = new();
 
     /// <summary>What is plugged in: the fake headset, until a test clears it.</summary>
     public FakeUsb Usb { get; }

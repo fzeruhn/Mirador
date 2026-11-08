@@ -41,24 +41,30 @@ public static class WinTrustSigner
 
     private static bool IsTrusted(string path)
     {
-        var file = new WintrustFileInfo
-        {
-            cbStruct = (uint)Marshal.SizeOf<WintrustFileInfo>(),
-            pcwszFilePath = path,
-            hFile = IntPtr.Zero,
-            pgKnownSubject = IntPtr.Zero,
-        };
-
-        var fileHandle = GCHandle.Alloc(file, GCHandleType.Pinned);
+        // WINTRUST_DATA points at the WINTRUST_FILE_INFO, which points at the path: both live in unmanaged memory for
+        // the two calls (a struct with a string in it can't be pinned), and are freed whatever happens.
+        var pathText = IntPtr.Zero;
+        var fileInfo = IntPtr.Zero;
         try
         {
+            pathText = Marshal.StringToHGlobalUni(path);
+            var file = new WintrustFileInfo
+            {
+                cbStruct = (uint)Marshal.SizeOf<WintrustFileInfo>(),
+                pcwszFilePath = pathText,
+                hFile = IntPtr.Zero,
+                pgKnownSubject = IntPtr.Zero,
+            };
+            fileInfo = Marshal.AllocHGlobal(Marshal.SizeOf<WintrustFileInfo>());
+            Marshal.StructureToPtr(file, fileInfo, fDeleteOld: false);
+
             var data = new WintrustData
             {
                 cbStruct = (uint)Marshal.SizeOf<WintrustData>(),
                 dwUIChoice = WtdUiNone,
                 fdwRevocationChecks = WtdRevokeNone,
                 dwUnionChoice = WtdChoiceFile,
-                pFile = fileHandle.AddrOfPinnedObject(),
+                pFile = fileInfo,
                 dwStateAction = WtdStateActionVerify,
                 dwProvFlags = WtdSaferFlag,
             };
@@ -70,7 +76,15 @@ public static class WinTrustSigner
         }
         finally
         {
-            fileHandle.Free();
+            if (fileInfo != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(fileInfo);
+            }
+
+            if (pathText != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(pathText);
+            }
         }
     }
 
@@ -133,7 +147,8 @@ public static class WinTrustSigner
         }
     }
 
-    private const uint CertFindSubjectCert = 0x00010000; // CERT_FIND_SUBJECT_CERT
+    // CERT_FIND_SUBJECT_CERT: CERT_COMPARE_SUBJECT_CERT (11) << CERT_COMPARE_SHIFT (16). (0x00010000 is CERT_FIND_SHA1_HASH.)
+    private const uint CertFindSubjectCert = 0x000B0000;
 
     private static string? SubjectName(IntPtr cert)
     {
@@ -159,11 +174,12 @@ public static class WinTrustSigner
         return text.ToString();
     }
 
+    /// <summary>WINTRUST_FILE_INFO, blittable: the path is a pointer to a string the caller allocated.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct WintrustFileInfo
     {
         public uint cbStruct;
-        [MarshalAs(UnmanagedType.LPWStr)] public string pcwszFilePath;
+        public IntPtr pcwszFilePath;
         public IntPtr hFile;
         public IntPtr pgKnownSubject;
     }

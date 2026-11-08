@@ -1,6 +1,6 @@
 namespace Mirador.Helper.ElevatedMonado;
 
-/// <summary>Decides whether an elevated-start request may go ahead, and if not why (stub).</summary>
+/// <summary>Decides whether an elevated-start request may go ahead, and if not why.</summary>
 public static class ElevatedRequestCheck
 {
     public const string NotAllowed = "Monado may run as administrator only after you allowed it in App settings.";
@@ -29,7 +29,7 @@ public static class ElevatedRequestCheck
             return NotAllowed;
         }
 
-        if (!IsInstalledMirador(imagePath, installDir))
+        if (!Mirador.Ipc.InstalledMirador.IsInstalledCopy(imagePath, installDir))
         {
             return NotMirador;
         }
@@ -40,23 +40,5 @@ public static class ElevatedRequestCheck
         }
 
         return running ? AlreadyRunning : null;
-    }
-
-    private static bool IsInstalledMirador(string? imagePath, string installDir)
-    {
-        if (imagePath is null)
-        {
-            return false;
-        }
-
-        try
-        {
-            var expected = Path.GetFullPath(Path.Combine(installDir, "Mirador.exe"));
-            return string.Equals(expected, Path.GetFullPath(imagePath), StringComparison.OrdinalIgnoreCase);
-        }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false;
-        }
     }
 }

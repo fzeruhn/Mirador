@@ -130,26 +130,44 @@ public sealed class RegistryConsentValues : IConsentValues
     /// <summary>The approved SteamVR files' key under <c>HKEY_LOCAL_MACHINE</c>.</summary>
     public const string FilesKeyPath = @"SOFTWARE\Mirador\ElevatedMonadoFiles";
 
+    private readonly RegistryHive hive;
+    private readonly string keyPath;
+    private readonly string filesKeyPath;
+
+    /// <summary>The keys under <c>HKEY_LOCAL_MACHINE</c> (64-bit view).</summary>
+    public RegistryConsentValues()
+        : this(RegistryHive.LocalMachine, KeyPath, FilesKeyPath)
+    {
+    }
+
+    /// <summary>For tests: the two keys somewhere a test may write (under <c>HKEY_CURRENT_USER</c>).</summary>
+    internal RegistryConsentValues(RegistryHive hive, string keyPath, string filesKeyPath)
+    {
+        this.hive = hive;
+        this.keyPath = keyPath;
+        this.filesKeyPath = filesKeyPath;
+    }
+
     public bool Has(string sid)
     {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using var key = machine.OpenSubKey(KeyPath);
+        using var root = Root();
+        using var key = root.OpenSubKey(keyPath);
         return key?.GetValue(sid) is int value && value == 1;
     }
 
     public void Set(string sid)
     {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using var key = machine.CreateSubKey(KeyPath, writable: true);
+        using var root = Root();
+        using var key = root.CreateSubKey(keyPath, writable: true);
         key.SetValue(sid, 1, RegistryValueKind.DWord);
     }
 
-    public void Delete(string sid) => DeleteValue(KeyPath, sid);
+    public void Delete(string sid) => DeleteValue(keyPath, sid);
 
     public string[]? Files(string sid)
     {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using var key = machine.OpenSubKey(FilesKeyPath);
+        using var root = Root();
+        using var key = root.OpenSubKey(filesKeyPath);
         if (key is null || Array.IndexOf(key.GetValueNames(), sid) < 0 || key.GetValueKind(sid) != RegistryValueKind.MultiString)
         {
             return null;
@@ -160,17 +178,34 @@ public sealed class RegistryConsentValues : IConsentValues
 
     public void SetFiles(string sid, string[] lines)
     {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using var key = machine.CreateSubKey(FilesKeyPath, writable: true);
+        using var root = Root();
+        using var key = root.CreateSubKey(filesKeyPath, writable: true);
         key.SetValue(sid, lines, RegistryValueKind.MultiString);
     }
 
-    public void DeleteFiles(string sid) => DeleteValue(FilesKeyPath, sid);
+    public void DeleteFiles(string sid) => DeleteValue(filesKeyPath, sid);
 
-    private static void DeleteValue(string keyPath, string sid)
+    private RegistryKey Root() => RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+
+    /// <summary>Removes the value, then the key itself once nothing is left in it (the last user's consent went).</summary>
+    private void DeleteValue(string path, string sid)
     {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using var key = machine.OpenSubKey(keyPath, writable: true);
-        key?.DeleteValue(sid, throwOnMissingValue: false);
+        using var root = Root();
+        bool empty;
+        using (var key = root.OpenSubKey(path, writable: true))
+        {
+            if (key is null)
+            {
+                return;
+            }
+
+            key.DeleteValue(sid, throwOnMissingValue: false);
+            empty = key.ValueCount == 0 && key.SubKeyCount == 0;
+        }
+
+        if (empty)
+        {
+            root.DeleteSubKey(path, throwOnMissingSubKey: false);
+        }
     }
 }

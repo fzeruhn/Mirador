@@ -29,6 +29,9 @@ public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart st
     /// <summary>How often the log file is read for new lines.</summary>
     internal TimeSpan FollowInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>How long disposing a killed process waits for the helper to report Monado's exit.</summary>
+    internal TimeSpan StopLimit { get; init; } = TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// Asks the helper to start the elevated service and returns a process that follows its log and its exit. The spec
     /// goes only to <c>asUser</c>, when SteamVR changed: the helper runs only its own bundled service, with the
@@ -54,7 +57,7 @@ public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart st
         }
 
         var id = int.TryParse(reply.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pid) ? pid : 0;
-        var process = new ElevatedRunningProcess(client, id, logPath, PollInterval, FollowInterval);
+        var process = new ElevatedRunningProcess(client, id, logPath, PollInterval, FollowInterval, StopLimit);
         SteamVrChecked?.Invoke(false, null);
         return process;
     }
@@ -63,7 +66,9 @@ public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart st
 /// <summary>
 /// A <see cref="HelperCommand.StartMonadoElevated"/> seen as an <see cref="IRunningProcess"/>: its id from the reply,
 /// its lines from following the helper's log file, its exit from polling the helper, and <see cref="Kill"/> through
-/// <see cref="HelperCommand.StopMonadoElevated"/>.
+/// <see cref="HelperCommand.StopMonadoElevated"/>. Like the job launcher's process, disposing it after a kill waits
+/// (at most the stop limit) until Monado has really ended, so a Start right after a Stop isn't refused because the
+/// old one still runs, and the headset is free before a module's end takes it back.
 /// </summary>
 internal sealed class ElevatedRunningProcess : IRunningProcess
 {
@@ -78,6 +83,7 @@ internal sealed class ElevatedRunningProcess : IRunningProcess
     private readonly string logPath;
     private readonly TimeSpan pollInterval;
     private readonly TimeSpan followInterval;
+    private readonly TimeSpan stopLimit;
     private readonly CancellationTokenSource stop = new();
     private readonly TaskCompletionSource<int> exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task follow;
@@ -86,13 +92,16 @@ internal sealed class ElevatedRunningProcess : IRunningProcess
     private Action<string>? listeners;
     private List<string>? early = [];
     private bool disposed;
+    private Task? stopSent;
 
-    public ElevatedRunningProcess(IHelperClient client, int id, string logPath, TimeSpan pollInterval, TimeSpan followInterval)
+    public ElevatedRunningProcess(
+        IHelperClient client, int id, string logPath, TimeSpan pollInterval, TimeSpan followInterval, TimeSpan stopLimit)
     {
         this.client = client;
         this.logPath = logPath;
         this.pollInterval = pollInterval;
         this.followInterval = followInterval;
+        this.stopLimit = stopLimit;
         Id = id;
         Exited = exited.Task;
         follow = Task.Run(() => FollowAsync(stop.Token));
@@ -141,23 +150,37 @@ internal sealed class ElevatedRunningProcess : IRunningProcess
 
     public void Kill()
     {
-        // An unelevated Mirador can't end an elevated process; the helper does, through its job object. Best-effort and
-        // returns at once; the exit then shows up through the poll (or the helper ending the job when Mirador exits).
-        _ = Task.Run(async () =>
+        // An unelevated Mirador can't end an elevated process; the helper does, through its job object. Returns at once;
+        // the exit then shows up through the poll, which DisposeAsync waits for (or the helper ends the job when Mirador
+        // exits).
+        lock (gate)
         {
-            try
+            if (stopSent is not null || disposed)
             {
-                await client.SendAsync(HelperCommand.StopMonadoElevated, CancellationToken.None).ConfigureAwait(false);
+                return;
             }
-            catch (Exception)
+
+            stopSent = Task.Run(async () =>
             {
-                // Nothing more to do: the job ends Monado when this Mirador exits, at the latest.
-            }
-        });
+                try
+                {
+                    await client.SendAsync(HelperCommand.StopMonadoElevated, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Nothing more to do: the job ends Monado when this Mirador exits, at the latest.
+                }
+            });
+        }
     }
 
+    /// <summary>
+    /// After <see cref="Kill"/>: waits for the stop to reach the helper, then for the poll to see Monado's exit, at most
+    /// the stop limit in all (then the exit is reported as unknown). Then stops following the log.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
+        Task? sent;
         lock (gate)
         {
             if (disposed)
@@ -166,6 +189,25 @@ internal sealed class ElevatedRunningProcess : IRunningProcess
             }
 
             disposed = true;
+            sent = stopSent;
+        }
+
+        if (sent is not null)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                await sent.WaitAsync(stopLimit).ConfigureAwait(false);
+                var left = stopLimit - clock.Elapsed;
+                if (left > TimeSpan.Zero)
+                {
+                    await exited.Task.WaitAsync(left).ConfigureAwait(false);
+                }
+            }
+            catch (TimeoutException)
+            {
+                // Monado didn't end in time (or the helper didn't answer): report the exit as unknown.
+            }
         }
 
         await stop.CancelAsync().ConfigureAwait(false);

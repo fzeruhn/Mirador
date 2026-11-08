@@ -56,6 +56,14 @@ public enum HelperCommand
     /// ended, and null while it still runs.
     /// </summary>
     WaitMonadoElevated,
+
+    /// <summary>
+    /// Answers with the folder the helper starts Monado as administrator for: its own install folder, one above its
+    /// program's, where the installed <c>Mirador.exe</c> is (<see cref="HelperReply.Value"/>). Mirador compares its own
+    /// path with it through <see cref="InstalledMirador.IsInstalledCopy"/>, the test the helper applies to the caller,
+    /// so a copy the helper would refuse runs Monado as the user instead (Mirador.md section 4.10 item 46).
+    /// </summary>
+    GetInstallFolder,
 }
 
 /// <summary>
@@ -101,7 +109,8 @@ public enum HelperRefusal
 /// <param name="WasRunning">For <see cref="HelperCommand.StopPimax"/>: whether Pimax's service was running.</param>
 /// <param name="Value">For <see cref="HelperCommand.Ping"/> the version, for <see cref="HelperCommand.GetPimaxEyeBlob"/> the
 /// variant (or null), for <see cref="HelperCommand.StartMonadoElevated"/> the service's process id, for
-/// <see cref="HelperCommand.WaitMonadoElevated"/> the exit code once Monado has ended (null while it runs).</param>
+/// <see cref="HelperCommand.WaitMonadoElevated"/> the exit code once Monado has ended (null while it runs), for
+/// <see cref="HelperCommand.GetInstallFolder"/> the helper's install folder.</param>
 /// <param name="Refusal">When <see cref="Ok"/> is false: the typed reason, for a refusal Mirador answers in its own way;
 /// null for every other failure.</param>
 public sealed record HelperReply(

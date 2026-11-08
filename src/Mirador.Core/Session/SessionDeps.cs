@@ -20,6 +20,7 @@ namespace Mirador.Core.Session;
 /// <param name="Hook">Told when a session starts and when it ends (the base stations); null: nobody.</param>
 /// <param name="ElevatedConsented">Whether the current user allowed Monado to run as administrator; null: never (the job launcher is always used).</param>
 /// <param name="ElevatedLauncher">Builds the launcher that starts Monado as administrator through the helper for the given settings; null: no elevated path.</param>
+/// <param name="ElevatedInstalledCopy">Whether this Mirador is the installed one the helper starts Monado as administrator for (asked once consent is on); null: never.</param>
 public sealed record SessionDeps(
     ProfileStore Profiles,
     MonadoSettingsStore MonadoSettings,
@@ -33,4 +34,5 @@ public sealed record SessionDeps(
     IReadOnlyDictionary<string, string> InheritedEnvironment,
     ISessionHook? Hook = null,
     Func<bool>? ElevatedConsented = null,
-    Func<ElevatedStart, IProcessLauncher>? ElevatedLauncher = null);
+    Func<ElevatedStart, IProcessLauncher>? ElevatedLauncher = null,
+    Func<bool>? ElevatedInstalledCopy = null);

@@ -1108,19 +1108,21 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>
-    /// Which launcher starts this Start: the helper's elevated one when the user allowed it, the profile runs the
-    /// bundled Monado, it sets no extra environment variables and its module points at no folder of its own; otherwise
-    /// the job launcher, which runs Monado as the user. The elevated launcher itself runs the Start through the job
-    /// launcher when the helper says SteamVR's Lighthouse driver changed since the consent (<see cref="HelperProcessLauncher"/>).
+    /// Which launcher starts this Start: the helper's elevated one when the user allowed it and
+    /// <see cref="Elevation.ElevatedChoice.RunsAsYouReason"/> (shared with Home's line) finds no reason against it: this
+    /// is the installed Mirador, the profile runs the bundled Monado, it sets no extra environment variables and its
+    /// module points at no folder of its own; otherwise the job launcher, which runs Monado as the user. The elevated
+    /// launcher itself runs the Start through the job launcher when the helper says SteamVR's Lighthouse driver changed
+    /// since the consent (<see cref="HelperProcessLauncher"/>).
     /// Whatever the choice, the rest of the session is the same.
     /// </summary>
     private IProcessLauncher ChooseLauncher(MonadoInstall install, Profile profile, IHeadsetModule? module, MonadoSettings settings)
     {
+        // install is the profile's own bundled Monado exactly when the profile's kind is Bundled (MonadoLocator).
         var eligible = deps.ElevatedLauncher is not null
             && deps.ElevatedConsented?.Invoke() == true
             && install.IsBundled
-            && profile.ExtraEnvironment.Count == 0
-            && !(module?.UsesExtraFolder(profile) ?? false);
+            && Elevation.ElevatedChoice.RunsAsYouReason(profile, module, deps.ElevatedInstalledCopy?.Invoke() == true) is null;
 
         if (!eligible)
         {

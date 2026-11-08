@@ -47,6 +47,60 @@ public class ElevatedEnvironmentTests
             MonadoPipeName.NameFor(env, AnsiCodePage.RoundTrip));
     }
 
+    [Fact]
+    public void Temp_and_pipe_name_come_from_the_users_block()
+    {
+        // The user's environment block, as CreateEnvironmentBlock gives it (names in Windows' own case).
+        var block = new Dictionary<string, string>
+        {
+            ["USERPROFILE"] = @"C:\Users\finn",
+            ["APPDATA"] = @"C:\Users\finn\AppData\Roaming",
+            ["LOCALAPPDATA"] = @"C:\Users\finn\AppData\Local",
+            ["TEMP"] = @"C:\Users\finn\AppData\Local\Temp",
+            ["TMP"] = @"C:\Users\finn\AppData\Local\Temp",
+            ["SystemRoot"] = @"C:\WINDOWS",
+        };
+
+        var folders = UserFolders.FromBlock(block);
+        var env = ElevatedEnvironment.Build(Start(), folders, ServerDir, SteamVrPath, []);
+
+        Assert.Equal(block["TEMP"], env["TEMP"]);
+        Assert.Equal(block["TMP"], env["TMP"]);
+        Assert.Equal(block["USERPROFILE"], env["USERPROFILE"]);
+        Assert.Equal(block["APPDATA"], env["APPDATA"]);
+        Assert.Equal(block["LOCALAPPDATA"], env["LOCALAPPDATA"]);
+
+        // The name Mirador waits for (built from the same block) is the one the elevated Monado opens; never the
+        // helper's own C:\Windows temp.
+        var name = MonadoPipeName.NameFor(env, AnsiCodePage.RoundTrip);
+        Assert.Equal(MonadoPipeName.NameFor(block, AnsiCodePage.RoundTrip), name);
+        Assert.Equal(@"\\.\pipe\C:\Users\finn\AppData\Local\Temp\/monado_comp_ipc", name);
+        Assert.DoesNotContain(@"C:\Windows", name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Temp_follows_the_blocks_order()
+    {
+        // TMP wins over TEMP, as GetTempPath2 and MonadoPipeName read them; without either, the profile folder.
+        var both = UserFolders.FromBlock(new Dictionary<string, string>
+        {
+            ["USERPROFILE"] = @"C:\Users\u",
+            ["temp"] = @"D:\TempB",
+            ["tmp"] = @"D:\TempA",
+        });
+        Assert.Equal(@"D:\TempA", both.Temp);
+
+        var temp = new Dictionary<string, string> { ["USERPROFILE"] = @"C:\Users\u", ["TEMP"] = @"D:\TempB", ["TMP"] = "" };
+        Assert.Equal(@"D:\TempB", UserFolders.FromBlock(temp).Temp);
+        Assert.Equal(
+            MonadoPipeName.NameFor(temp, AnsiCodePage.RoundTrip),
+            MonadoPipeName.NameFor(ElevatedEnvironment.Build(Start(), UserFolders.FromBlock(temp), ServerDir, SteamVrPath, []), AnsiCodePage.RoundTrip));
+
+        var none = UserFolders.FromBlock(new Dictionary<string, string> { ["USERPROFILE"] = @"C:\Users\u" });
+        Assert.Equal(@"C:\Users\u", none.Temp);
+        Assert.Equal(@"C:\Users\u\AppData\Local", none.LocalAppData);
+    }
+
     [Theory]
     [InlineData(500, 100, 6)]     // lighthouse below range
     [InlineData(1500, 100, 6)]    // lighthouse off its step

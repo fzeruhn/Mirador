@@ -94,15 +94,17 @@ public sealed class HelperHandler
     private readonly ElevatedConsent? consent;
     private readonly IElevatedMonado? elevated;
     private readonly string version;
+    private readonly string installDir;
     private readonly object gate = new();
 
     /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
     /// <param name="version">What <see cref="HelperCommand.Ping"/> answers; the helper's own version when null.</param>
     /// <param name="consent">Where users' consent to run Monado as administrator is; without it, revoking fails with a message.</param>
     /// <param name="elevated">Starts and stops the elevated Monado; without it, the elevated commands fail with a message.</param>
+    /// <param name="installDir">What <see cref="HelperCommand.GetInstallFolder"/> answers; <see cref="DefaultInstallDir"/> when null.</param>
     public HelperHandler(
         IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
-        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null)
+        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null, string? installDir = null)
     {
         this.services = services;
         this.processes = processes;
@@ -111,7 +113,14 @@ public sealed class HelperHandler
         this.consent = consent;
         this.elevated = elevated;
         this.version = version ?? OwnVersion();
+        this.installDir = installDir ?? DefaultInstallDir;
     }
+
+    /// <summary>
+    /// The helper's install folder, one above its own: where the installed <c>Mirador.exe</c> is, the only caller the
+    /// elevated Monado is started for (<see cref="ElevatedMonado.ElevatedRequestCheck"/>).
+    /// </summary>
+    public static string DefaultInstallDir { get; } = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
 
     /// <summary>
     /// The bundled manifest of a normal install: <c>&lt;helper folder&gt;\..\monado\runtime\openxr_monado.json</c>.
@@ -144,6 +153,11 @@ public sealed class HelperHandler
         if (command == HelperCommand.Ping)
         {
             return new HelperReply(true, Value: version);
+        }
+
+        if (command == HelperCommand.GetInstallFolder)
+        {
+            return new HelperReply(true, Value: installDir);
         }
 
         if (command == HelperCommand.WaitMonadoElevated)

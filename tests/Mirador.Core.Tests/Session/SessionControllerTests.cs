@@ -28,6 +28,21 @@ public class SessionControllerTests
         return reader.ReadToEnd().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Consent_runs_elevated_only_from_the_installed_copy(bool installedCopy)
+    {
+        await using var h = new Harness(installedCopy: installedCopy);
+
+        var outcome = await h.StartRunningAsync();
+
+        // A copy the helper would refuse (a portable or dev bundle) runs as the user instead of failing.
+        Assert.True(outcome.Ok);
+        Assert.Equal(installedCopy ? 1 : 0, h.ElevatedStarts.Count);
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
     [Fact]
     public async Task Start_runs_the_steps_in_order()
     {

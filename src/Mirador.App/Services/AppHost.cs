@@ -2,6 +2,7 @@ using System.Security.Principal;
 using Microsoft.Win32;
 using Mirador.Core;
 using Mirador.Core.BaseStations;
+using Mirador.Core.Elevation;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
@@ -32,6 +33,10 @@ public sealed class AppHost : IAsyncDisposable
     // Set when the helper refused the last elevated Start because SteamVR's unsigned Lighthouse DLLs aren't the copies
     // the user allowed (that Start ran as the user); cleared by an elevated Start and by allowing again.
     private volatile bool steamVrChanged;
+
+    // The folder the running helper starts Monado as administrator for (its answer to GetInstallFolder); null until it
+    // answered. Asked at start and again at each elevated Start; Home only reads it.
+    private volatile string? helperInstallDir;
 
     private AppHost(string appDir, AppPaths paths)
     {
@@ -89,7 +94,8 @@ public sealed class AppHost : IAsyncDisposable
             ElevatedLauncher: start => new HelperProcessLauncher(Helper, start, elevatedLogPath, launcher)
             {
                 SteamVrChecked = OnSteamVrChecked,
-            }));
+            },
+            ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true)));
     }
 
     /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>
@@ -203,6 +209,54 @@ public sealed class AppHost : IAsyncDisposable
     /// </summary>
     public void SteamVrAllowedAgain() => steamVrChanged = false;
 
+    /// <summary>
+    /// Whether this Mirador is the installed one, the only caller the helper starts Monado as administrator for: its
+    /// path against the running helper's install folder (<see cref="HelperCommand.GetInstallFolder"/>), through the
+    /// helper's own test (<see cref="InstalledMirador.IsInstalledCopy"/>). Until the helper has answered (it isn't
+    /// running, or is older), the folder <c>HKLM\SOFTWARE\Mirador</c> <c>AppPath</c> names stands in. Never throws.
+    /// </summary>
+    /// <param name="askHelper">Ask the helper now (blocks for the pipe; not on the UI thread); false: the last answer.</param>
+    public bool IsInstalledCopy(bool askHelper)
+    {
+        if (askHelper)
+        {
+            helperInstallDir = AskHelperInstallDir();
+        }
+
+        return InstalledMirador.IsInstalledCopy(
+            Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Mirador.exe"),
+            helperInstallDir ?? RegisteredInstallDir());
+    }
+
+    private string? AskHelperInstallDir()
+    {
+        try
+        {
+            var reply = Helper.SendAsync(HelperCommand.GetInstallFolder, CancellationToken.None).GetAwaiter().GetResult();
+            return reply.Ok && !string.IsNullOrWhiteSpace(reply.Value) ? reply.Value : null;
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Couldn't ask the helper where it is installed", e);
+            return null;
+        }
+    }
+
+    /// <summary>The folder of <c>HKLM\SOFTWARE\Mirador</c> <c>AppPath</c> (the installer writes it), or null.</summary>
+    private static string? RegisteredInstallDir()
+    {
+        try
+        {
+            using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+            using var key = machine.OpenSubKey(@"SOFTWARE\Mirador");
+            return key?.GetValue("AppPath") is string path && path.Length > 0 ? Path.GetDirectoryName(path) : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private void OnSteamVrChecked(bool changed, string? reason)
     {
         steamVrChanged = changed;
@@ -214,10 +268,11 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Home's Monado card line while consent is on and the selected profile still runs as the user: because it uses a
-    /// build folder (or a module folder such as the Dream Air layer), or sets extra environment variables, or because
-    /// SteamVR's Lighthouse driver changed since the user allowed it (<see cref="SteamVrChangedReason"/>). Null when the
-    /// profile would run as administrator, or consent is off (Mirador.md §4.10 items 45 and 46).
+    /// Home's Monado card line while consent is on and the selected profile still runs as the user: because this copy
+    /// of Mirador isn't the installed one, the profile uses a build folder (or a module folder such as the Dream Air
+    /// layer) or sets extra environment variables (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own
+    /// test), or because SteamVR's Lighthouse driver changed since the user allowed it (<see cref="SteamVrChangedReason"/>).
+    /// Null when the profile would run as administrator, or consent is off (Mirador.md §4.10 items 45 and 46).
     /// </summary>
     public string? RunsAsYouReason()
     {
@@ -229,22 +284,9 @@ public sealed class AppHost : IAsyncDisposable
         try
         {
             var profile = Profiles.Load().Selected;
-            if (profile.Monado.Kind != SourceKind.Bundled)
-            {
-                return "Runs as you: this profile uses a build folder.";
-            }
-
-            if (profile.ExtraEnvironment.Count > 0)
-            {
-                return "Runs as you: this profile sets extra environment variables.";
-            }
-
-            if (profile.ModuleId is { } id && Modules.TryGetValue(id, out var module) && module.UsesExtraFolder(profile))
-            {
-                return "Runs as you: this profile uses a build folder.";
-            }
-
-            return steamVrChanged ? SteamVrChangedReason : null;
+            var module = profile.ModuleId is { } id ? Modules.GetValueOrDefault(id) : null;
+            return ElevatedChoice.RunsAsYouReason(profile, module, IsInstalledCopy(askHelper: false))
+                ?? (steamVrChanged ? SteamVrChangedReason : null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -312,6 +354,7 @@ public sealed class AppHost : IAsyncDisposable
         // would go unnoticed here.
         host.CheckStore("base stations", paths.BaseStationsFile, () => host.stationStore.Load());
         _ = Task.Run(host.StartStationsAsync);
+        _ = Task.Run(() => host.IsInstalledCopy(askHelper: true));
         host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
     }

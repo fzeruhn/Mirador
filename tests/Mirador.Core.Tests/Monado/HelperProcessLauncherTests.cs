@@ -25,16 +25,40 @@ public class HelperProcessLauncherTests
 
         public Task<HelperReply> SendAsync(HelperCommand command, CancellationToken ct) => SendAsync(new HelperRequest(command), ct);
 
+        /// <summary>
+        /// When set, Monado "ends" only after a Stop, and only once this many Wait polls after it have said it still runs
+        /// (as the helper's job takes a moment to end the process); <see cref="WaitReplies"/> is then not used.
+        /// </summary>
+        public int? PollsAfterStop { get; set; }
+
+        /// <summary>Whether the Stop has reached the helper.</summary>
+        public bool Stopped { get; private set; }
+
+        private int pollsSinceStop;
+
         public Task<HelperReply> SendAsync(HelperRequest request, CancellationToken ct)
         {
             Commands.Enqueue(request.Command);
             return Task.FromResult(request.Command switch
             {
                 HelperCommand.StartMonadoElevated => Started(request.Start),
+                HelperCommand.StopMonadoElevated => StopSent(),
+                HelperCommand.WaitMonadoElevated when PollsAfterStop is { } polls => AfterStop(polls),
                 HelperCommand.WaitMonadoElevated => WaitReplies.TryDequeue(out var r) ? r : new HelperReply(true),
                 _ => new HelperReply(true),
             });
         }
+
+        private HelperReply StopSent()
+        {
+            Stopped = true;
+            return new HelperReply(true);
+        }
+
+        private HelperReply AfterStop(int polls) =>
+            Stopped && Interlocked.Increment(ref pollsSinceStop) > polls
+                ? new HelperReply(true, Value: "0")
+                : new HelperReply(true);
 
         /// <summary>What the helper answers a Start with instead of starting Monado; null: it starts it.</summary>
         public HelperReply? StartRefusal { get; set; }
@@ -78,12 +102,14 @@ public class HelperProcessLauncherTests
     }
 
     private static HelperProcessLauncher Launcher(
-        FakeElevatedClient client, string logPath, IProcessLauncher? asUser = null, Action<bool, string?>? steamVrChecked = null) =>
+        FakeElevatedClient client, string logPath, IProcessLauncher? asUser = null, Action<bool, string?>? steamVrChecked = null,
+        TimeSpan? stopLimit = null) =>
         new(client, Start, logPath, asUser ?? new FakeUserLauncher())
         {
             PollInterval = TimeSpan.FromMilliseconds(20),
             FollowInterval = TimeSpan.FromMilliseconds(20),
             SteamVrChecked = steamVrChecked,
+            StopLimit = stopLimit ?? TimeSpan.FromSeconds(5),
         };
 
     [Fact]
@@ -206,12 +232,12 @@ public class HelperProcessLauncherTests
     public async Task Kill_sends_stop()
     {
         using var dir = new TempDir();
-        var client = new FakeElevatedClient();
+        var client = new FakeElevatedClient { PollsAfterStop = 0 };
 
         await using var process = Launcher(client, dir.File("log")).Start(Spec);
         process.Kill();
 
-        // The stop reaches the helper (the kill is best-effort and returns at once).
+        // The stop reaches the helper (the kill returns at once; disposing waits for the exit).
         var deadline = DateTime.UtcNow + Limit;
         while (!client.Commands.Contains(HelperCommand.StopMonadoElevated) && DateTime.UtcNow < deadline)
         {
@@ -219,5 +245,41 @@ public class HelperProcessLauncherTests
         }
 
         Assert.Contains(HelperCommand.StopMonadoElevated, client.Commands);
+    }
+
+    [Fact]
+    public async Task Dispose_after_kill_waits_for_the_exit()
+    {
+        using var dir = new TempDir();
+        var client = new FakeElevatedClient { PollsAfterStop = 3 };
+
+        var process = Launcher(client, dir.File("log")).Start(Spec);
+        process.Kill();
+        await process.DisposeAsync().AsTask().WaitAsync(Limit);
+
+        // Disposing returned only once the helper reported Monado's real exit (not the "unknown" -1 at once), so the
+        // next Start (Restart) finds no elevated Monado still running.
+        Assert.True(process.Exited.IsCompleted);
+        Assert.Equal(0, await process.Exited);
+        var commands = client.Commands.ToList();
+        var stopAt = commands.IndexOf(HelperCommand.StopMonadoElevated);
+        Assert.True(stopAt >= 0);
+        Assert.True(commands.Skip(stopAt + 1).Count(c => c == HelperCommand.WaitMonadoElevated) >= 4);
+    }
+
+    [Fact]
+    public async Task Dispose_after_kill_gives_up_at_the_limit()
+    {
+        using var dir = new TempDir();
+        var client = new FakeElevatedClient { PollsAfterStop = int.MaxValue }; // never ends
+
+        var process = Launcher(client, dir.File("log"), stopLimit: TimeSpan.FromMilliseconds(300)).Start(Spec);
+        process.Kill();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        await process.DisposeAsync().AsTask().WaitAsync(Limit);
+
+        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(250), $"returned after {clock.Elapsed}");
+        Assert.True(client.Stopped);
+        Assert.Equal(-1, await process.Exited);
     }
 }
