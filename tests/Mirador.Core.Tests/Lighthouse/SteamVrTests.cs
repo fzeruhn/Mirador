@@ -1,4 +1,4 @@
-using Mirador.Core.Lighthouse;
+using Mirador.Ipc;
 
 namespace Mirador.Core.Tests.Lighthouse;
 

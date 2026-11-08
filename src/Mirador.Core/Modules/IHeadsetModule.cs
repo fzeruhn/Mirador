@@ -18,6 +18,13 @@ public interface IHeadsetModule
     /// <summary>Whether Monado tracks this headset through SteamVR's Lighthouse driver, which can't share the receiver with SteamVR.</summary>
     bool UsesSteamVrLighthouse { get; }
 
+    /// <summary>
+    /// Whether this profile points the module at a folder of its own (such as a Dream Air layer folder): that keeps
+    /// Monado running as the user, since the elevated environment the helper builds carries no such path. The core
+    /// asks this without naming the layer.
+    /// </summary>
+    bool UsesExtraFolder(Profile profile) => false;
+
     /// <summary>Whether this headset is among the plugged-in <paramref name="devices"/>.</summary>
     bool IsPresent(IReadOnlySet<UsbId> devices);
 

@@ -1,3 +1,4 @@
+using System.Security.Principal;
 using Microsoft.Win32;
 using Mirador.Core;
 using Mirador.Core.BaseStations;
@@ -65,6 +66,9 @@ public sealed class AppHost : IAsyncDisposable
         Stations = new StationManager(radio, stationStore, StationSettings, TimeProvider.System, text => AppLog.Write(text));
 
         launcher = new JobProcessLauncher();
+        ElevatedConsent = new ElevatedConsent(new RegistryConsentValues());
+        var elevatedLogPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado", CurrentSid() + ".log");
         Session = new SessionController(new SessionDeps(
             Profiles,
             MonadoSettings,
@@ -76,7 +80,9 @@ public sealed class AppHost : IAsyncDisposable
             Runtime,
             StandInExe,
             UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e)),
-            Stations));
+            Stations,
+            ElevatedConsented: ElevatedMonadoAllowed,
+            ElevatedLauncher: start => new HelperProcessLauncher(Helper, start, elevatedLogPath)));
     }
 
     /// <summary>The folder Mirador.exe is in.</summary>
@@ -156,6 +162,74 @@ public sealed class AppHost : IAsyncDisposable
     public IReadOnlyDictionary<string, IHeadsetModule> Modules { get; }
 
     public SessionController Session { get; }
+
+    /// <summary>Which users allowed Monado to run as administrator (Mirador.md §4.10 item 44).</summary>
+    public ElevatedConsent ElevatedConsent { get; }
+
+    /// <summary>Whether the signed-in user allowed Monado to run as administrator; false when the registry can't be read.</summary>
+    public bool ElevatedMonadoAllowed()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return identity.User is { } sid && ElevatedConsent.IsAllowed(sid);
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Home's Monado card line while consent is on and the selected profile still runs as the user: because it uses a
+    /// build folder (or a module folder such as the Dream Air layer), or sets extra environment variables. Null when the
+    /// profile would run as administrator, or consent is off (Mirador.md §4.10 item 45).
+    /// </summary>
+    public string? RunsAsYouReason()
+    {
+        if (!ElevatedMonadoAllowed())
+        {
+            return null;
+        }
+
+        try
+        {
+            var profile = Profiles.Load().Selected;
+            if (profile.Monado.Kind != SourceKind.Bundled)
+            {
+                return "Runs as you: this profile uses a build folder.";
+            }
+
+            if (profile.ExtraEnvironment.Count > 0)
+            {
+                return "Runs as you: this profile sets extra environment variables.";
+            }
+
+            if (profile.ModuleId is { } id && Modules.TryGetValue(id, out var module) && module.UsesExtraFolder(profile))
+            {
+                return "Runs as you: this profile uses a build folder.";
+            }
+
+            return null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string CurrentSid()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return identity.User?.Value ?? "unknown";
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return "unknown";
+        }
+    }
 
     /// <summary>The SteamVR base stations: the Lighthouse page's list, Home's On and Off, and the session's own.</summary>
     public StationManager Stations { get; }

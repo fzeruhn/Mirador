@@ -132,6 +132,10 @@ public sealed partial class HomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasRuntimeNotice))]
     public partial string? RuntimeNotice { get; set; }
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRunsAsYouNotice))]
+    public partial string? RunsAsYouNotice { get; set; }
+
     /// <summary>The "OpenXR runtime" row of the runtimes card.</summary>
     [ObservableProperty]
     public partial StatusItem OpenXrRow { get; set; } = new("OpenXR runtime", "", StatusLevel.Info);
@@ -185,6 +189,8 @@ public sealed partial class HomeViewModel : ObservableObject
     public bool HasFailure => LastFailure is not null;
 
     public bool HasRuntimeNotice => RuntimeNotice is not null;
+
+    public bool HasRunsAsYouNotice => RunsAsYouNotice is not null;
 
     public bool HasRuntimeProblem => RuntimeProblem is not null;
 
@@ -573,6 +579,7 @@ public sealed partial class HomeViewModel : ObservableObject
         }
 
         RuntimeNotice = host.Session.RuntimeNotice;
+        RunsAsYouNotice = host.RunsAsYouReason();
         RefreshOpenVr(isActive, active);
     }
 

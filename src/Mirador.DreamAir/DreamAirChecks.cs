@@ -1,6 +1,6 @@
 using Mirador.Core;
-using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
+using Mirador.Ipc;
 
 namespace Mirador.DreamAir;
 

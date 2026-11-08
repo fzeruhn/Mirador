@@ -595,4 +595,108 @@ public sealed class HelperHandlerTests : IDisposable
 
         Assert.True(reply.Ok);
     }
+
+    // StartMonadoElevated / StopMonadoElevated / WaitMonadoElevated
+
+    private static readonly ElevatedStart Start = new(3000, 100, 6, false, "dreamair");
+
+    private HelperHandler ElevatedHandler(FakeElevated elevated)
+    {
+        Handler(); // writes the bundled manifest
+        return new HelperHandler(services, processes, registry, BundledManifest, elevated: elevated);
+    }
+
+    [Fact]
+    public async Task Start_elevated_passes_the_caller_and_settings_to_the_runner()
+    {
+        var elevated = new FakeElevated { StartReply = new HelperReply(true, Value: "9001") };
+
+        var reply = await ElevatedHandler(elevated).HandleAsync(new HelperRequest(HelperCommand.StartMonadoElevated, Start), Caller(Alice));
+
+        Assert.Equal("9001", reply.Value);
+        Assert.Equal(Start, elevated.StartedWith);
+        Assert.Equal(Alice, elevated.StartCaller?.Sid);
+    }
+
+    [Fact]
+    public async Task Start_elevated_without_a_caller_changes_nothing()
+    {
+        var elevated = new FakeElevated();
+
+        var reply = await ElevatedHandler(elevated).HandleAsync(new HelperRequest(HelperCommand.StartMonadoElevated, Start), caller: null);
+
+        Assert.False(reply.Ok);
+        Assert.Null(elevated.StartedWith);
+    }
+
+    [Fact]
+    public async Task Start_elevated_without_the_settings_is_refused()
+    {
+        var elevated = new FakeElevated();
+
+        var reply = await ElevatedHandler(elevated).HandleAsync(new HelperRequest(HelperCommand.StartMonadoElevated), Caller(Alice));
+
+        Assert.False(reply.Ok);
+        Assert.Null(elevated.StartedWith);
+    }
+
+    [Fact]
+    public async Task Start_elevated_without_a_runner_is_refused()
+    {
+        var reply = await Handler().HandleAsync(new HelperRequest(HelperCommand.StartMonadoElevated, Start), Caller(Alice));
+
+        Assert.False(reply.Ok);
+        Assert.False(string.IsNullOrWhiteSpace(reply.Error));
+    }
+
+    [Fact]
+    public async Task Stop_elevated_routes_to_the_runner()
+    {
+        var elevated = new FakeElevated();
+
+        var reply = await ElevatedHandler(elevated).HandleAsync(Request(HelperCommand.StopMonadoElevated), Caller(Alice));
+
+        Assert.True(reply.Ok);
+        Assert.Equal(Alice, elevated.StopCaller?.Sid);
+    }
+
+    [Fact]
+    public async Task Wait_elevated_returns_the_runners_answer()
+    {
+        var elevated = new FakeElevated { WaitReply = new HelperReply(true, Value: "5") };
+
+        var reply = await ElevatedHandler(elevated).HandleAsync(Request(HelperCommand.WaitMonadoElevated), Caller(Alice));
+
+        Assert.Equal("5", reply.Value);
+        Assert.Equal(Alice, elevated.WaitCaller?.Sid);
+    }
+
+    private sealed class FakeElevated : Mirador.Helper.ElevatedMonado.IElevatedMonado
+    {
+        public ElevatedStart? StartedWith { get; private set; }
+        public CallerInfo? StartCaller { get; private set; }
+        public CallerInfo? StopCaller { get; private set; }
+        public CallerInfo? WaitCaller { get; private set; }
+        public HelperReply StartReply { get; set; } = new(true, Value: "1");
+        public HelperReply WaitReply { get; set; } = new(true);
+
+        public HelperReply Start(ElevatedStart start, CallerInfo caller)
+        {
+            StartedWith = start;
+            StartCaller = caller;
+            return StartReply;
+        }
+
+        public HelperReply Stop(CallerInfo caller)
+        {
+            StopCaller = caller;
+            return new HelperReply(true);
+        }
+
+        public HelperReply Wait(CallerInfo caller)
+        {
+            WaitCaller = caller;
+            return WaitReply;
+        }
+    }
 }

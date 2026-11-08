@@ -1,7 +1,7 @@
 using System.Security;
 using Microsoft.Win32;
 
-namespace Mirador.Core.Lighthouse;
+namespace Mirador.Ipc;
 
 /// <summary>Finds SteamVR on this PC the way Monado's <c>steamvr_lh</c> driver does, to get at SteamVR's Lighthouse driver.</summary>
 public static class SteamVr
@@ -65,6 +65,10 @@ public static class SteamVr
     /// <summary>Where SteamVR keeps its Lighthouse driver, under <paramref name="steamVrDir"/>. Whether it is there is for the caller to check.</summary>
     public static string DriverLighthouse(string steamVrDir) =>
         Path.Combine(steamVrDir, "drivers", "lighthouse", "bin", "win64", "driver_lighthouse.dll");
+
+    /// <summary>The folder SteamVR's Lighthouse driver loads its DLLs from, under <paramref name="steamVrDir"/>.</summary>
+    public static string DriverLighthouseBinDir(string steamVrDir) =>
+        Path.Combine(steamVrDir, "drivers", "lighthouse", "bin", "win64");
 
     /// <summary>Steam's folder from the registry (<c>HKCU\Software\Valve\Steam</c>, value <c>SteamPath</c>), or null when Steam has not written it.</summary>
     public static string? SteamPathFromRegistry()

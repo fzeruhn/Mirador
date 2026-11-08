@@ -39,25 +39,20 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 
     /// <summary>
     /// The variables the Dream Air needs (Mirador.md §4.3): the launcher's, and the Dream Air drivers' log at info, whose
-    /// lines the board and eye tracker status come from (their default, warn, leaves those out).
+    /// lines the board and eye tracker status come from (their default, warn, leaves those out). The one table lives in
+    /// <see cref="DreamAirEnvironment"/>, so the elevated path (the helper) writes the same one.
     /// </summary>
     public static IReadOnlyList<EnvVar> FixedEnvironment { get; } =
-    [
-        new("STEAMVR_LH_ENABLE", "1"),
-        new("DREAMAIR_VK_LAYER", "1"),
-        new("DISABLE_RTSS_LAYER", "1"),
-        new("VK_LOADER_LAYERS_ALLOW", "VK_LAYER_DREAMAIR_nvapi_direct"),
-        new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
-        new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
-        new("U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS", "8.9"),
-        new("DREAMAIR_LOG", "info"),
-    ];
+        [.. DreamAirEnvironment.FixedEnvironment.Select(v => new EnvVar(v.Key, v.Value))];
 
     public string Id => ModuleId;
 
     public string DisplayName => "Pimax Dream Air";
 
     public bool UsesSteamVrLighthouse => true;
+
+    /// <summary>A profile with a layer folder keeps Monado running as the user: the elevated environment has no layer path.</summary>
+    public bool UsesExtraFolder(Profile profile) => LayerFolder(profile) is not null;
 
     public bool IsPresent(IReadOnlySet<UsbId> devices) =>
         devices.Contains(DreamAirIds.Board) || devices.Contains(DreamAirIds.EyeTracker);
