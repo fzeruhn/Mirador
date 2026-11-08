@@ -57,9 +57,8 @@ public sealed class AppHost : IAsyncDisposable
             Calibrations));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
         CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
-        OpenVr = new OpenVrGames(
-            new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir),
-            new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir));
+        OpenCompositeCopy = new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir);
+        OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir), OpenCompositeCopy);
 
         radio = new WinRtStationRadio(text => AppLog.Write(text));
         stationStore = new StationStore(paths.BaseStationsFile);
@@ -182,6 +181,9 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>Home's "OpenVR runtime" row and its "Set OpenComposite" (Mirador.md §4.6).</summary>
     public OpenVrGames OpenVr { get; }
+
+    /// <summary>Mirador's OpenComposite: the bundle and the per-user copy.</summary>
+    public OpenCompositeCopy OpenCompositeCopy { get; }
 
     /// <summary>Why OpenVR games couldn't be put on Monado, or the copy brought up to date, at launch; null when all is well.</summary>
     public string? OpenCompositeNotice { get; private set; }

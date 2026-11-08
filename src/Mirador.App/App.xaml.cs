@@ -20,6 +20,7 @@ public partial class App : Application
     private MainWindow? window;
     private TrayIcon? tray;
     private HomeViewModel? home;
+    private Updates? updates;
     private DispatcherQueue? ui;
     private bool lastStartFailed;
     private bool endedBadly;
@@ -58,6 +59,9 @@ public partial class App : Application
     /// <summary>Home's view model, made at start so that nothing that happens before Home opens is lost.</summary>
     public HomeViewModel Home => home ?? throw new InvalidOperationException("Mirador hasn't started yet.");
 
+    /// <summary>The check for newer releases, daily and on request.</summary>
+    public Updates Updates => updates ?? throw new InvalidOperationException("Mirador hasn't started yet.");
+
     /// <summary>The UI thread's queue, for handing work from background threads to it.</summary>
     public DispatcherQueue Ui => ui ?? throw new InvalidOperationException("Mirador hasn't started yet.");
 
@@ -81,6 +85,7 @@ public partial class App : Application
             host = AppHost.Create(AppContext.BaseDirectory, paths);
             Notifications.Register(() => Ui.TryEnqueue(() => MainWindow.ShowAndActivate()));
             home = new HomeViewModel(Host, Ui);
+            updates = new Updates(Host);
             window = new MainWindow();
             tray = new TrayIcon(() => MainWindow.ShowAndActivate(), () => MainWindow.ToggleFromTray(), StartOrStopAsync, SwitchStationsAsync, QuitAsync);
         }
@@ -93,6 +98,7 @@ public partial class App : Application
             return;
         }
 
+        Updates.Changed += () => Ui.TryEnqueue(() => Home.ShowUpdates(Updates.Last));
         Host.Stations.Changed += OnStationsChanged;
         UpdateStationItems();
         Host.Session.Changed += () => Ui.TryEnqueue(UpdateTray);
@@ -163,45 +169,16 @@ public partial class App : Application
         MainWindow.ShowAndActivate();
     }
 
-    /// <summary>At most once a day, when on: a newer release shows on Home.</summary>
+    /// <summary>At most once a day, when on: a newer release of Mirador or of OpenComposite shows on Home.</summary>
     private async Task CheckForUpdateAsync()
     {
-        AppSettings settings;
         try
         {
-            settings = Host.Settings.Load();
+            await Updates.CheckDailyAsync();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        if (!settings.CheckForUpdates || (settings.LastUpdateCheck is { } last && now - last < TimeSpan.FromDays(1) && last <= now))
-        {
-            return;
-        }
-
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        var (answered, found) = await UpdateCheck.CheckAsync(http, AppInfo.Version, CancellationToken.None);
-        if (!answered)
-        {
-            return; // offline or refused: the next launch asks again
-        }
-
-        try
-        {
-            Host.Settings.Save(Host.Settings.Load() with { LastUpdateCheck = now });
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            AppLog.Write("Couldn't record the update check", ex);
-        }
-
-        if (found is { } release)
-        {
-            AppLog.Write($"Mirador {release.Tag} is out: {release.Url}");
-            Home.ShowUpdate(release.Tag, release.Url);
+            AppLog.Write("The update check failed", ex);
         }
     }
 

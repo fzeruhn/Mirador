@@ -23,7 +23,66 @@ public class UpdateCheckTests
     [Fact]
     public void Parses_the_tag_and_page()
     {
-        Assert.Equal(("v0.2.0", "https://github.com/fzeruhn/mirador/releases/tag/v0.2.0"), UpdateCheck.ParseLatest(Latest));
+        Assert.Equal(new Release("v0.2.0", "https://github.com/fzeruhn/mirador/releases/tag/v0.2.0", null, null), UpdateCheck.ParseLatest(Latest));
+    }
+
+    private const string WithAsset = """
+        {
+          "html_url": "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20",
+          "tag_name": "v2026.11.20",
+          "draft": false,
+          "prerelease": false,
+          "assets": [
+            {
+              "name": "SOURCE.txt",
+              "browser_download_url": "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/SOURCE.txt",
+              "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "name": "OpenComposite-windows.zip",
+              "browser_download_url": "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-windows.zip",
+              "digest": "sha256:ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789"
+            }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void Parses_the_windows_zip_and_its_digest()
+    {
+        var release = UpdateCheck.ParseLatest(WithAsset);
+
+        Assert.Equal(
+            new Release(
+                "v2026.11.20",
+                "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20",
+                "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-windows.zip",
+                "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"),
+            release);
+    }
+
+    [Fact]
+    public void No_digest_no_sha()
+    {
+        var json = WithAsset.Replace("\"digest\": \"sha256:ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789\"", "\"digest\": null");
+
+        // Without a digest the zip can't be checked, so neither part is offered.
+        Assert.Equal(new Release("v2026.11.20", "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20", null, null), UpdateCheck.ParseLatest(json));
+    }
+
+    [Fact]
+    public void Prerelease_is_not_offered()
+    {
+        Assert.Null(UpdateCheck.ParseLatest(WithAsset.Replace("\"prerelease\": false", "\"prerelease\": true")));
+        Assert.Null(UpdateCheck.ParseLatest(WithAsset.Replace("\"draft\": false", "\"draft\": true")));
+    }
+
+    [Fact]
+    public void Date_versions_are_newer()
+    {
+        Assert.True(UpdateCheck.IsNewer("2026.11.06", "v2026.11.20"));
+        Assert.False(UpdateCheck.IsNewer("2026.11.20", "v2026.11.20"));
+        Assert.False(UpdateCheck.IsNewer("2027.1.2", "v2026.11.20"));
     }
 
     [Theory]
@@ -51,30 +110,33 @@ public class UpdateCheckTests
     }
 
     [Fact]
-    public async Task Check_returns_a_newer_release_and_asks_as_mirador()
+    public async Task Latest_returns_the_release_and_asks_as_mirador()
     {
         var handler = new Answer(HttpStatusCode.OK, Latest);
 
-        var (answered, newer) = await UpdateCheck.CheckAsync(new HttpClient(handler), "0.1.0", CancellationToken.None);
+        var (answered, latest) = await UpdateCheck.LatestAsync(new HttpClient(handler), UpdateCheck.MiradorRepository, "0.1.0", CancellationToken.None);
 
         Assert.True(answered);
-        Assert.Equal(("v0.2.0", "https://github.com/fzeruhn/mirador/releases/tag/v0.2.0"), newer);
-        Assert.Equal(UpdateCheck.Url, handler.Asked!.RequestUri!.ToString());
+        Assert.Equal("v0.2.0", latest!.Tag);
+        Assert.Equal("https://api.github.com/repos/fzeruhn/mirador/releases/latest", handler.Asked!.RequestUri!.ToString());
         Assert.Equal("Mirador/0.1.0", handler.Asked.Headers.UserAgent.ToString());
     }
 
     [Fact]
-    public async Task Nothing_newer_and_no_release_yet_are_answers()
+    public async Task Latest_not_found_is_answered_with_nothing()
     {
-        Assert.Equal((true, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.OK, Latest)), "0.2.0", CancellationToken.None));
-        Assert.Equal((true, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.NotFound, "{}")), "0.1.0", CancellationToken.None));
+        var handler = new Answer(HttpStatusCode.NotFound, "{}");
+
+        Assert.Equal((true, null), await UpdateCheck.LatestAsync(new HttpClient(handler), UpdateCheck.OpenCompositeRepository, "0.1.0", CancellationToken.None));
+        Assert.Equal("https://api.github.com/repos/fzeruhn/OpenComposite/releases/latest", handler.Asked!.RequestUri!.ToString());
     }
 
     [Fact]
-    public async Task Failures_arent_answers()
+    public async Task Server_error_is_not_answered()
     {
-        Assert.Equal((false, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(HttpStatusCode.Forbidden, "{}")), "0.1.0", CancellationToken.None));
-        Assert.Equal((false, null), await UpdateCheck.CheckAsync(new HttpClient(new Answer(null, "")), "0.1.0", CancellationToken.None));
+        Assert.Equal((false, null), await UpdateCheck.LatestAsync(new HttpClient(new Answer(HttpStatusCode.InternalServerError, "{}")), UpdateCheck.MiradorRepository, "0.1.0", CancellationToken.None));
+        Assert.Equal((false, null), await UpdateCheck.LatestAsync(new HttpClient(new Answer(HttpStatusCode.Forbidden, "{}")), UpdateCheck.MiradorRepository, "0.1.0", CancellationToken.None));
+        Assert.Equal((false, null), await UpdateCheck.LatestAsync(new HttpClient(new Answer(null, "")), UpdateCheck.MiradorRepository, "0.1.0", CancellationToken.None));
     }
 
     private sealed class Answer(HttpStatusCode? status, string body) : HttpMessageHandler
