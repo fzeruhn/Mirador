@@ -3,6 +3,7 @@ using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.Profiles;
+using Mirador.Ipc;
 
 namespace Mirador.Core.Session;
 
@@ -743,7 +744,8 @@ public sealed class SessionController(SessionDeps deps)
         RaiseStatusChanged();
         ct.ThrowIfCancellationRequested();
 
-        var process = deps.Launcher.Start(new ProcessSpec(
+        var launcher = ChooseLauncher(install, profile, module, run.Settings);
+        var process = launcher.Start(new ProcessSpec(
             install.ServiceExe, "", Path.GetDirectoryName(install.ServiceExe)!, environment));
         run.Process = process;
         Listen(run, process);
@@ -1103,6 +1105,33 @@ public sealed class SessionController(SessionDeps deps)
 
         var now = deps.Context.Processes.Snapshot();
         return unreadable.FirstOrDefault(p => now.Contains(p));
+    }
+
+    /// <summary>
+    /// Which launcher starts this Start: the helper's elevated one when the user allowed it, the profile runs the
+    /// bundled Monado, it sets no extra environment variables and its module points at no folder of its own; otherwise
+    /// the job launcher, which runs Monado as the user. Whatever the choice, the rest of the session is the same.
+    /// </summary>
+    private IProcessLauncher ChooseLauncher(MonadoInstall install, Profile profile, IHeadsetModule? module, MonadoSettings settings)
+    {
+        var eligible = deps.ElevatedLauncher is not null
+            && deps.ElevatedConsented?.Invoke() == true
+            && install.IsBundled
+            && profile.ExtraEnvironment.Count == 0
+            && !(module?.UsesExtraFolder(profile) ?? false);
+
+        if (!eligible)
+        {
+            return deps.Launcher;
+        }
+
+        var start = new ElevatedStart(
+            settings.LighthouseWaitMs,
+            settings.RenderScalePercent,
+            settings.CompositorMinTimeMs,
+            settings.StopWhenLastAppCloses,
+            module?.Id ?? "");
+        return deps.ElevatedLauncher!(start);
     }
 
     private static StartOutcome Fail(string message) => new(false, message);

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Mirador.Core.Lighthouse;
+namespace Mirador.Ipc;
 
 /// <summary>
 /// A value in a Valve KeyValues ("VDF") file: either a string (<see cref="Text"/>) or an object that holds more

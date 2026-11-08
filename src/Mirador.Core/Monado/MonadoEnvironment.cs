@@ -1,5 +1,5 @@
-using System.Globalization;
 using Mirador.Core.Profiles;
+using Mirador.Ipc;
 
 namespace Mirador.Core.Monado;
 
@@ -29,13 +29,12 @@ public static class MonadoEnvironment
             Set(env, name, value);
         }
 
-        Set(env, "LH_DISCOVER_WAIT_MS", Number(settings.LighthouseWaitMs));
-        Set(env, "XRT_COMPOSITOR_SCALE_PERCENTAGE", Number(settings.RenderScalePercent));
-        Set(env, "U_PACING_COMP_MIN_TIME_MS", Number(settings.CompositorMinTimeMs));
-        if (settings.StopWhenLastAppCloses)
-        {
-            Set(env, "IPC_EXIT_ON_DISCONNECT", "1");
-        }
+        MonadoSettingsEnvironment.Write(
+            (name, value) => Set(env, name, value),
+            settings.LighthouseWaitMs,
+            settings.RenderScalePercent,
+            settings.CompositorMinTimeMs,
+            settings.StopWhenLastAppCloses);
 
         foreach (var v in moduleFixed)
         {
@@ -49,8 +48,6 @@ public static class MonadoEnvironment
 
         return env;
     }
-
-    private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Sets a variable, or removes it when <paramref name="value"/> is empty. Removing first makes the new name's

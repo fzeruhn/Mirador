@@ -273,6 +273,14 @@
                     Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
 
                 <InfoBar
+                    Title="Monado"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasRunsAsYouNotice, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.RunsAsYouNotice, Mode=OneWay}"
+                    Severity="Informational"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+
+                <InfoBar
                     Title="OpenVR runtime"
                     IsClosable="False"
                     IsOpen="{x:Bind ViewModel.HasOpenVrProblem, Mode=OneWay}"

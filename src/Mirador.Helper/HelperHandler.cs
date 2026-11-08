@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Principal;
+using Mirador.Helper.ElevatedMonado;
 using Mirador.Ipc;
 
 namespace Mirador.Helper;
@@ -79,6 +80,8 @@ public sealed class HelperHandler
     private const string BundledMissing = "This Mirador has no bundled Monado.";
     private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
     private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
+    private const string NoElevated = "Mirador's helper service can't start Monado as administrator.";
+    private const string NoStart = "Mirador's helper service was asked to start Monado as administrator without any settings.";
     private const string UnknownCommand = "Mirador's helper service doesn't know that command.";
     // A message goes into one protocol line, where JSON writes each character outside ASCII as six bytes (\uXXXX).
     private const int MaxErrorLength = 600;
@@ -89,21 +92,24 @@ public sealed class HelperHandler
     private readonly IRuntimeRegistry registry;
     private readonly string bundledManifest;
     private readonly ElevatedConsent? consent;
+    private readonly IElevatedMonado? elevated;
     private readonly string version;
     private readonly object gate = new();
 
     /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
     /// <param name="version">What <see cref="HelperCommand.Ping"/> answers; the helper's own version when null.</param>
     /// <param name="consent">Where users' consent to run Monado as administrator is; without it, revoking fails with a message.</param>
+    /// <param name="elevated">Starts and stops the elevated Monado; without it, the elevated commands fail with a message.</param>
     public HelperHandler(
         IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
-        string? version = null, ElevatedConsent? consent = null)
+        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null)
     {
         this.services = services;
         this.processes = processes;
         this.registry = registry;
         this.bundledManifest = Path.GetFullPath(bundledManifest);
         this.consent = consent;
+        this.elevated = elevated;
         this.version = version ?? OwnVersion();
     }
 
@@ -119,7 +125,7 @@ public sealed class HelperHandler
     /// <param name="request">What the caller sent.</param>
     /// <param name="caller">Who the caller is, from the pipe (never from the request); null when that couldn't be learned.</param>
     public Task<HelperReply> HandleAsync(HelperRequest request, CallerInfo? caller = null) =>
-        Task.Run(() => Handle(request.Command, caller));
+        Task.Run(() => Handle(request, caller));
 
     /// <summary>
     /// For the uninstaller only (<c>--restore-runtime</c>), never over the pipe: puts back the OpenXR runtime that
@@ -129,12 +135,20 @@ public sealed class HelperHandler
     /// </summary>
     public Task<HelperReply> RestoreRuntimeAsync() => Task.Run(() => Locked(RestoreRuntime));
 
-    private HelperReply Handle(HelperCommand command, CallerInfo? caller)
+    private HelperReply Handle(HelperRequest request, CallerInfo? caller)
     {
-        // Ping touches nothing on the machine, so it never waits for a request that is (perhaps for a long time) changing it.
+        var command = request.Command;
+
+        // Ping and Wait touch no machine state, so they don't wait behind a request that is (perhaps for a long time)
+        // changing it: Wait is polled every half-second while a session runs and must answer at once.
         if (command == HelperCommand.Ping)
         {
             return new HelperReply(true, Value: version);
+        }
+
+        if (command == HelperCommand.WaitMonadoElevated)
+        {
+            return WaitMonadoElevated(caller);
         }
 
         return Locked(() => command switch
@@ -144,8 +158,48 @@ public sealed class HelperHandler
             HelperCommand.StartPimax => StartPimax(),
             HelperCommand.GetPimaxEyeBlob => GetPimaxEyeBlob(),
             HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
+            HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
+            HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
             _ => new HelperReply(false, UnknownCommand),
         });
+    }
+
+    /// <summary>Starts the elevated Monado for the caller (never from a path the request names; the runner does the checks).</summary>
+    private HelperReply StartMonadoElevated(ElevatedStart? start, CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        if (elevated is null)
+        {
+            return new HelperReply(false, NoElevated);
+        }
+
+        return start is null ? new HelperReply(false, NoStart) : elevated.Start(start, caller);
+    }
+
+    /// <summary>Ends the elevated Monado this caller started.</summary>
+    private HelperReply StopMonadoElevated(CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        return elevated is null ? new HelperReply(false, NoElevated) : elevated.Stop(caller);
+    }
+
+    /// <summary>Whether this caller's elevated Monado has ended, and its exit code; outside the lock, answered at once.</summary>
+    private HelperReply WaitMonadoElevated(CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        return elevated is null ? new HelperReply(false, NoElevated) : elevated.Wait(caller);
     }
 
     /// <summary>Runs one step that changes the machine, one at a time; an exception becomes an error reply.</summary>

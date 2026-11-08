@@ -2,6 +2,7 @@ using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.Profiles;
 using Mirador.Core.Runtime;
+using Mirador.Ipc;
 
 namespace Mirador.Core.Session;
 
@@ -17,6 +18,8 @@ namespace Mirador.Core.Session;
 /// <param name="StandInExe">Mirador's own copy of the stand-in, copied into build folders.</param>
 /// <param name="InheritedEnvironment">The environment <c>monado-service</c> starts from: the user's default one (<c>UserEnvironment.Default</c>), not Mirador's, which may be a game's.</param>
 /// <param name="Hook">Told when a session starts and when it ends (the base stations); null: nobody.</param>
+/// <param name="ElevatedConsented">Whether the current user allowed Monado to run as administrator; null: never (the job launcher is always used).</param>
+/// <param name="ElevatedLauncher">Builds the launcher that starts Monado as administrator through the helper for the given settings; null: no elevated path.</param>
 public sealed record SessionDeps(
     ProfileStore Profiles,
     MonadoSettingsStore MonadoSettings,
@@ -28,4 +31,6 @@ public sealed record SessionDeps(
     OpenXrRuntime Runtime,
     string StandInExe,
     IReadOnlyDictionary<string, string> InheritedEnvironment,
-    ISessionHook? Hook = null);
+    ISessionHook? Hook = null,
+    Func<bool>? ElevatedConsented = null,
+    Func<ElevatedStart, IProcessLauncher>? ElevatedLauncher = null);

@@ -11,6 +11,12 @@ public interface IHelperClient
     /// <c>Ok = false</c> with a message for the user. Only cancelling <paramref name="ct"/> throws.
     /// </summary>
     Task<HelperReply> SendAsync(HelperCommand command, CancellationToken ct);
+
+    /// <summary>
+    /// Sends a request that carries typed values (<see cref="HelperCommand.StartMonadoElevated"/>). The default drops the
+    /// values and sends the command alone, which is right for every command that has none; the real client overrides it.
+    /// </summary>
+    Task<HelperReply> SendAsync(HelperRequest request, CancellationToken ct) => SendAsync(request.Command, ct);
 }
 
 /// <summary>Talks to the helper over its named pipe: one connection and one line each way per command.</summary>
@@ -30,7 +36,10 @@ public sealed class HelperClient(string pipeName = "mirador-helper") : IHelperCl
     /// <summary>How long the helper has to take the request and answer it. Stopping Pimax's service can take 20 s.</summary>
     internal TimeSpan ReplyTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
-    public async Task<HelperReply> SendAsync(HelperCommand command, CancellationToken ct)
+    public Task<HelperReply> SendAsync(HelperCommand command, CancellationToken ct) =>
+        SendAsync(new HelperRequest(command), ct);
+
+    public async Task<HelperReply> SendAsync(HelperRequest request, CancellationToken ct)
     {
         // Identification: a program that sits on the pipe name can see who connected but can't act as them.
         await using var pipe = new NamedPipeClientStream(
@@ -52,7 +61,7 @@ public sealed class HelperClient(string pipeName = "mirador-helper") : IHelperCl
         timeout.CancelAfter(ReplyTimeout);
         try
         {
-            await LineCodec.WriteAsync(pipe, new HelperRequest(command), timeout.Token).ConfigureAwait(false);
+            await LineCodec.WriteAsync(pipe, request, timeout.Token).ConfigureAwait(false);
             return await LineCodec.ReadAsync<HelperReply>(pipe, timeout.Token).ConfigureAwait(false)
                 ?? new HelperReply(false, Unreadable);
         }
