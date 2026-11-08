@@ -108,6 +108,10 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Show();
         Activate();
+
+        // Activate() alone leaves a window that is shown but behind others where it is; the tray icon's click, or the
+        // pipe's SHOW from a second Mirador, gives this process the right to take the foreground.
+        SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
     }
 
     /// <summary>When the window last lost the focus: a click on the tray icon deactivates it before Mirador hears of the click.</summary>
@@ -296,6 +300,10 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr window);
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
