@@ -42,7 +42,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     {
         this.consent = consent;
         this.signer = signer ?? WinTrustSigner.SubjectOf;
-        installDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
+        installDir = HelperHandler.DefaultInstallDir;
         serverDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "monado", "server"));
         serviceExe = Path.Combine(serverDir, "monado-service.exe");
         logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado");
@@ -201,18 +201,12 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
         }
     }
 
-    /// <summary>The caller's own folders, from its environment block, with the temp folder as Monado reads it.</summary>
-    private static UserFolders ReadUserFolders(SafeAccessTokenHandle userToken)
-    {
-        var block = EnvironmentBlock(userToken);
-        var profile = block.GetValueOrDefault("USERPROFILE", "");
-        var temp = TempPathUnderUser(userToken) ?? block.GetValueOrDefault("TEMP") ?? block.GetValueOrDefault("TMP") ?? profile;
-        return new UserFolders(
-            profile,
-            block.GetValueOrDefault("APPDATA", Path.Combine(profile, "AppData", "Roaming")),
-            block.GetValueOrDefault("LOCALAPPDATA", Path.Combine(profile, "AppData", "Local")),
-            temp);
-    }
+    /// <summary>
+    /// The caller's own folders and temp, from its environment block (<see cref="UserFolders.FromBlock"/>). Not
+    /// <c>GetTempPath2</c> while impersonating: that reads the helper's own (SYSTEM) environment, never the user's.
+    /// </summary>
+    private static UserFolders ReadUserFolders(SafeAccessTokenHandle userToken) =>
+        UserFolders.FromBlock(EnvironmentBlock(userToken));
 
     private static Dictionary<string, string> EnvironmentBlock(SafeAccessTokenHandle userToken)
     {
@@ -247,24 +241,6 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 
         return found;
     }
-
-    /// <summary>What <c>GetTempPath2</c> returns for the caller (as Monado reads it), or null when it can't be read.</summary>
-    private static string? TempPathUnderUser(SafeAccessTokenHandle userToken) =>
-        AsUser(userToken, () =>
-        {
-            var buffer = new System.Text.StringBuilder(600);
-            uint length;
-            try
-            {
-                length = GetTempPath2W((uint)buffer.Capacity, buffer);
-            }
-            catch (EntryPointNotFoundException)
-            {
-                length = GetTempPathW((uint)buffer.Capacity, buffer); // before Windows 11
-            }
-
-            return length is > 0 and < 600 ? buffer.ToString() : null;
-        });
 
     private static string? ReadCallerSteamPath(SafeAccessTokenHandle userToken) =>
         AsUser(userToken, () =>
@@ -491,12 +467,6 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     [DllImport("userenv.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DestroyEnvironmentBlock(IntPtr environment);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetTempPath2W(uint bufferLength, System.Text.StringBuilder buffer);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetTempPathW(uint bufferLength, System.Text.StringBuilder buffer);
 
     /// <summary>A hold that holds nothing (no SteamVR to keep).</summary>
     private sealed class EmptyHold : IDisposable

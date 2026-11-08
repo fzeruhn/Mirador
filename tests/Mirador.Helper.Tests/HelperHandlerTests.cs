@@ -40,6 +40,22 @@ public sealed class HelperHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Get_install_folder_answers_the_helpers_install_folder()
+    {
+        var handler = new HelperHandler(services, processes, registry, BundledManifest, installDir: @"D:\Portable\Mirador");
+
+        var reply = await handler.HandleAsync(Request(HelperCommand.GetInstallFolder));
+
+        Assert.True(reply.Ok);
+        Assert.Equal(@"D:\Portable\Mirador", reply.Value);
+
+        // By default the folder above the helper's own, the folder the elevated start checks the caller against.
+        var own = await Handler().HandleAsync(Request(HelperCommand.GetInstallFolder));
+        Assert.Equal(HelperHandler.DefaultInstallDir, own.Value);
+        Assert.Equal(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..")), own.Value);
+    }
+
+    [Fact]
     public async Task Ping_without_a_given_version_reports_the_assembly_version()
     {
         var reply = await Handler().HandleAsync(Request(HelperCommand.Ping));

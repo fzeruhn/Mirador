@@ -275,5 +275,55 @@ public class ElevatedConsentTests
         Assert.Contains("AitH264Capture.dll", error);
         Assert.Contains("not allowed", error);
     }
-}
 
+    [Fact]
+    public void Revoking_the_last_consent_removes_the_empty_keys()
+    {
+        // The real registry code, under HKCU (a test can't write HKLM), in a key of its own that is removed again.
+        var root = @"Software\Mirador.Tests\" + Guid.NewGuid().ToString("N");
+        var keyPath = root + @"\ElevatedMonado";
+        var filesPath = root + @"\ElevatedMonadoFiles";
+        try
+        {
+            var consent = new ElevatedConsent(new RegistryConsentValues(Microsoft.Win32.RegistryHive.CurrentUser, keyPath, filesPath));
+            consent.Allow(Alice, new Dictionary<string, string> { ["ArcturusPerception.dll"] = HashA });
+            consent.Allow(Bob, new Dictionary<string, string> { ["ArcturusPerception.dll"] = HashB });
+
+            // Another user's consent is still there: the keys stay, with only that user's values.
+            consent.Revoke(Alice);
+            Assert.False(consent.IsAllowed(Alice));
+            Assert.True(consent.IsAllowed(Bob));
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(keyPath))
+            {
+                Assert.Equal([Bob.Value], key!.GetValueNames());
+            }
+
+            using (var files = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(filesPath))
+            {
+                Assert.Equal([Bob.Value], files!.GetValueNames());
+            }
+
+            // The last one goes: neither key is left behind, and the parent (where AppPath lives) stays.
+            consent.Revoke(Bob);
+            Assert.Null(Microsoft.Win32.Registry.CurrentUser.OpenSubKey(keyPath));
+            Assert.Null(Microsoft.Win32.Registry.CurrentUser.OpenSubKey(filesPath));
+            using (var parent = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(root))
+            {
+                Assert.NotNull(parent);
+            }
+
+            // Revoking again, with nothing there, is fine.
+            consent.Revoke(Bob);
+            Assert.False(consent.IsAllowed(Bob));
+        }
+        finally
+        {
+            Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(root, throwOnMissingSubKey: false);
+            using var tests = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Mirador.Tests", writable: true);
+            if (tests is { SubKeyCount: 0, ValueCount: 0 })
+            {
+                Microsoft.Win32.Registry.CurrentUser.DeleteSubKey(@"Software\Mirador.Tests", throwOnMissingSubKey: false);
+            }
+        }
+    }
+}
