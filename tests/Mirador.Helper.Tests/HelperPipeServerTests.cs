@@ -14,6 +14,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
     private readonly FakeServiceControl services = new() { Running = true };
     private readonly FakeProcessControl processes = new();
     private readonly FakeRuntimeRegistry registry = new();
+    private readonly FakeConsentValues consentValues = new();
     private readonly ListLogger<HelperPipeServer> logger = new();
     private readonly FakeLifetime lifetime = new();
     private HelperPipeServer server = null!;
@@ -36,7 +37,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         var manifest = temp.File(@"monado\runtime\openxr_monado.json");
         Directory.CreateDirectory(Path.GetDirectoryName(manifest)!);
         File.WriteAllText(manifest, "{}");
-        return new HelperHandler(services, processes, registry, manifest, "9.9.9");
+        return new HelperHandler(services, processes, registry, manifest, "9.9.9", new Mirador.Ipc.ElevatedConsent(consentValues));
     }
 
     private HelperPipeServer NewServer(string name, TimeSpan? readLimit = null) =>
@@ -118,6 +119,20 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
         var reply = await new HelperClient(pipeName).SendAsync(HelperCommand.StopPimax, CancellationToken.None);
 
         Assert.Equal(new HelperReply(false, "Pimax's service won't stop.", WasRunning: true), reply);
+    }
+
+    [ElevatedFact]
+    public async Task Revoking_over_the_pipe_deletes_the_consent_of_whoever_connected()
+    {
+        // The helper learns the caller from the pipe: this process's user, never anything in the request.
+        var me = WindowsIdentity.GetCurrent().User!.Value;
+        consentValues.Sids.Add(me);
+        consentValues.Sids.Add("S-1-5-21-1-2-3-1002");
+
+        var reply = await new HelperClient(pipeName).SendAsync(HelperCommand.RevokeElevatedMonado, CancellationToken.None);
+
+        Assert.True(reply.Ok, reply.Error);
+        Assert.Equal(["S-1-5-21-1-2-3-1002"], consentValues.Sids);
     }
 
     [ElevatedFact]

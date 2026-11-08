@@ -58,4 +58,13 @@ public class AppArgsTests
     {
         Assert.Equal(new AppArgs(true, true, null), AppArgs.Parse(["--START", "-Embedding", "--Background", "x"]));
     }
+
+    [Fact]
+    public void Parses_allow_elevated_monado()
+    {
+        Assert.True(AppArgs.Parse(["--allow-elevated-monado"]).AllowElevatedMonado);
+        Assert.True(AppArgs.Parse(["--Allow-Elevated-Monado"]).AllowElevatedMonado);
+        Assert.False(AppArgs.Parse(["--start"]).AllowElevatedMonado);
+        Assert.False(AppArgs.Parse([]).AllowElevatedMonado);
+    }
 }

@@ -45,6 +45,14 @@
                 </StackPanel>
             </toolkit:SettingsCard>
 
+            <TextBlock Style="{StaticResource SectionHeader}" Text="Monado" />
+            <toolkit:SettingsCard
+                Description="{x:Bind ViewModel.RunMonadoAsAdministratorDescription, Mode=OneWay}"
+                Header="Run Monado as administrator"
+                IsEnabled="{x:Bind ViewModel.CanChangeRunMonadoAsAdministrator, Mode=OneWay}">
+                <ToggleSwitch IsOn="{x:Bind ViewModel.RunMonadoAsAdministrator, Mode=TwoWay}" />
+            </toolkit:SettingsCard>
+
             <TextBlock Style="{StaticResource SectionHeader}" Text="About" />
             <toolkit:SettingsCard Description="Runs Monado, the open-source OpenXR runtime, on Windows. Boost Software License 1.0." Header="{x:Bind ViewModel.Version}">
                 <HyperlinkButton Content="github.com/fzeruhn/Mirador" NavigateUri="https://github.com/fzeruhn/Mirador" />

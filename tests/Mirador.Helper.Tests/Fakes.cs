@@ -160,3 +160,24 @@ internal sealed class FakeRuntimeRegistry : IRuntimeRegistry
         Writes++;
     }
 }
+
+/// <summary>The consent values in memory; nothing touches the registry.</summary>
+internal sealed class FakeConsentValues : Mirador.Ipc.IConsentValues
+{
+    public HashSet<string> Sids { get; } = [];
+    public Exception? Fails { get; set; }
+
+    public bool Has(string sid) => Sids.Contains(sid);
+
+    public void Set(string sid) => Sids.Add(sid);
+
+    public void Delete(string sid)
+    {
+        if (Fails is not null)
+        {
+            throw Fails;
+        }
+
+        Sids.Remove(sid);
+    }
+}
