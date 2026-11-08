@@ -82,10 +82,20 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>The "OpenComposite" card of About: <c>OpenComposite 2026.11.06 (7534249)</c>.</summary>
     public string OpenCompositeHeader =>
-        host.OpenCompositeCopy.BundleSource is { } source ? $"OpenComposite {source.Describe()}" : "OpenComposite (not in this build)";
+        (host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource) is { } source ? $"OpenComposite {source.Describe()}" : "OpenComposite (not in this build)";
 
-    /// <summary>Where this OpenComposite came from; "Updated from GitHub." is Task 48's.</summary>
-    public string OpenCompositeDescription => "Bundled with Mirador.";
+    /// <summary>Where this OpenComposite came from.</summary>
+    public string OpenCompositeDescription => host.OpenCompositeCopy.HoldsDownload ? "Bundled with Mirador. Updated from GitHub." : "Bundled with Mirador.";
+
+    /// <summary>Whether the copy holds a download, so "Use the bundled OpenComposite" shows.</summary>
+    public bool HoldsDownload => host.OpenCompositeCopy.HoldsDownload;
+
+    private void OpenCompositeChanged()
+    {
+        OnPropertyChanged(nameof(OpenCompositeHeader));
+        OnPropertyChanged(nameof(OpenCompositeDescription));
+        OnPropertyChanged(nameof(HoldsDownload));
+    }
 
     public void Dispose() => App.Current.Updates.Changed -= OnUpdatesChanged;
 
@@ -125,6 +135,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task CheckNowAsync()
     {
         Checking = true;
+        outcome = null;
         try
         {
             await App.Current.Updates.CheckAsync();
@@ -143,6 +154,18 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     private bool CanCheckNow() => !Checking;
 
+    // The last Update/Use-bundled outcome. The re-check inside those queues ShowReport, which may run before or after
+    // the outcome is known; ShowReport puts the outcome in front of the report, and ShowOutcome sets the same text, so
+    // either order ends with the same line.
+    private string? outcome;
+
+    private async Task ShowOutcome(Task<string> operation)
+    {
+        outcome = null;
+        outcome = await operation;
+        ShowReport();
+    }
+
     /// <summary>An update check, daily or asked for, finished on whichever thread.</summary>
     private void OnUpdatesChanged() => ui.TryEnqueue(ShowReport);
 
@@ -154,7 +177,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        UpdatesText = report.Describe();
+        UpdatesText = outcome is null ? report.Describe() : $"{outcome} {report.Describe()}";
         MiradorReleaseUrl = report.NewerMirador is { } m && Uri.TryCreate(m.Url, UriKind.Absolute, out var url) ? url : null;
         CanUpdateOpenComposite = report.NewerOpenComposite is { WindowsZipUrl: not null } && updates.CanUpdateOpenComposite;
     }
@@ -169,13 +192,33 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            await App.Current.Updates.UpdateOpenCompositeAsync(release);
+            Problem = null;
+            await ShowOutcome(App.Current.Updates.UpdateOpenCompositeAsync(release));
         }
         catch (Exception e)
         {
             AppLog.Write("Updating OpenComposite failed", e);
             Problem = $"Updating OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
         }
+
+        OpenCompositeChanged();
+    }
+
+    [RelayCommand]
+    private async Task UseBundledOpenCompositeAsync()
+    {
+        try
+        {
+            Problem = null;
+            await ShowOutcome(App.Current.Updates.UseBundledOpenCompositeAsync());
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Going back to the bundled OpenComposite failed", e);
+            Problem = $"Going back to the bundled OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
+        }
+
+        OpenCompositeChanged();
     }
 
     partial void OnCloseToTrayChanged(bool value) => Save(s => s with { CloseToTray = value });

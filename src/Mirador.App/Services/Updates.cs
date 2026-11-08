@@ -69,21 +69,69 @@ public sealed class Updates(AppHost host)
     public event Action? Changed;
 
     /// <summary>
-    /// The OpenComposite Mirador runs (the one place that says so: Task 48 puts the copy's own version
-    /// (<c>OpenCompositeCopy.CopySource</c>) ahead of the bundle's).
+    /// The OpenComposite Mirador runs (the one place that says so): the per-user copy's, else the bundle's.
     /// </summary>
-    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.BundleSource;
+    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource;
 
-    /// <summary>Whether OpenComposite can be updated from the notice and the Updates card. Off until Task 48 can do it.</summary>
-    public bool CanUpdateOpenComposite => false;
+    /// <summary>Whether OpenComposite can be updated from the notice and the Updates card.</summary>
+    public bool CanUpdateOpenComposite => true;
 
     /// <summary>
-    /// The Task 48 entry point of the "Update" buttons: downloads <paramref name="release"/>'s Windows zip, checks it
-    /// against <see cref="Release.WindowsZipSha256"/> and puts it in place. It must throw nothing but tell the user why
-    /// it failed; the buttons stay hidden while <see cref="CanUpdateOpenComposite"/> is false.
+    /// The "Update" buttons: downloads <paramref name="release"/>'s Windows zip, checks it against
+    /// <see cref="Release.WindowsZipSha256"/> and puts it in the per-user copy, then asks GitHub again.
     /// </summary>
-    public Task UpdateOpenCompositeAsync(Release release) =>
-        throw new NotImplementedException("Task 48 updates OpenComposite from the release.");
+    /// <returns>What happened, in words for the user.</returns>
+    /// <exception cref="MiradorException">Why nothing changed.</exception>
+    public async Task<string> UpdateOpenCompositeAsync(Release release)
+    {
+        var copy = host.OpenCompositeCopy;
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Mirador/{AppInfo.Version}");
+        var folder = await OpenCompositeDownload.FetchAsync(http, release, copy.DownloadRoot, CancellationToken.None);
+
+        CopyOutcome outcome;
+        try
+        {
+            outcome = await Task.Run(() => copy.Install(folder));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new MiradorException($"Mirador couldn't put OpenComposite in place ({e.Message.Trim().TrimEnd('.')})");
+        }
+
+        var message = outcome == CopyOutcome.InUse
+            ? "OpenComposite will be updated when no game uses it."
+            : $"OpenComposite {UpdateReport.Plain(release.Tag)} is in place.";
+        AppLog.Write(message);
+        await CheckAsync();
+        return message;
+    }
+
+    /// <summary>"Use the bundled OpenComposite": puts the bundled one back and deletes the downloads, then asks GitHub again.</summary>
+    /// <returns>What happened, in words for the user.</returns>
+    /// <exception cref="MiradorException">Why nothing changed.</exception>
+    public async Task<string> UseBundledOpenCompositeAsync()
+    {
+        CopyOutcome outcome;
+        try
+        {
+            outcome = await Task.Run(host.OpenCompositeCopy.UseBundled);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new MiradorException($"Mirador couldn't put the bundled OpenComposite back ({e.Message.Trim().TrimEnd('.')})");
+        }
+
+        var message = outcome switch
+        {
+            CopyOutcome.InUse => "A game is using OpenComposite. Close it and try again.",
+            CopyOutcome.NoBundle => "OpenComposite isn't in this Mirador build.",
+            _ => "The bundled OpenComposite is in place.",
+        };
+        AppLog.Write(message);
+        await CheckAsync();
+        return message;
+    }
 
     /// <summary>The daily check at launch: only when it is on and a day has passed since the last. Null when it didn't ask.</summary>
     public async Task<UpdateReport?> CheckDailyAsync()

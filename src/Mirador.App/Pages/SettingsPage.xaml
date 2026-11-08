@@ -49,8 +49,14 @@
             <toolkit:SettingsCard Description="Runs Monado, the open-source OpenXR runtime, on Windows. Boost Software License 1.0." Header="{x:Bind ViewModel.Version}">
                 <HyperlinkButton Content="github.com/fzeruhn/Mirador" NavigateUri="https://github.com/fzeruhn/Mirador" />
             </toolkit:SettingsCard>
-            <toolkit:SettingsCard Description="{x:Bind ViewModel.OpenCompositeDescription}" Header="{x:Bind ViewModel.OpenCompositeHeader}">
-                <HyperlinkButton Content="github.com/fzeruhn/OpenComposite" NavigateUri="https://github.com/fzeruhn/OpenComposite" />
+            <toolkit:SettingsCard Description="{x:Bind ViewModel.OpenCompositeDescription, Mode=OneWay}" Header="{x:Bind ViewModel.OpenCompositeHeader, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button
+                        Command="{x:Bind ViewModel.UseBundledOpenCompositeCommand}"
+                        Content="Use the bundled OpenComposite"
+                        Visibility="{x:Bind ViewModel.HoldsDownload, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
+                    <HyperlinkButton Content="github.com/fzeruhn/OpenComposite" NavigateUri="https://github.com/fzeruhn/OpenComposite" />
+                </StackPanel>
             </toolkit:SettingsCard>
         </StackPanel>
         </c:PageColumn>
