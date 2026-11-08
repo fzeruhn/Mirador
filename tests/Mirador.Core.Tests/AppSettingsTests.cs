@@ -96,4 +96,13 @@ public class AppSettingsTests
         Assert.Contains("\"baseStationsOffAtMiradorQuit\": true", text);
         Assert.Equal(settings, store.Load());
     }
+
+    [Fact]
+    public void Old_file_gets_start_minimized_on()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(dir.File("settings.json"), """{"closeToTray": false}""");
+
+        Assert.True(new AppSettingsStore(dir.File("settings.json")).Load().StartMinimized);
+    }
 }

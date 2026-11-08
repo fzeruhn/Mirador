@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Mirador.Core;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Runtime;
+using Mirador.Core.SignIn;
 using Mirador.Ipc;
 
 namespace Mirador.App;
@@ -39,6 +40,20 @@ public static partial class Program
             catch (Exception)
             {
                 return 1; // the copy stays, so games still find their DLL; the uninstaller logs the exit code
+            }
+        }
+
+        // The uninstaller's other step: Mirador no longer starts at sign-in. HKCU only, so no elevation needed.
+        if (parsed.RemoveSignIn)
+        {
+            try
+            {
+                new SignInStartup(new RegistryRunKeys(), Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Mirador.exe")).TurnOff();
+                return 0;
+            }
+            catch (Exception)
+            {
+                return 1; // the Run value stays, and Windows would start a Mirador that is gone; the uninstaller logs the exit code
             }
         }
 
@@ -82,9 +97,9 @@ public static partial class Program
     /// <summary>Hands a second start to the Mirador already running: start Monado, or show the window.</summary>
     private static int AskTheFirst(AppArgs parsed)
     {
-        if (parsed.Background && !parsed.Start)
+        if ((parsed.Background || parsed.SignIn) && !parsed.Start)
         {
-            return 0; // a stand-in raced another one to start Mirador: it runs, and nothing should pop up over the game
+            return 0; // a stand-in or the sign-in start raced another Mirador: it runs, and nothing should pop up over the game
         }
 
         // The first Mirador may then bring its window to the front (Windows lets only the foreground program do that).

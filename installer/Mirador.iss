@@ -213,6 +213,12 @@ begin
   else if Code <> 0 then
     Log(Format('Mirador.exe --restore-openvr: exit code %d (the OpenVR paths file could not be changed).', [Code]));
 
+  { Mirador no longer starts at sign-in (Mirador.md section 4.8 item 33): the Run value is the uninstalling user's. }
+  if not Exec(ExpandConstant('{app}\Mirador.exe'), '--remove-sign-in', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+    Log('Mirador.exe --remove-sign-in could not be started.')
+  else if Code <> 0 then
+    Log(Format('Mirador.exe --remove-sign-in: exit code %d (the start at sign-in could not be removed).', [Code]));
+
   Ours := ExpandConstant('{app}\monado\runtime\openxr_monado.json');
   if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
   begin

@@ -1,5 +1,6 @@
 using Mirador.Core.OpenVr;
 using Mirador.Core.Runtime;
+using Mirador.Core.SignIn;
 
 namespace Mirador.Core;
 
@@ -8,12 +9,16 @@ namespace Mirador.Core;
 /// <param name="Background">Start without the window (<c>--background</c>): the stand-in, or Windows' startup.</param>
 /// <param name="SetRuntime">The manifest of <c>--set-runtime &lt;manifest&gt;</c>, the elevated step; empty when the flag came without one.</param>
 /// <param name="RestoreOpenVr"><c>--restore-openvr</c>: the uninstaller's step that puts OpenVR games back on SteamVR.</param>
-public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bool RestoreOpenVr = false)
+/// <param name="SignIn"><c>--sign-in</c>: Windows started Mirador at sign-in, which may mean no window (App settings, "Start minimized").</param>
+/// <param name="RemoveSignIn"><c>--remove-sign-in</c>: the uninstaller's step that stops Mirador starting at sign-in.</param>
+public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bool RestoreOpenVr = false, bool SignIn = false, bool RemoveSignIn = false)
 {
     /// <summary>Reads the command line; flags are matched without regard to case, and anything else is ignored.</summary>
     public static AppArgs Parse(string[] args)
     {
         bool start = false, background = false, restoreOpenVr = false;
+        var signIn = false;
+        var removeSignIn = false;
         string? setRuntime = null;
         for (var i = 0; i < args.Length; i++)
         {
@@ -31,9 +36,15 @@ public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bo
                 case RestoreOpenVrCommand.Flag:
                     restoreOpenVr = true;
                     break;
+                case SignInStartup.Flag:
+                    signIn = true;
+                    break;
+                case SignInStartup.RemoveFlag:
+                    removeSignIn = true;
+                    break;
             }
         }
 
-        return new AppArgs(start, background, setRuntime, restoreOpenVr);
+        return new AppArgs(start, background, setRuntime, restoreOpenVr, signIn, removeSignIn);
     }
 }
