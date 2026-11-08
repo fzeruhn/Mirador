@@ -136,13 +136,23 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Shows the window on the taskbar, minimized, without taking focus (a start at sign-in).</summary>
-    public void ShowMinimized()
+    /// <summary>
+    /// Shows the window on the taskbar, minimized, without taking focus (a start at sign-in). It is shown first, not
+    /// activated, and minimized once its content has loaded: WinUI crashes (a stowed COMException from
+    /// Microsoft.ui.xaml.dll) when a window that has never been laid out is minimized.
+    /// </summary>
+    public async void ShowMinimized()
     {
-        AppWindow.Show(activateWindow: false);
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        try
         {
-            presenter.Minimize();
+            AppWindow.Show(activateWindow: false);
+            await LoadedRootAsync();
+            const int ShowMinNoActive = 7;
+            ShowWindow(WinRT.Interop.WindowNative.GetWindowHandle(this), ShowMinNoActive);
+        }
+        catch (Exception ex)
+        {
+            Services.AppLog.Write("Couldn't start minimized", ex);
         }
     }
 
@@ -286,4 +296,8 @@ public sealed partial class MainWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr window, int command);
 }
