@@ -112,19 +112,30 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(CheckNowCommand))]
     public partial bool Checking { get; set; }
 
-    /// <summary>The "OpenComposite" card of About: <c>OpenComposite 2026.11.06 (7534249)</c>.</summary>
-    public string OpenCompositeHeader =>
-        (host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource) is { } source ? $"OpenComposite {source.Describe()}" : "OpenComposite (not in this build)";
-
-    /// <summary>Where this OpenComposite came from.</summary>
-    public string OpenCompositeDescription => host.OpenCompositeCopy.HoldsDownload ? "Bundled with Mirador. Updated from GitHub." : "Bundled with Mirador.";
+    /// <summary>The "OpenComposite" card of About: the version and commit, and where this copy came from.</summary>
+    public string OpenCompositeDescription =>
+        (host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource) is { } source
+            ? $"{source.Describe()}. {(host.OpenCompositeCopy.HoldsDownload ? "Updated from GitHub." : "Bundled with Mirador.")}"
+            : "Not in this build.";
 
     /// <summary>Whether the copy holds a download, so "Use the bundled OpenComposite" shows.</summary>
     public bool HoldsDownload => host.OpenCompositeCopy.HoldsDownload;
 
+    /// <summary>"today at 09:10" or "yesterday at 14:02", else "on 3 Nov at 14:02".</summary>
+    internal static string DescribeLastCheck(DateTime last, DateTime now)
+    {
+        var time = last.ToString("HH:mm", System.Globalization.CultureInfo.CurrentCulture);
+        var days = (now.Date - last.Date).Days;
+        return days switch
+        {
+            0 => $"today at {time}",
+            1 => $"yesterday at {time}",
+            _ => $"on {last.ToString("d MMM", System.Globalization.CultureInfo.CurrentCulture)} at {time}",
+        };
+    }
+
     private void OpenCompositeChanged()
     {
-        OnPropertyChanged(nameof(OpenCompositeHeader));
         OnPropertyChanged(nameof(OpenCompositeDescription));
         OnPropertyChanged(nameof(HoldsDownload));
     }
@@ -206,6 +217,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         var updates = App.Current.Updates;
         if (updates.Last is not { } report)
         {
+            // No report from this run: the daily check may have been skipped because one already ran.
+            if (Read(host, out _).LastUpdateCheck is { } last)
+            {
+                UpdatesText = $"Last checked {DescribeLastCheck(last.LocalDateTime, DateTime.Now)}.";
+            }
+
             return;
         }
 

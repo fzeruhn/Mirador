@@ -222,8 +222,14 @@ public sealed class OpenCompositeCopy(string bundleDir, string runtimeDir)
     /// <summary>The OpenComposite commit the bundle was built from.</summary>
     public string? Commit() => BundleSource?.Commit;
 
-    /// <summary>The line for <c>versions.txt</c>: <c>OpenComposite: &lt;version (commit)&gt;</c>.</summary>
-    public string VersionLine() => $"OpenComposite: {BundleSource?.Describe() ?? "not in this build"}";
+    /// <summary>
+    /// The line for <c>versions.txt</c>: <c>OpenComposite: &lt;version (commit)&gt;, bundled</c> or <c>, updated from GitHub</c>,
+    /// the same as About says.
+    /// </summary>
+    public string VersionLine() =>
+        (CopySource ?? BundleSource) is { } source
+            ? $"OpenComposite: {source.Describe()}, {(HoldsDownload ? "updated from GitHub" : "bundled")}"
+            : "OpenComposite: not in this build";
 
     private static bool SameContent(string a, string b)
     {

@@ -36,6 +36,10 @@
 
             <TextBlock Style="{StaticResource SectionHeader}" Text="Headset" />
             <toolkit:SettingsCard Description="{x:Bind ViewModel.VariantDescription, Mode=OneWay}" Header="Headset variant">
+                <!-- Below 700 wide the ComboBox goes under the text (the toolkit's default is 476), so the description keeps its width. -->
+                <toolkit:SettingsCard.Resources>
+                    <x:Double x:Key="SettingsCardWrapThreshold">700</x:Double>
+                </toolkit:SettingsCard.Resources>
                 <ComboBox
                     MinWidth="200"
                     ItemsSource="{x:Bind ViewModel.Variants}"

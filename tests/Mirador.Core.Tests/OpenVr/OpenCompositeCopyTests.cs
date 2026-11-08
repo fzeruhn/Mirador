@@ -185,11 +185,11 @@ public class OpenCompositeCopyTests
         File.WriteAllText(Path.Combine(d.Bundle, "SOURCE.txt"), "cff07db75c4823afe93ed7027b03d5f7bc86f164\nOpenComposite from …\n");
 
         Assert.Equal("cff07db75c4823afe93ed7027b03d5f7bc86f164", d.Copy().Commit());
-        Assert.Equal("OpenComposite: cff07db", d.Copy().VersionLine());
+        Assert.Equal("OpenComposite: cff07db, bundled", d.Copy().VersionLine());
 
         File.WriteAllText(Path.Combine(d.Bundle, "SOURCE.txt"), "OpenComposite 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
         Assert.Equal("2026.11.06", d.Copy().BundleSource?.Version);
-        Assert.Equal("OpenComposite: 2026.11.06 (7534249)", d.Copy().VersionLine());
+        Assert.Equal("OpenComposite: 2026.11.06 (7534249), bundled", d.Copy().VersionLine());
     }
 
     [Fact]
