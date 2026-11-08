@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Mirador.App.Pages;
 using Mirador.App.Services;
+using Mirador.Core;
 
 namespace Mirador.App;
 
@@ -52,6 +54,7 @@ public sealed partial class MainWindow : Window
         deviceChanges.Changed += App.Current.Host.NotifyDevicesChanged;
         endSession = new EndSession(handle, App.Current.Host);
         AppWindow.Closing += OnClosing;
+        Activated += OnActivated;
         NavView.SelectedItem = NavView.MenuItems[0];
         App.Current.Host.ProfilesChanged += ShowHeadsetPages;
         ShowHeadsetPages();
@@ -105,6 +108,32 @@ public sealed partial class MainWindow : Window
 
         AppWindow.Show();
         Activate();
+    }
+
+    /// <summary>When the window last lost the focus: a click on the tray icon deactivates it before Mirador hears of the click.</summary>
+    private long deactivatedAt = Stopwatch.GetTimestamp() - Stopwatch.Frequency * 60;
+
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            deactivatedAt = Stopwatch.GetTimestamp();
+        }
+    }
+
+    /// <summary>A left click on the tray icon: hides the window when it is in front, else brings it to the front.</summary>
+    public void ToggleFromTray()
+    {
+        var minimized = AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized };
+        var since = Stopwatch.GetElapsedTime(deactivatedAt);
+        if (TrayClick.ShouldHide(AppWindow.IsVisible, minimized, IsInForeground, since))
+        {
+            AppWindow.Hide();
+        }
+        else
+        {
+            ShowAndActivate();
+        }
     }
 
     /// <summary>Shows the window on the taskbar, minimized, without taking focus (a start at sign-in).</summary>

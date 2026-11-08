@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Mirador.App.Services;
 using Mirador.App.ViewModels;
 using Mirador.Core;
+using Mirador.Core.BaseStations;
 using Mirador.Core.Diagnostics;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
@@ -24,6 +25,7 @@ public partial class App : Application
     private bool endedBadly;
     private bool quitting;
     private bool closingForGood;
+    private int stationItemsQueued;
 
     public App(AppArgs args)
     {
@@ -80,7 +82,7 @@ public partial class App : Application
             Notifications.Register(() => Ui.TryEnqueue(() => MainWindow.ShowAndActivate()));
             home = new HomeViewModel(Host, Ui);
             window = new MainWindow();
-            tray = new TrayIcon(() => MainWindow.ShowAndActivate(), StartOrStopAsync, QuitAsync);
+            tray = new TrayIcon(() => MainWindow.ShowAndActivate(), () => MainWindow.ToggleFromTray(), StartOrStopAsync, SwitchStationsAsync, QuitAsync);
         }
         catch (Exception ex)
         {
@@ -91,6 +93,8 @@ public partial class App : Application
             return;
         }
 
+        Host.Stations.Changed += OnStationsChanged;
+        UpdateStationItems();
         Host.Session.Changed += () => Ui.TryEnqueue(UpdateTray);
         Host.Session.StatusChanged += () => Ui.TryEnqueue(UpdateTray);
         Host.Session.Warning += w =>
@@ -349,6 +353,73 @@ public partial class App : Application
         if (window is null || !window.IsInForeground)
         {
             Notifications.Show(title, text);
+        }
+    }
+
+    /// <summary>
+    /// The tray's two base-station items: On, or Off (what <see cref="StationManager.OffCommand"/> says) for any other
+    /// command. Only the selected stations are switched. A problem in the summary afterwards reaches the user in a
+    /// notification when the window is hidden (in the window, Home shows it).
+    /// </summary>
+    private async Task SwitchStationsAsync(StationCommand command)
+    {
+        try
+        {
+            await Host.Stations.SwitchSelectedAsync(command == StationCommand.On ? command : Host.Stations.OffCommand(), CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Switching the base stations from the tray failed", ex);
+            Ui.TryEnqueue(() => NotifyBaseStations(ex.Message));
+            return;
+        }
+
+        Ui.TryEnqueue(() =>
+        {
+            var summary = Host.Stations.Summary;
+            if (summary.Level is StatusLevel.Warning or StatusLevel.Error)
+            {
+                NotifyBaseStations(summary.Text);
+            }
+        });
+    }
+
+    private void NotifyBaseStations(string text)
+    {
+        if (window is null || !window.IsShown)
+        {
+            Notifications.Show("Base stations", text);
+        }
+    }
+
+    /// <summary>On whichever thread the manager is on: updates the tray's station items on the UI thread, once for a burst.</summary>
+    private void OnStationsChanged()
+    {
+        if (Interlocked.Exchange(ref stationItemsQueued, 1) == 0 && !Ui.TryEnqueue(() =>
+            {
+                Volatile.Write(ref stationItemsQueued, 0);
+                UpdateStationItems();
+            }))
+        {
+            Volatile.Write(ref stationItemsQueued, 0);
+        }
+    }
+
+    /// <summary>The station items are there while Bluetooth is ready and a station is selected.</summary>
+    private void UpdateStationItems()
+    {
+        if (tray is null || host is null || quitting)
+        {
+            return;
+        }
+
+        try
+        {
+            tray.ShowStations(Host.Stations.Bluetooth == BluetoothState.Ready && Host.Stations.Stations.Any(s => s.Station.Selected));
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Reading the base stations for the tray failed", ex);
         }
     }
 
