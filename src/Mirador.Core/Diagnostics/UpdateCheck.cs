@@ -3,13 +3,26 @@ using System.Text.Json;
 
 namespace Mirador.Core.Diagnostics;
 
-/// <summary>Asks GitHub for Mirador's latest release, to say so on Home. It never installs anything (Mirador.md §4.4 item 13).</summary>
+/// <summary>A full release from GitHub's <c>releases/latest</c>.</summary>
+/// <param name="Tag">The release's tag, such as <c>v0.2.0</c>.</param>
+/// <param name="Url">The release's page.</param>
+/// <param name="WindowsZipUrl">The download of the asset <c>OpenComposite-windows.zip</c>; null when the release has none or no digest.</param>
+/// <param name="WindowsZipSha256">That asset's SHA-256 from GitHub's <c>digest</c>, lower case without <c>sha256:</c>; null likewise.</param>
+public sealed record Release(string Tag, string Url, string? WindowsZipUrl, string? WindowsZipSha256);
+
+/// <summary>Asks GitHub for the latest release of Mirador and of OpenComposite, to say so on Home. It never installs anything (Mirador.md §4.4 item 13).</summary>
 public static class UpdateCheck
 {
-    public const string Url = "https://api.github.com/repos/fzeruhn/mirador/releases/latest";
+    public const string MiradorRepository = "fzeruhn/mirador";
 
-    /// <summary>The release's tag and page from GitHub's answer; null when it isn't one.</summary>
-    public static (string Tag, string Url)? ParseLatest(string json)
+    public const string OpenCompositeRepository = "fzeruhn/OpenComposite";
+
+    private const string WindowsZip = "OpenComposite-windows.zip";
+
+    private const string DigestPrefix = "sha256:";
+
+    /// <summary>The latest full release from GitHub's answer; null when it isn't one (a draft, a pre-release, an error).</summary>
+    public static Release? ParseLatest(string json)
     {
         try
         {
@@ -21,7 +34,8 @@ public static class UpdateCheck
                 && !(root.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True)
                 && !(root.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True))
             {
-                return (tag.GetString()!, url.GetString()!);
+                var (zip, sha) = FindZip(root);
+                return new Release(tag.GetString()!, url.GetString()!, zip, sha);
             }
         }
         catch (JsonException)
@@ -36,15 +50,16 @@ public static class UpdateCheck
         Parse(current) is { } mine && Parse(tag) is { } theirs && theirs > mine;
 
     /// <summary>
-    /// Asks GitHub. <c>Answered</c> is false when it couldn't be asked (offline, refused, too slow), so that the caller
-    /// tries again soon rather than in a day; <c>Newer</c> is the latest release when it is newer than <paramref name="current"/>.
+    /// Asks GitHub for <paramref name="repository"/>'s latest full release. <c>Answered</c> is false when it couldn't be
+    /// asked (offline, refused, too slow), so that the caller tries again soon rather than in a day; a repository without
+    /// a release is answered with no release.
     /// </summary>
-    public static async Task<(bool Answered, (string Tag, string Url)? Newer)> CheckAsync(HttpClient http, string current, CancellationToken ct)
+    public static async Task<(bool Answered, Release? Latest)> LatestAsync(HttpClient http, string repository, string userAgentVersion, CancellationToken ct)
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, Url);
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mirador", Parse(current)?.ToString() ?? "0"));
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{repository}/releases/latest");
+            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mirador", Parse(userAgentVersion)?.ToString() ?? "0"));
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -57,14 +72,37 @@ public static class UpdateCheck
                 return (false, null);
             }
 
-            var latest = ParseLatest(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
-            return (true, latest is { } l && IsNewer(current, l.Tag) ? latest : null);
+            return (true, ParseLatest(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false)));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException)
         {
             return (false, null);
         }
     }
+
+    private static (string? Url, string? Sha) FindZip(JsonElement release)
+    {
+        if (release.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var asset in assets.EnumerateArray())
+            {
+                if (asset.ValueKind == JsonValueKind.Object
+                    && Text(asset, "name") == WindowsZip
+                    && Text(asset, "browser_download_url") is { Length: > 0 } url
+                    && Text(asset, "digest") is { } digest
+                    && digest.StartsWith(DigestPrefix, StringComparison.OrdinalIgnoreCase)
+                    && digest.Length > DigestPrefix.Length)
+                {
+                    return (url, digest[DigestPrefix.Length..].ToLowerInvariant());
+                }
+            }
+        }
+
+        return (null, null);
+    }
+
+    private static string? Text(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     /// <summary>A version from <c>0.2.0</c> or <c>v0.2.0</c>, missing parts as 0 (<c>v1</c> is 1.0); null for anything else.</summary>
     private static Version? Parse(string text)

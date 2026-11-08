@@ -300,6 +300,21 @@
                     </InfoBar.ActionButton>
                 </InfoBar>
 
+                <InfoBar
+                    Title="A new OpenComposite"
+                    IsClosable="True"
+                    IsOpen="{x:Bind ViewModel.HasOpenCompositeUpdate, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.OpenCompositeUpdateText, Mode=OneWay}"
+                    Severity="Informational"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
+                    <InfoBar.ActionButton>
+                        <Button
+                            Command="{x:Bind ViewModel.UpdateOpenCompositeCommand}"
+                            Content="Update"
+                            Visibility="{x:Bind ViewModel.CanUpdateOpenComposite, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
                 <!-- Last, so that an empty list only adds room below everything. -->
                 <ItemsControl ItemsSource="{x:Bind ViewModel.Notices}">
                     <ItemsControl.ItemsPanel>

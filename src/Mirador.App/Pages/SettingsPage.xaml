@@ -27,13 +27,30 @@
             <toolkit:SettingsCard Description="Closing the window keeps Mirador in the notification area, so games can still start Monado. Quit it from the tray icon." Header="Close to the tray">
                 <ToggleSwitch IsOn="{x:Bind ViewModel.CloseToTray, Mode=TwoWay}" />
             </toolkit:SettingsCard>
-            <toolkit:SettingsCard Description="Once a day at most, Mirador asks GitHub whether a newer release is out and says so on Home. It never installs anything by itself." Header="Check for updates">
+            <toolkit:SettingsCard Description="Once a day at most, Mirador asks GitHub whether Mirador or OpenComposite has a newer release, and says so on Home. It never installs anything by itself." Header="Check for updates">
                 <ToggleSwitch IsOn="{x:Bind ViewModel.CheckForUpdates, Mode=TwoWay}" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard Description="{x:Bind ViewModel.UpdatesText, Mode=OneWay}" Header="Updates">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.Checking, Mode=OneWay}" />
+                    <HyperlinkButton
+                        Content="Release notes"
+                        NavigateUri="{x:Bind ViewModel.MiradorReleaseUrl, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.HasMiradorRelease, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
+                    <Button
+                        Command="{x:Bind ViewModel.UpdateOpenCompositeCommand}"
+                        Content="Update OpenComposite"
+                        Visibility="{x:Bind ViewModel.CanUpdateOpenComposite, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
+                    <Button Command="{x:Bind ViewModel.CheckNowCommand}" Content="Check now" />
+                </StackPanel>
             </toolkit:SettingsCard>
 
             <TextBlock Style="{StaticResource SectionHeader}" Text="About" />
             <toolkit:SettingsCard Description="Runs Monado, the open-source OpenXR runtime, on Windows. Boost Software License 1.0." Header="{x:Bind ViewModel.Version}">
                 <HyperlinkButton Content="github.com/fzeruhn/Mirador" NavigateUri="https://github.com/fzeruhn/Mirador" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard Description="{x:Bind ViewModel.OpenCompositeDescription}" Header="{x:Bind ViewModel.OpenCompositeHeader}">
+                <HyperlinkButton Content="github.com/fzeruhn/OpenComposite" NavigateUri="https://github.com/fzeruhn/OpenComposite" />
             </toolkit:SettingsCard>
         </StackPanel>
         </c:PageColumn>

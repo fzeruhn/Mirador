@@ -9,6 +9,7 @@ public sealed partial class SettingsPage : Page
     {
         ViewModel = new SettingsViewModel(App.Current.Host);
         InitializeComponent();
+        Unloaded += (_, _) => ViewModel.Dispose();
     }
 
     public SettingsViewModel ViewModel { get; }

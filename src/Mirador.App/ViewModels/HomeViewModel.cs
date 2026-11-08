@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Mirador.App.Services;
 using Mirador.Core;
 using Mirador.Core.BaseStations;
+using Mirador.Core.Diagnostics;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
@@ -168,6 +169,17 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial Uri? UpdateUrl { get; set; }
 
+    /// <summary>"OpenComposite 2026.11.20 is out." from the update check; null when there is none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOpenCompositeUpdate))]
+    public partial string? OpenCompositeUpdateText { get; set; }
+
+    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenComposite (Task 48) and the release has a zip to check.</summary>
+    [ObservableProperty]
+    public partial bool CanUpdateOpenComposite { get; set; }
+
+    private Release? newerOpenComposite;
+
     public bool CanChangeProfile => State == SessionState.Stopped;
 
     public bool HasFailure => LastFailure is not null;
@@ -181,6 +193,8 @@ public sealed partial class HomeViewModel : ObservableObject
     public bool HasOpenVrWarning => OpenVrWarning is not null;
 
     public bool HasUpdate => UpdateText is not null;
+
+    public bool HasOpenCompositeUpdate => OpenCompositeUpdateText is not null;
 
     /// <summary>Reads the profiles again (the Profiles page may have changed them) and runs the checks.</summary>
     public void Refresh()
@@ -201,11 +215,62 @@ public sealed partial class HomeViewModel : ObservableObject
         UpdateListening();
     }
 
-    /// <summary>Shows a newer release (from the update check).</summary>
+    /// <summary>
+    /// Shows what the update check found: one closable message for each newer release, none for one that is up to date.
+    /// A check that couldn't reach GitHub changes nothing here (the Updates card says so).
+    /// </summary>
+    public void ShowUpdates(UpdateReport? report)
+    {
+        if (report is not { Reached: true })
+        {
+            return;
+        }
+
+        // Through null, so that the same message again opens the bar again after it was closed.
+        UpdateText = null;
+        OpenCompositeUpdateText = null;
+        if (report.NewerMirador is { } mirador)
+        {
+            ShowUpdate(mirador.Tag, mirador.Url);
+        }
+
+        newerOpenComposite = report.NewerOpenComposite;
+        if (newerOpenComposite is { } openComposite)
+        {
+            OpenCompositeUpdateText = $"OpenComposite {UpdateReport.Plain(openComposite.Tag)} is out.";
+            CanUpdateOpenComposite = App.Current.Updates.CanUpdateOpenComposite && openComposite.WindowsZipUrl is not null;
+        }
+        else
+        {
+            CanUpdateOpenComposite = false;
+        }
+    }
+
+    /// <summary>Shows a newer Mirador release (from the update check).</summary>
     public void ShowUpdate(string tag, string url)
     {
         UpdateText = $"Mirador {tag} is out.";
         UpdateUrl = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
+    }
+
+    /// <summary>"Update" on OpenComposite's notice: Task 48's download, check and swap, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
+    [RelayCommand]
+    private async Task UpdateOpenCompositeAsync()
+    {
+        if (newerOpenComposite is not { } release)
+        {
+            return;
+        }
+
+        try
+        {
+            await App.Current.Updates.UpdateOpenCompositeAsync(release);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Updating OpenComposite failed", e);
+            ShowNotice("opencomposite-update", "OpenComposite", $"Updating OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.", InfoBarSeverity.Error);
+        }
     }
 
     /// <summary>Takes a notice away when its bar is closed.</summary>
