@@ -253,7 +253,7 @@ public sealed partial class HomeViewModel : ObservableObject
         UpdateUrl = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    /// <summary>"Update" on OpenComposite's notice: Task 48's download, check and swap, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
+    /// <summary>"Update" on OpenComposite's notice: download, check and swap, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
     [RelayCommand]
     private async Task UpdateOpenCompositeAsync()
     {
@@ -264,7 +264,8 @@ public sealed partial class HomeViewModel : ObservableObject
 
         try
         {
-            await App.Current.Updates.UpdateOpenCompositeAsync(release);
+            var message = await App.Current.Updates.UpdateOpenCompositeAsync(release);
+            ShowNotice("opencomposite-update", "OpenComposite", message, InfoBarSeverity.Informational);
         }
         catch (Exception e)
         {

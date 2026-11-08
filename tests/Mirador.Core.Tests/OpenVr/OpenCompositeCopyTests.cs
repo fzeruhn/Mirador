@@ -28,6 +28,29 @@ public class OpenCompositeCopyTests
             File.WriteAllBytes(BundleBin("version.txt"), []);
         }
 
+        public void Bundled(byte[] dll, string version)
+        {
+            Bundled(dll);
+            File.WriteAllText(Path.Combine(Bundle, "SOURCE.txt"), Line(version));
+            File.WriteAllText(Path.Combine(Bundle, "LICENSE.txt"), "bundle licence");
+        }
+
+        public string DownloadDir(string version) => Path.Combine(Runtime, "download", version, "OpenComposite");
+
+        /// <summary>An unpacked release under the download folder, as <see cref="OpenCompositeDownload.FetchAsync"/> leaves it.</summary>
+        public string Release(string version, byte[] dll)
+        {
+            var root = DownloadDir(version);
+            Directory.CreateDirectory(Path.Combine(root, "bin"));
+            File.WriteAllBytes(Path.Combine(root, "bin", Dll), dll);
+            File.WriteAllBytes(Path.Combine(root, "bin", "version.txt"), [7]);
+            File.WriteAllText(Path.Combine(root, "SOURCE.txt"), Line(version));
+            File.WriteAllText(Path.Combine(root, "LICENSE.txt"), "licence " + version);
+            return root;
+        }
+
+        public static string Line(string version) => $"OpenComposite {version}, commit 75342495640501953fc2c17f73eeb4d124e8528e\n";
+
         public void Dispose() => dir.Dispose();
     }
 
@@ -167,6 +190,162 @@ public class OpenCompositeCopyTests
         File.WriteAllText(Path.Combine(d.Bundle, "SOURCE.txt"), "OpenComposite 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
         Assert.Equal("2026.11.06", d.Copy().BundleSource?.Version);
         Assert.Equal("OpenComposite: 2026.11.06 (7534249)", d.Copy().VersionLine());
+    }
+
+    [Fact]
+    public void Launch_keeps_a_newer_download()
+    {
+        using var d = new Dirs();
+        d.Bundled([1], "2026.01.01");
+        var release = d.Release("2026.11.06", [2, 2]);
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Install(release));
+
+        Assert.Equal(CopyOutcome.Current, d.Copy().Update());
+
+        Assert.Equal([2, 2], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.11.06", d.Copy().CopySource?.Version);
+        Assert.True(Directory.Exists(d.DownloadDir("2026.11.06")));
+    }
+
+    [Fact]
+    public void A_newer_bundle_beats_an_older_download()
+    {
+        using var d = new Dirs();
+        d.Bundled([1], "2026.01.01");
+        d.Release("2026.05.05", [2, 2]);
+        d.Copy().Update();
+        Assert.Equal([2, 2], File.ReadAllBytes(d.CopyBin(Dll)));
+
+        d.Bundled([3, 3, 3], "2026.12.01");
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+        Assert.Equal([3, 3, 3], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.12.01", d.Copy().CopySource?.Version);
+        Assert.False(d.Copy().HoldsDownload);
+    }
+
+    [Fact]
+    public void Update_takes_the_newest_unpacked_download()
+    {
+        using var d = new Dirs();
+        d.Bundled([1], "2026.01.01");
+        d.Release("2026.03.03", [3]);
+        d.Release("2026.10.10", [4]);
+        d.Release("2026.02.02", [5]);
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+
+        Assert.Equal([4], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.True(d.Copy().HoldsDownload);
+    }
+
+    [Fact]
+    public void A_half_unpacked_part_folder_is_never_a_candidate()
+    {
+        using var d = new Dirs();
+        d.Bundled([1, 2, 3], "2026.01.01");
+        d.Copy().Update();
+
+        // A crash mid-unpack: SOURCE.txt (extracted first) is there, the DLL (last) is truncated.
+        var part = Path.Combine(d.Runtime, "download", "2026.11.06.part", "OpenComposite");
+        Directory.CreateDirectory(Path.Combine(part, "bin"));
+        File.WriteAllBytes(Path.Combine(part, "bin", Dll), [9, 9]);
+        File.WriteAllText(Path.Combine(part, "SOURCE.txt"), Dirs.Line("2026.11.06"));
+
+        Assert.Equal(CopyOutcome.Current, d.Copy().Update());
+
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.01.01", d.Copy().CopySource?.Version);
+        Assert.False(d.Copy().HoldsDownload);
+    }
+
+    [Fact]
+    public void Same_version_other_bytes_is_repaired()
+    {
+        using var d = new Dirs();
+        d.Bundled([1, 2, 3], "2026.01.01");
+        d.Copy().Update();
+        File.WriteAllBytes(d.CopyBin(Dll), [9, 9]);
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(d.CopyBin(Dll)));
+    }
+
+    [Fact]
+    public void No_record_counts_as_older()
+    {
+        using var d = new Dirs();
+        d.Bundled([1, 2, 3], "2026.01.01");
+        Directory.CreateDirectory(Path.Combine(d.Runtime, "bin"));
+        File.WriteAllBytes(d.CopyBin(Dll), [8, 8, 8, 8]);
+
+        Assert.Null(d.Copy().CopySource);
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.01.01", d.Copy().CopySource?.Version);
+    }
+
+    [Fact]
+    public void Install_writes_bin_source_and_licences()
+    {
+        using var d = new Dirs();
+        d.Bundled([1], "2026.01.01");
+        d.Copy().Update();
+        File.WriteAllText(d.CopyBin("applist.json"), "mine");
+        var release = d.Release("2026.11.06", [2, 2]);
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Install(release));
+
+        Assert.Equal([2, 2], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal([7], File.ReadAllBytes(d.CopyBin("version.txt")));
+        Assert.Equal("licence 2026.11.06", File.ReadAllText(Path.Combine(d.Runtime, "LICENSE.txt")));
+        Assert.Equal("2026.11.06", d.Copy().CopySource?.Version);
+        Assert.True(d.Copy().HoldsDownload);
+        Assert.Equal("mine", File.ReadAllText(d.CopyBin("applist.json")));
+        Assert.Equal(CopyOutcome.Current, d.Copy().Install(release));
+    }
+
+    [Fact]
+    public void Use_bundled_puts_the_bundle_back_and_drops_downloads()
+    {
+        using var d = new Dirs();
+        d.Bundled([1], "2026.01.01");
+        d.Copy().Update();
+        d.Copy().Install(d.Release("2026.11.06", [2, 2]));
+        Assert.True(d.Copy().HoldsDownload);
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().UseBundled());
+
+        Assert.Equal([1], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.01.01", d.Copy().CopySource?.Version);
+        Assert.Equal("bundle licence", File.ReadAllText(Path.Combine(d.Runtime, "LICENSE.txt")));
+        Assert.False(Directory.Exists(d.Copy().DownloadRoot));
+        Assert.False(d.Copy().HoldsDownload);
+        Assert.Equal(CopyOutcome.Current, d.Copy().Update());
+    }
+
+    [Fact]
+    public void Held_dll_install_finishes_at_next_update()
+    {
+        using var d = new Dirs();
+        d.Bundled([1], "2026.01.01");
+        d.Copy().Update();
+        var release = d.Release("2026.11.06", [2, 2]);
+
+        using (new FileStream(d.CopyBin(Dll), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Equal(CopyOutcome.InUse, d.Copy().Install(release));
+        }
+
+        Assert.Equal([1], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.01.01", d.Copy().CopySource?.Version);
+        Assert.True(Directory.Exists(release));
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+        Assert.Equal([2, 2], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.11.06", d.Copy().CopySource?.Version);
     }
 
     [Fact]
