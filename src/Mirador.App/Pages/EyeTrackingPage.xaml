@@ -44,9 +44,14 @@
 
             <TextBlock Style="{StaticResource SectionHeader}" Text="Calibration backups" />
             <toolkit:SettingsCard Description="Save the calibration to a file, or take one in from another PC." Header="Export and import">
+                <!-- Below 700 wide the controls go under the text (the toolkit's default is 476): the serial, Export and Import need about 400. -->
+                <toolkit:SettingsCard.Resources>
+                    <x:Double x:Key="SettingsCardWrapThreshold">700</x:Double>
+                </toolkit:SettingsCard.Resources>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ComboBox
                         MinWidth="160"
+                        MaxWidth="300"
                         ItemsSource="{x:Bind ViewModel.Serials}"
                         PlaceholderText="No calibration yet"
                         SelectedItem="{x:Bind ViewModel.SelectedSerial, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />

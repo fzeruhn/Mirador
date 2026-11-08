@@ -32,6 +32,9 @@
             <toolkit:SettingsCard
                 Description="How long Monado looks for base stations, controllers and trackers when it starts. Devices switched on later need a restart of Monado."
                 Header="Lighthouse wait time">
+                <toolkit:SettingsCard.Resources>
+                    <x:Double x:Key="SettingsCardWrapThreshold">600</x:Double>
+                </toolkit:SettingsCard.Resources>
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.LighthouseWaitText, Mode=OneWay}" TextAlignment="Right" />
                     <Slider
@@ -49,6 +52,9 @@
             <toolkit:SettingsCard
                 Description="The resolution apps are asked to render at. Higher is sharper and costs GPU time."
                 Header="Render scale">
+                <toolkit:SettingsCard.Resources>
+                    <x:Double x:Key="SettingsCardWrapThreshold">600</x:Double>
+                </toolkit:SettingsCard.Resources>
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.RenderScaleText, Mode=OneWay}" TextAlignment="Right" />
                     <Slider
@@ -64,6 +70,9 @@
             <toolkit:SettingsCard
                 Description="Time kept for Monado's own work in each frame. Raise it if the Display line on Home shows missed frames."
                 Header="Compositor budget">
+                <toolkit:SettingsCard.Resources>
+                    <x:Double x:Key="SettingsCardWrapThreshold">600</x:Double>
+                </toolkit:SettingsCard.Resources>
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock MinWidth="48" VerticalAlignment="Center" Text="{x:Bind ViewModel.CompositorBudgetText, Mode=OneWay}" TextAlignment="Right" />
                     <Slider
