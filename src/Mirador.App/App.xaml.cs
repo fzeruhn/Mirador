@@ -106,10 +106,7 @@ public partial class App : Application
         AppHost.RecordAppPath();
         _ = Task.Run(Host.Session.PlaceStandIn);
 
-        if (!args.Background)
-        {
-            MainWindow.ShowAndActivate();
-        }
+        ShowFirstWindow();
 
         // The pipe opens before recovery has finished, without waiting for it: a game's Start waits for recovery
         // inside the session (it never replaces session.json that still holds steps to undo), and a stand-in that
@@ -132,6 +129,34 @@ public partial class App : Application
         }
 
         await CheckForUpdateAsync();
+    }
+
+    /// <summary>
+    /// The window at launch: none for <c>--background</c>; for <c>--sign-in</c> with "Start minimized" none when Mirador
+    /// closes to the tray (the tray icon is there), else minimized on the taskbar; otherwise shown.
+    /// </summary>
+    private void ShowFirstWindow()
+    {
+        if (args.Background)
+        {
+            return;
+        }
+
+        if (args.SignIn)
+        {
+            var settings = SettingsViewModel.Read(Host, out _);
+            if (settings.StartMinimized)
+            {
+                if (!settings.CloseToTray)
+                {
+                    MainWindow.ShowMinimized();
+                }
+
+                return;
+            }
+        }
+
+        MainWindow.ShowAndActivate();
     }
 
     /// <summary>At most once a day, when on: a newer release shows on Home.</summary>

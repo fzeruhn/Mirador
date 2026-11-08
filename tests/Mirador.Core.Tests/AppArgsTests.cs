@@ -31,6 +31,16 @@ public class AppArgsTests
     }
 
     [Fact]
+    public void Parses_sign_in_and_remove_sign_in()
+    {
+        Assert.True(AppArgs.Parse(["--sign-in"]).SignIn);
+        Assert.False(AppArgs.Parse(["--sign-in"]).RemoveSignIn);
+        Assert.True(AppArgs.Parse(["--Remove-Sign-In"]).RemoveSignIn);
+        Assert.False(AppArgs.Parse(["--remove-sign-in"]).SignIn);
+        Assert.False(AppArgs.Parse(["--start"]).SignIn);
+    }
+
+    [Fact]
     public void Set_runtime_without_a_manifest_is_empty_not_missing()
     {
         Assert.Equal(new AppArgs(false, false, ""), AppArgs.Parse(["--set-runtime"]));

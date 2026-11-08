@@ -11,6 +11,7 @@ namespace Mirador.Core;
 /// <param name="BaseStationsOnAtMiradorStart">Power the selected base stations on when Mirador starts, after its scan.</param>
 /// <param name="BaseStationsOffAtMiradorQuit">Power them off when Mirador quits.</param>
 /// <param name="BaseStationsState">Where the stations' states shown come from: the last scan, or listening while shown.</param>
+/// <param name="StartMinimized">When Windows starts Mirador at sign-in, start in the notification area (or minimized, when it doesn't close to the tray) instead of showing the window.</param>
 /// <remarks>
 /// A file from before 2026-11-07 may still have <c>baseStationsOff</c> ("Off means: Sleep / Standby"); it is ignored,
 /// since off always means sleep now, and goes at the next save.
@@ -23,7 +24,8 @@ public sealed record AppSettings(
     bool BaseStationsOffAtStop = true,
     bool BaseStationsOnAtMiradorStart = false,
     bool BaseStationsOffAtMiradorQuit = false,
-    StationStateMode BaseStationsState = StationStateMode.LastScan);
+    StationStateMode BaseStationsState = StationStateMode.LastScan,
+    bool StartMinimized = true);
 
 /// <summary>How often Mirador follows the base stations' states ("Station state tracking rate" on the Lighthouse page).</summary>
 public enum StationStateMode

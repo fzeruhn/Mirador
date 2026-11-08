@@ -107,6 +107,16 @@ public sealed partial class MainWindow : Window
         Activate();
     }
 
+    /// <summary>Shows the window on the taskbar, minimized, without taking focus (a start at sign-in).</summary>
+    public void ShowMinimized()
+    {
+        AppWindow.Show(activateWindow: false);
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.Minimize();
+        }
+    }
+
     /// <summary>The Eye tracking page is there only for a Dream Air profile; leaving one while on it goes Home.</summary>
     private void ShowHeadsetPages()
     {

@@ -1,14 +1,16 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Mirador.App.Services;
 using Mirador.Core;
+using Mirador.Core.SignIn;
 
 namespace Mirador.App.ViewModels;
 
-/// <summary>App settings: close to the tray and the update check; and About. The base stations' settings are on the Lighthouse page.</summary>
+/// <summary>App settings: start at sign-in, close to the tray and the update check; and About. The base stations' settings are on the Lighthouse page.</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly AppHost host;
-    private readonly bool loading;
+    private readonly SignInStartup signIn = new(new RegistryRunKeys(), Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Mirador.exe"));
+    private bool loading;
 
     public SettingsViewModel(AppHost host)
     {
@@ -18,8 +20,26 @@ public sealed partial class SettingsViewModel : ObservableObject
         Problem = problem;
         CloseToTray = settings.CloseToTray;
         CheckForUpdates = settings.CheckForUpdates;
+        StartMinimized = settings.StartMinimized;
+        try
+        {
+            StartAtSignIn = signIn.IsOn;
+        }
+        catch (MiradorException e)
+        {
+            Problem = e.Message;
+        }
+
         loading = false;
     }
+
+    /// <summary>Whether Windows starts Mirador at sign-in (read from the registry when the page opens).</summary>
+    [ObservableProperty]
+    public partial bool StartAtSignIn { get; set; }
+
+    /// <summary>Whether a start at sign-in stays in the notification area (or minimized) instead of showing the window.</summary>
+    [ObservableProperty]
+    public partial bool StartMinimized { get; set; }
 
     [ObservableProperty]
     public partial bool CloseToTray { get; set; }
@@ -68,6 +88,45 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnCloseToTrayChanged(bool value) => Save(s => s with { CloseToTray = value });
+
+    partial void OnStartAtSignInChanged(bool value)
+    {
+        if (loading)
+        {
+            return;
+        }
+
+        try
+        {
+            if (value)
+            {
+                signIn.TurnOn();
+            }
+            else
+            {
+                signIn.TurnOff();
+            }
+
+            Problem = null;
+        }
+        catch (MiradorException e)
+        {
+            Problem = e.Message;
+
+            // The switch goes back to what Windows has.
+            loading = true;
+            try
+            {
+                StartAtSignIn = !value;
+            }
+            finally
+            {
+                loading = false;
+            }
+        }
+    }
+
+    partial void OnStartMinimizedChanged(bool value) => Save(s => s with { StartMinimized = value });
 
     partial void OnCheckForUpdatesChanged(bool value) => Save(s => s with { CheckForUpdates = value });
 
