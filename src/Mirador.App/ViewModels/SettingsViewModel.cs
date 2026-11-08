@@ -310,7 +310,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             if (value)
             {
                 var code = await ElevatedMonado.AllowAsync();
-                if (code != 0 && code != ElevatedRuntime.PromptCancelled)
+                if (code == 0)
+                {
+                    // The consent step recorded SteamVR's Lighthouse files as they are now.
+                    host.SteamVrAllowedAgain();
+                }
+                else if (code != ElevatedRuntime.PromptCancelled)
                 {
                     problem = "Mirador couldn't record the consent for Monado to run as administrator. The reason is in mirador.log.";
                 }

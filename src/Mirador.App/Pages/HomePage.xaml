@@ -278,7 +278,16 @@
                     IsOpen="{x:Bind ViewModel.HasRunsAsYouNotice, Mode=OneWay}"
                     Message="{x:Bind ViewModel.RunsAsYouNotice, Mode=OneWay}"
                     Severity="Informational"
-                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
+                    <!-- Only when SteamVR's Lighthouse driver changed since the consent: the same UAC step, with today's files. -->
+                    <InfoBar.ActionButton>
+                        <Button
+                            Command="{x:Bind ViewModel.AllowAgainCommand}"
+                            Content="Allow again"
+                            IsEnabled="{x:Bind ViewModel.CanAllowAgain, Mode=OneWay}"
+                            Visibility="{x:Bind ViewModel.OffersAllowAgain, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
 
                 <InfoBar
                     Title="OpenVR runtime"

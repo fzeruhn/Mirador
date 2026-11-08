@@ -68,7 +68,7 @@ Root: HKLM64; Subkey: "SOFTWARE\Mirador"; ValueType: string; ValueName: "AppPath
 Name: "elevatedmonado"; Description: "Run Monado as administrator (realtime GPU priority)"; Flags: unchecked
 
 [Run]
-; The consent of the user who installs: the installer is elevated, and so is this step (it writes HKLM\SOFTWARE\Mirador\ElevatedMonado).
+; The consent of the user who installs: the installer is elevated, and so is this step (it writes HKLM\SOFTWARE\Mirador\ElevatedMonado, and SteamVR's unsigned Lighthouse files in ElevatedMonadoFiles).
 Filename: "{app}\Mirador.exe"; Parameters: "--allow-elevated-monado"; StatusMsg: "Recording the consent to run Monado as administrator..."; Tasks: elevatedmonado; Flags: runhidden waituntilterminated
 Filename: "{app}\Mirador.exe"; Description: "Start Mirador"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
@@ -252,6 +252,8 @@ begin
   StopHelper;
   Sc('delete {#ServiceName}');
   RegDeleteValue(HKLM64, MiradorKey, 'PreviousActiveRuntime');
-  { Everyone's consent to run Monado as administrator goes with Mirador (Mirador.md section 4.10 item 44). }
+  { Everyone's consent to run Monado as administrator goes with Mirador (Mirador.md section 4.10 item 44), and with it
+    the SteamVR files each user allowed (item 46). }
   RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonado');
+  RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonadoFiles');
 end;

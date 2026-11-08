@@ -180,4 +180,12 @@ internal sealed class FakeConsentValues : Mirador.Ipc.IConsentValues
 
         Sids.Remove(sid);
     }
+
+    public Dictionary<string, string[]> FileLines { get; } = [];
+
+    public string[]? Files(string sid) => FileLines.TryGetValue(sid, out var lines) ? lines : null;
+
+    public void SetFiles(string sid, string[] lines) => FileLines[sid] = lines;
+
+    public void DeleteFiles(string sid) => FileLines.Remove(sid);
 }

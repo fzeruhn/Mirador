@@ -36,7 +36,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     private readonly ConcurrentDictionary<string, ElevatedService> sessions = new();
     private readonly object gate = new();
 
-    /// <param name="consent">Where users' consent lives; the caller's SID must be allowed.</param>
+    /// <param name="consent">Where users' consent lives, with the SteamVR files each allowed; the caller's SID must be allowed.</param>
     /// <param name="signer">The Authenticode signer subject of a file; the real one is <see cref="WinTrustSigner.SubjectOf"/>.</param>
     public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null)
     {
@@ -150,15 +150,19 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                     return Fail(NoSteamVr);
                 }
 
-                var (driverHold, problem) = SteamVrDriverCheck.Verify(found, signer);
-                if (problem is not null)
+                // Each DLL must be Valve's, or the very copy this caller allowed: the list is read for the pipe client's
+                // own SID (never from the request), and each hash is taken from the handle that is held until Monado is up.
+                var check = SteamVrDriverCheck.Verify(found, signer, consent.ApprovedFiles(caller.Sid));
+                if (check.Refusal is not null || check.SteamVrPath is null)
                 {
-                    driverHold.Dispose();
-                    return Fail(problem);
+                    check.Hold.Dispose();
+                    return check.Refusal ?? Fail("Mirador couldn't tell where SteamVR's Lighthouse driver really is.");
                 }
 
-                hold = driverHold;
-                steamVrPath = found;
+                // Monado is told the folder the held files are really in, never the path found through the user's Steam
+                // settings: a junction on that path could be pointed elsewhere after the check.
+                hold = check.Hold;
+                steamVrPath = check.SteamVrPath;
             }
             else
             {

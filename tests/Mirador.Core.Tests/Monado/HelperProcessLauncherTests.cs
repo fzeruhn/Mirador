@@ -36,19 +36,115 @@ public class HelperProcessLauncherTests
             });
         }
 
+        /// <summary>What the helper answers a Start with instead of starting Monado; null: it starts it.</summary>
+        public HelperReply? StartRefusal { get; set; }
+
         private HelperReply Started(ElevatedStart? start)
         {
             StartSent = start;
-            return new HelperReply(true, Value: StartPid);
+            return StartRefusal ?? new HelperReply(true, Value: StartPid);
         }
     }
 
-    private static HelperProcessLauncher Launcher(FakeElevatedClient client, string logPath) =>
-        new(client, Start, logPath)
+    /// <summary>The job launcher, which runs Monado as the user: records what it was asked to start.</summary>
+    private sealed class FakeUserLauncher : IProcessLauncher
+    {
+        public List<ProcessSpec> Specs { get; } = [];
+
+        public StubProcess? Started { get; private set; }
+
+        public IRunningProcess Start(ProcessSpec spec)
+        {
+            Specs.Add(spec);
+            return Started = new StubProcess();
+        }
+    }
+
+    private sealed class StubProcess : IRunningProcess
+    {
+        public int Id => 777;
+
+        public Task<int> Exited { get; } = new TaskCompletionSource<int>().Task;
+
+        public event Action<string>? Line { add { } remove { } }
+
+        public event Action<Exception>? ListenerFailed { add { } remove { } }
+
+        public void Kill()
+        {
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private static HelperProcessLauncher Launcher(
+        FakeElevatedClient client, string logPath, IProcessLauncher? asUser = null, Action<bool, string?>? steamVrChecked = null) =>
+        new(client, Start, logPath, asUser ?? new FakeUserLauncher())
         {
             PollInterval = TimeSpan.FromMilliseconds(20),
             FollowInterval = TimeSpan.FromMilliseconds(20),
+            SteamVrChecked = steamVrChecked,
         };
+
+    [Fact]
+    public async Task Changed_steamvr_runs_as_the_user()
+    {
+        using var dir = new TempDir();
+        var client = new FakeElevatedClient
+        {
+            StartRefusal = new HelperReply(
+                false,
+                "SteamVR's Lighthouse driver changed since you allowed Monado as administrator (ArcturusPerception.dll).",
+                Refusal: HelperRefusal.SteamVrChanged),
+        };
+        var asUser = new FakeUserLauncher();
+        var told = new List<(bool Changed, string? Why)>();
+
+        await using var process = Launcher(client, dir.File("log"), asUser, (changed, why) => told.Add((changed, why))).Start(Spec);
+
+        // The same Start, through the job launcher with the spec the session built, instead of failing.
+        Assert.Same(asUser.Started, process);
+        Assert.Same(Spec, Assert.Single(asUser.Specs));
+        Assert.Equal([HelperCommand.StartMonadoElevated], client.Commands); // no wait or stop for a Monado that isn't the helper's
+
+        // Mirador hears why, with the files the helper named, for Home's "Runs as you" line.
+        var (changed, why) = Assert.Single(told);
+        Assert.True(changed);
+        Assert.Contains("ArcturusPerception.dll", why);
+    }
+
+    [Fact]
+    public void Other_refusals_still_fail_the_start()
+    {
+        using var dir = new TempDir();
+        var client = new FakeElevatedClient
+        {
+            StartRefusal = new HelperReply(false, "SteamVR's driver file x.dll couldn't be opened."),
+        };
+        var asUser = new FakeUserLauncher();
+        var told = new List<bool>();
+
+        var e = Assert.Throws<MiradorException>(() => Launcher(client, dir.File("log"), asUser, (changed, _) => told.Add(changed)).Start(Spec));
+
+        Assert.Equal("SteamVR's driver file x.dll couldn't be opened.", e.Message);
+        Assert.Empty(asUser.Specs);
+        Assert.Empty(told);
+    }
+
+    [Fact]
+    public async Task An_elevated_start_says_steamvr_is_as_allowed()
+    {
+        using var dir = new TempDir();
+        var client = new FakeElevatedClient();
+        var asUser = new FakeUserLauncher();
+        var told = new List<bool>();
+
+        await using var process = Launcher(client, dir.File("log"), asUser, (changed, _) => told.Add(changed)).Start(Spec);
+
+        Assert.Equal(1234, process.Id);
+        Assert.Empty(asUser.Specs);
+        Assert.Equal([false], told);
+    }
 
     [Fact]
     public void Start_sends_the_settings_and_returns_the_pid()

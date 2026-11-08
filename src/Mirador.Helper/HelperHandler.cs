@@ -218,7 +218,7 @@ public sealed class HelperHandler
         }
     }
 
-    /// <summary>Deletes the consent of the user on the other end of the pipe, and no one else's.</summary>
+    /// <summary>Deletes the consent of the user on the other end of the pipe, with the SteamVR files they allowed, and no one else's.</summary>
     private HelperReply RevokeElevatedMonado(CallerInfo? caller)
     {
         if (caller is null)

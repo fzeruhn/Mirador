@@ -1,12 +1,14 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Mirador.Helper.ElevatedMonado;
+namespace Mirador.Ipc;
 
 /// <summary>
 /// The Authenticode signer subject of a file, through <c>WinVerifyTrust</c> and the crypto API: the subject string
 /// (<c>CN=Valve Corp., O=…</c>) when the file is signed and its chain is trusted, else null. Passed to
-/// <see cref="SteamVrDriverCheck.Verify"/>, which parses it and requires its CN and O to be exactly <c>Valve Corp.</c>
+/// <see cref="SteamVrDriverCheck.Verify"/> (the helper) and <see cref="SteamVrDriverCheck.UnsignedFiles"/> (the consent
+/// step), which parse it and require its CN and O to be exactly <c>Valve Corp.</c> Callers hold the file open without
+/// write or delete sharing while asking, so the bytes checked are the bytes that are hashed and loaded.
 /// </summary>
 public static class WinTrustSigner
 {

@@ -140,6 +140,46 @@ public class LineCodecTests
     }
 
     [Fact]
+    public async Task A_request_cant_carry_a_list()
+    {
+        // A caller that adds a file list, a path or a SID, at the top or inside the settings, sends only the command and
+        // the typed settings: the approved files come from the consent of whoever connected, never from a request.
+        const string line =
+            "{\"command\":\"StartMonadoElevated\","
+            + "\"start\":{\"lighthouseWaitMs\":3000,\"renderScalePercent\":100,\"compositorMinTimeMs\":6,\"exitOnDisconnect\":false,"
+            + "\"module\":\"dreamair\",\"approvedFiles\":{\"ArcturusPerception.dll\":\"00\"},\"files\":[\"evil.dll=00\"]},"
+            + "\"approvedFiles\":[\"ArcturusPerception.dll=00\"],\"unsignedFiles\":{\"evil.dll\":\"00\"},"
+            + "\"steamVrPath\":\"C:\\\\evil\",\"sid\":\"S-1-5-18\"}\n";
+
+        var request = await LineCodec.ReadAsync<HelperRequest>(Bytes(line), CancellationToken.None);
+
+        Assert.Equal(new HelperRequest(HelperCommand.StartMonadoElevated, new ElevatedStart(3000, 100, 6, false, "dreamair")), request);
+
+        // Nor could a later field hold one: a request is a command word and settings of plain numbers, switches and the
+        // module's name.
+        Assert.Equal(["Command", "Start"], typeof(HelperRequest).GetProperties().Select(p => p.Name).Order());
+        foreach (var property in typeof(ElevatedStart).GetProperties())
+        {
+            Assert.True(
+                property.PropertyType == typeof(int) || property.PropertyType == typeof(bool) || property.PropertyType == typeof(string),
+                $"ElevatedStart.{property.Name} is a {property.PropertyType.Name}");
+        }
+    }
+
+    [Fact]
+    public async Task A_refusal_reason_goes_over_the_wire_as_a_word()
+    {
+        var reply = new HelperReply(false, "SteamVR changed (ArcturusPerception.dll).", Refusal: HelperRefusal.SteamVrChanged);
+
+        var text = WireText(reply);
+
+        Assert.Contains("\"refusal\":\"SteamVrChanged\"", text);
+        Assert.Equal(reply, await LineCodec.ReadAsync<HelperReply>(Bytes(text), CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            LineCodec.ReadAsync<HelperReply>(Bytes("{\"ok\":false,\"refusal\":0}\n"), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_value_too_long_for_one_line_is_refused_on_write()
     {
         var stream = new MemoryStream();
