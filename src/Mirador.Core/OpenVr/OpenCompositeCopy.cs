@@ -86,21 +86,21 @@ public sealed class OpenCompositeCopy(string bundleDir, string runtimeDir)
         return updated ? CopyOutcome.Updated : CopyOutcome.Current;
     }
 
-    /// <summary>The OpenComposite commit the bundle was built from: the first line of its <c>SOURCE.txt</c>.</summary>
-    public string? Commit()
+    /// <summary>The bundle's OpenComposite: its <c>SOURCE.txt</c>'s first line, or null when it is missing or says neither form.</summary>
+    public OpenCompositeSource? BundleSource
     {
-        var source = Path.Combine(bundleDir, "SOURCE.txt");
-        if (!File.Exists(source))
+        get
         {
-            return null;
+            var source = Path.Combine(bundleDir, "SOURCE.txt");
+            return File.Exists(source) ? OpenCompositeSource.Read(File.ReadAllText(source)) : null;
         }
-
-        var first = File.ReadLines(source).FirstOrDefault()?.Trim();
-        return string.IsNullOrEmpty(first) ? null : first;
     }
 
-    /// <summary>The line for <c>versions.txt</c>: <c>OpenComposite: &lt;commit&gt;</c>.</summary>
-    public string VersionLine() => $"OpenComposite: {Commit() ?? "not in this build"}";
+    /// <summary>The OpenComposite commit the bundle was built from.</summary>
+    public string? Commit() => BundleSource?.Commit;
+
+    /// <summary>The line for <c>versions.txt</c>: <c>OpenComposite: &lt;version (commit)&gt;</c>.</summary>
+    public string VersionLine() => $"OpenComposite: {BundleSource?.Describe() ?? "not in this build"}";
 
     private static bool SameContent(string a, string b)
     {
