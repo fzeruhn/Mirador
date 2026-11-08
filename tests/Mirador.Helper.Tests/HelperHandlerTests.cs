@@ -1,3 +1,4 @@
+using System.Security.Principal;
 using Mirador.Ipc;
 
 namespace Mirador.Helper.Tests;
@@ -534,5 +535,64 @@ public sealed class HelperHandlerTests : IDisposable
         Assert.Equal(1, registry.MaxConcurrent);
         Assert.Equal(BundledManifest, registry.Active);
         Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Recorded);
+    }
+
+    // RevokeElevatedMonado
+
+    private static readonly SecurityIdentifier Alice = new("S-1-5-21-1-2-3-1001");
+    private static readonly SecurityIdentifier Bob = new("S-1-5-21-1-2-3-1002");
+
+    private static CallerInfo Caller(SecurityIdentifier sid) => new(sid, 1, 4242, @"C:\Program Files\Mirador\Mirador.exe");
+
+    private HelperHandler ConsentHandler(FakeConsentValues values)
+    {
+        Handler(); // writes the bundled manifest
+        return new HelperHandler(services, processes, registry, BundledManifest, consent: new ElevatedConsent(values));
+    }
+
+    [Fact]
+    public async Task Revoke_uses_the_callers_sid()
+    {
+        var values = new FakeConsentValues();
+        values.Sids.Add(Alice.Value);
+        values.Sids.Add(Bob.Value);
+
+        // The request is only a command: there is no way to put another SID in it.
+        var reply = await ConsentHandler(values).HandleAsync(Request(HelperCommand.RevokeElevatedMonado), Caller(Alice));
+
+        Assert.True(reply.Ok);
+        Assert.Equal([Bob.Value], values.Sids);
+    }
+
+    [Fact]
+    public async Task Revoke_without_a_known_caller_deletes_nothing_and_says_so()
+    {
+        var values = new FakeConsentValues();
+        values.Sids.Add(Alice.Value);
+
+        var reply = await ConsentHandler(values).HandleAsync(Request(HelperCommand.RevokeElevatedMonado), caller: null);
+
+        Assert.False(reply.Ok);
+        Assert.False(string.IsNullOrWhiteSpace(reply.Error));
+        Assert.Equal([Alice.Value], values.Sids);
+    }
+
+    [Fact]
+    public async Task Revoke_that_cannot_delete_reports_why()
+    {
+        var values = new FakeConsentValues { Fails = new UnauthorizedAccessException("Access is denied.") };
+
+        var reply = await ConsentHandler(values).HandleAsync(Request(HelperCommand.RevokeElevatedMonado), Caller(Alice));
+
+        Assert.False(reply.Ok);
+        Assert.Contains("Access is denied", reply.Error);
+    }
+
+    [Fact]
+    public async Task Revoke_of_a_user_who_never_consented_is_fine()
+    {
+        var reply = await ConsentHandler(new FakeConsentValues()).HandleAsync(Request(HelperCommand.RevokeElevatedMonado), Caller(Alice));
+
+        Assert.True(reply.Ok);
     }
 }

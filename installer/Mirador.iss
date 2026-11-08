@@ -24,6 +24,8 @@ DisableProgramGroupPage=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+; Consent to run Monado as administrator is never carried over from an earlier install (a re-run, a silent one, an upgrade): it is given in Mirador or by ticking the task now, and taken back in Mirador.
+UsePreviousTasks=no
 CloseApplications=yes
 RestartApplications=no
 OutputDir=..\artifacts
@@ -61,7 +63,13 @@ Root: HKLM64; Subkey: "SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes"; ValueType: 
 ; Where the stand-in finds Mirador when no user has run it yet.
 Root: HKLM64; Subkey: "SOFTWARE\Mirador"; ValueType: string; ValueName: "AppPath"; ValueData: "{app}\Mirador.exe"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
+[Tasks]
+; Off unless chosen (Mirador.md section 4.10 item 44): Monado may then run as administrator, with realtime GPU priority.
+Name: "elevatedmonado"; Description: "Run Monado as administrator (realtime GPU priority)"; Flags: unchecked
+
 [Run]
+; The consent of the user who installs: the installer is elevated, and so is this step (it writes HKLM\SOFTWARE\Mirador\ElevatedMonado).
+Filename: "{app}\Mirador.exe"; Parameters: "--allow-elevated-monado"; StatusMsg: "Recording the consent to run Monado as administrator..."; Tasks: elevatedmonado; Flags: runhidden waituntilterminated
 Filename: "{app}\Mirador.exe"; Description: "Start Mirador"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]
@@ -244,4 +252,6 @@ begin
   StopHelper;
   Sc('delete {#ServiceName}');
   RegDeleteValue(HKLM64, MiradorKey, 'PreviousActiveRuntime');
+  { Everyone's consent to run Monado as administrator goes with Mirador (Mirador.md section 4.10 item 44). }
+  RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonado');
 end;

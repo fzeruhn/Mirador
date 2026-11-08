@@ -29,6 +29,13 @@ public enum HelperCommand
 
     /// <summary>Reads which eye geometry file Pimax's eye tracking runtime was started with.</summary>
     GetPimaxEyeBlob,
+
+    /// <summary>
+    /// Takes back the consent to run Monado as administrator of the user who sent this request (Mirador.md section 4.10
+    /// item 44). The user is the pipe's client, as Windows reports it: the request names no one, and there is no way to
+    /// revoke another user's consent. Giving consent is not a command: only an administrator can, through UAC.
+    /// </summary>
+    RevokeElevatedMonado,
 }
 
 /// <summary>A request: one command and nothing else.</summary>

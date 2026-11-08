@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Principal;
 using Mirador.Ipc;
 
 namespace Mirador.Helper;
@@ -61,6 +62,13 @@ public interface IRuntimeRegistry
     void SetRecorded(string? path);
 }
 
+/// <summary>Who is on the other end of the pipe, as Windows reports it; nothing in it comes from a request.</summary>
+/// <param name="Sid">The user's SID, from the impersonated client's token.</param>
+/// <param name="SessionId">The caller's Windows session.</param>
+/// <param name="ProcessId">The caller's process.</param>
+/// <param name="ImagePath">The caller's program file; null when Windows doesn't say.</param>
+public sealed record CallerInfo(SecurityIdentifier Sid, int SessionId, int ProcessId, string? ImagePath);
+
 /// <summary>
 /// Does what <see cref="HelperCommand"/> says, and nothing else. A request carries only the command, so nothing a
 /// caller sends reaches the registry, a service or a process. Requests are handled one at a time: they change
@@ -69,6 +77,8 @@ public interface IRuntimeRegistry
 public sealed class HelperHandler
 {
     private const string BundledMissing = "This Mirador has no bundled Monado.";
+    private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
+    private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
     private const string UnknownCommand = "Mirador's helper service doesn't know that command.";
     // A message goes into one protocol line, where JSON writes each character outside ASCII as six bytes (\uXXXX).
     private const int MaxErrorLength = 600;
@@ -78,19 +88,22 @@ public sealed class HelperHandler
     private readonly IProcessControl processes;
     private readonly IRuntimeRegistry registry;
     private readonly string bundledManifest;
+    private readonly ElevatedConsent? consent;
     private readonly string version;
     private readonly object gate = new();
 
     /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
     /// <param name="version">What <see cref="HelperCommand.Ping"/> answers; the helper's own version when null.</param>
+    /// <param name="consent">Where users' consent to run Monado as administrator is; without it, revoking fails with a message.</param>
     public HelperHandler(
         IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
-        string? version = null)
+        string? version = null, ElevatedConsent? consent = null)
     {
         this.services = services;
         this.processes = processes;
         this.registry = registry;
         this.bundledManifest = Path.GetFullPath(bundledManifest);
+        this.consent = consent;
         this.version = version ?? OwnVersion();
     }
 
@@ -100,8 +113,13 @@ public sealed class HelperHandler
     public static string DefaultBundledManifest { get; } = Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory, "..", "monado", "runtime", "openxr_monado.json"));
 
-    /// <summary>Carries out one request. Any failure comes back as an error reply, never as an exception.</summary>
-    public Task<HelperReply> HandleAsync(HelperRequest request) => Task.Run(() => Handle(request.Command));
+    /// <summary>
+    /// Carries out one request. Any failure comes back as an error reply, never as an exception.
+    /// </summary>
+    /// <param name="request">What the caller sent.</param>
+    /// <param name="caller">Who the caller is, from the pipe (never from the request); null when that couldn't be learned.</param>
+    public Task<HelperReply> HandleAsync(HelperRequest request, CallerInfo? caller = null) =>
+        Task.Run(() => Handle(request.Command, caller));
 
     /// <summary>
     /// For the uninstaller only (<c>--restore-runtime</c>), never over the pipe: puts back the OpenXR runtime that
@@ -111,7 +129,7 @@ public sealed class HelperHandler
     /// </summary>
     public Task<HelperReply> RestoreRuntimeAsync() => Task.Run(() => Locked(RestoreRuntime));
 
-    private HelperReply Handle(HelperCommand command)
+    private HelperReply Handle(HelperCommand command, CallerInfo? caller)
     {
         // Ping touches nothing on the machine, so it never waits for a request that is (perhaps for a long time) changing it.
         if (command == HelperCommand.Ping)
@@ -125,6 +143,7 @@ public sealed class HelperHandler
             HelperCommand.StopPimax => StopPimax(),
             HelperCommand.StartPimax => StartPimax(),
             HelperCommand.GetPimaxEyeBlob => GetPimaxEyeBlob(),
+            HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
             _ => new HelperReply(false, UnknownCommand),
         });
     }
@@ -143,6 +162,23 @@ public sealed class HelperHandler
                 return new HelperReply(false, Shorten(e.Message));
             }
         }
+    }
+
+    /// <summary>Deletes the consent of the user on the other end of the pipe, and no one else's.</summary>
+    private HelperReply RevokeElevatedMonado(CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        if (consent is null)
+        {
+            return new HelperReply(false, NoConsent);
+        }
+
+        consent.Revoke(caller.Sid);
+        return new HelperReply(true);
     }
 
     private HelperReply SetRuntimeBundled()

@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Mirador.App.Services;
 using Mirador.Core;
+using Mirador.Core.Elevation;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Runtime;
 using Mirador.Core.SignIn;
@@ -27,6 +29,14 @@ public static partial class Program
         if (parsed.SetRuntime is { } manifest)
         {
             return SetRuntimeCommand.Run(manifest, ActiveRuntimeWriter.Write);
+        }
+
+        // The elevated step of "Run Monado as administrator": records this user's consent. No window, no app.
+        if (parsed.AllowElevatedMonado)
+        {
+            AppLog.Open(AppPaths.Default);
+            return AllowElevatedCommand.Run(
+                new ElevatedConsent(new RegistryConsentValues()), AllowElevatedCommand.CurrentUser(), AppLog.Write);
         }
 
         // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.

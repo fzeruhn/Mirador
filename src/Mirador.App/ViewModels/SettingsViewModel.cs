@@ -4,6 +4,7 @@ using Microsoft.UI.Dispatching;
 using Mirador.App.Services;
 using Mirador.Core;
 using Mirador.Core.SignIn;
+using Mirador.Ipc;
 
 namespace Mirador.App.ViewModels;
 
@@ -35,8 +36,39 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             Problem = e.Message;
         }
 
+        try
+        {
+            standardAccount = ElevatedMonado.IsStandardAccount();
+            RunMonadoAsAdministrator = ElevatedMonado.IsAllowed();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            Problem = $"Mirador couldn't read whether Monado may run as administrator ({e.Message.Trim().TrimEnd('.')}).";
+        }
+
         loading = false;
     }
+
+    private const string RunAsAdministratorText = "Realtime GPU priority for Monado. Programs running as you could use this to get administrator rights.";
+    private readonly bool standardAccount;
+
+    /// <summary>
+    /// Whether this user has allowed Monado to run as administrator. Turning it on asks Windows once (UAC); turning it off
+    /// asks the helper service to forget it, with no prompt.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool RunMonadoAsAdministrator { get; set; }
+
+    /// <summary>Whether a change is being made (the UAC prompt is up, or the helper is working): the switch waits.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeRunMonadoAsAdministrator))]
+    public partial bool ChangingRunMonadoAsAdministrator { get; set; }
+
+    /// <summary>False for a standard account, which has no administrator token to run Monado with, and while a change runs.</summary>
+    public bool CanChangeRunMonadoAsAdministrator => !standardAccount && !ChangingRunMonadoAsAdministrator;
+
+    public string RunMonadoAsAdministratorDescription =>
+        standardAccount ? $"{RunAsAdministratorText} Needs an administrator account." : RunAsAdministratorText;
 
     /// <summary>Whether Windows starts Mirador at sign-in (read from the registry when the page opens).</summary>
     [ObservableProperty]
@@ -257,6 +289,73 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 loading = false;
             }
+        }
+    }
+
+    partial void OnRunMonadoAsAdministratorChanged(bool value)
+    {
+        if (!loading)
+        {
+            _ = ChangeRunMonadoAsAdministratorAsync(value);
+        }
+    }
+
+    private async Task ChangeRunMonadoAsAdministratorAsync(bool value)
+    {
+        ChangingRunMonadoAsAdministrator = true;
+        try
+        {
+            Problem = null;
+            string? problem = null;
+            if (value)
+            {
+                var code = await ElevatedMonado.AllowAsync();
+                if (code != 0 && code != ElevatedRuntime.PromptCancelled)
+                {
+                    problem = "Mirador couldn't record the consent for Monado to run as administrator. The reason is in mirador.log.";
+                }
+            }
+            else
+            {
+                var reply = await host.Helper.SendAsync(HelperCommand.RevokeElevatedMonado, CancellationToken.None);
+                if (!reply.Ok)
+                {
+                    problem = $"Mirador couldn't take back the consent for Monado to run as administrator: {reply.Error}";
+                }
+            }
+
+            // The switch shows what the registry says now: a cancelled prompt or a failure leaves it as it was.
+            bool actual;
+            try
+            {
+                actual = ElevatedMonado.IsAllowed();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                actual = !value;
+                problem ??= $"Mirador couldn't read whether Monado may run as administrator ({e.Message.Trim().TrimEnd('.')}).";
+            }
+
+            loading = true;
+            try
+            {
+                RunMonadoAsAdministrator = actual;
+            }
+            finally
+            {
+                loading = false;
+            }
+
+            Problem = problem;
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Changing whether Monado runs as administrator failed", e);
+            Problem = $"Changing whether Monado runs as administrator failed ({e.Message.Trim().TrimEnd('.')}).";
+        }
+        finally
+        {
+            ChangingRunMonadoAsAdministrator = false;
         }
     }
 

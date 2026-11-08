@@ -1,3 +1,4 @@
+using Mirador.Core.Elevation;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Runtime;
 using Mirador.Core.SignIn;
@@ -11,7 +12,8 @@ namespace Mirador.Core;
 /// <param name="RestoreOpenVr"><c>--restore-openvr</c>: the uninstaller's step that puts OpenVR games back on SteamVR.</param>
 /// <param name="SignIn"><c>--sign-in</c>: Windows started Mirador at sign-in, which may mean no window (App settings, "Start minimized").</param>
 /// <param name="RemoveSignIn"><c>--remove-sign-in</c>: the uninstaller's step that stops Mirador starting at sign-in.</param>
-public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bool RestoreOpenVr = false, bool SignIn = false, bool RemoveSignIn = false)
+/// <param name="AllowElevatedMonado"><c>--allow-elevated-monado</c>: the elevated step (and the installer's) that records this user's consent to run Monado as administrator.</param>
+public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bool RestoreOpenVr = false, bool SignIn = false, bool RemoveSignIn = false, bool AllowElevatedMonado = false)
 {
     /// <summary>Reads the command line; flags are matched without regard to case, and anything else is ignored.</summary>
     public static AppArgs Parse(string[] args)
@@ -19,6 +21,7 @@ public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bo
         bool start = false, background = false, restoreOpenVr = false;
         var signIn = false;
         var removeSignIn = false;
+        var allowElevatedMonado = false;
         string? setRuntime = null;
         for (var i = 0; i < args.Length; i++)
         {
@@ -42,9 +45,12 @@ public sealed record AppArgs(bool Start, bool Background, string? SetRuntime, bo
                 case SignInStartup.RemoveFlag:
                     removeSignIn = true;
                     break;
+                case AllowElevatedCommand.Flag:
+                    allowElevatedMonado = true;
+                    break;
             }
         }
 
-        return new AppArgs(start, background, setRuntime, restoreOpenVr, signIn, removeSignIn);
+        return new AppArgs(start, background, setRuntime, restoreOpenVr, signIn, removeSignIn, allowElevatedMonado);
     }
 }

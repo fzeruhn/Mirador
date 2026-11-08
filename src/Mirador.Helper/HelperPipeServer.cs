@@ -1,7 +1,11 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Mirador.Ipc;
@@ -268,7 +272,9 @@ public sealed class HelperPipeServer : BackgroundService
                 return;
             }
 
-            var reply = await handler.HandleAsync(request).ConfigureAwait(false);
+            // Who is on the other end, from Windows (the pipe's client), never from the request. Only after the request
+            // was read: a pipe can impersonate its client only once the client has sent something.
+            var reply = await handler.HandleAsync(request, ReadCaller(pipe)).ConfigureAwait(false);
             Log(request.Command, reply);
 
             using var writeLimit = CancellationTokenSource.CreateLinkedTokenSource(stop);
@@ -295,6 +301,95 @@ public sealed class HelperPipeServer : BackgroundService
             instances.Release();
         }
     }
+
+    /// <summary>
+    /// The pipe client's user, session, process and program, as Windows reports them; null when the user can't be
+    /// learned (a command that needs to know who asked is then refused). The program is informational: it is the file the
+    /// process started from, which the caller chose.
+    /// </summary>
+    private CallerInfo? ReadCaller(NamedPipeServerStream pipe)
+    {
+        try
+        {
+            // The client connects with Identification, which lets the helper read the token but not act as the user.
+            // While impersonating, the helper may not open files (an Identification token can't), and a .NET assembly that
+            // fails to load then fails for good: so the only thing done meanwhile is one call that copies the token, and
+            // the identity is made from the copy afterwards.
+            SafeAccessTokenHandle? token = null;
+            pipe.RunAsClient(() =>
+            {
+                const uint Query = 0x0008;
+                if (OpenThreadToken(new IntPtr(-2), Query, true, out var opened))
+                {
+                    token = opened;
+                }
+            });
+            using var _ = token;
+            if (token is null || token.IsInvalid)
+            {
+                return null;
+            }
+
+            using var identity = new WindowsIdentity(token.DangerousGetHandle());
+            var sid = identity.User;
+            if (sid is null || !GetNamedPipeClientProcessId(pipe.SafePipeHandle, out var processId))
+            {
+                return null;
+            }
+
+            var session = ProcessIdToSessionId(processId, out var sessionId) ? (int)sessionId : -1;
+            return new CallerInfo(sid, session, (int)processId, ImagePathOf(processId));
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException or UnauthorizedAccessException or Win32Exception)
+        {
+            logger.LogDebug(e, "The helper couldn't tell who a caller was.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs the calls that load code (the identity classes, the P/Invoke) once before any caller is impersonated.
+    /// </summary>
+    static HelperPipeServer()
+    {
+        using var self = WindowsIdentity.GetCurrent();
+        _ = self.User;
+        _ = OpenThreadToken(new IntPtr(-2), 0x0008, true, out var none);
+        none.Dispose();
+    }
+
+    private static string? ImagePathOf(uint processId)
+    {
+        const uint QueryLimitedInformation = 0x1000;
+        using var process = OpenProcess(QueryLimitedInformation, false, processId);
+        if (process.IsInvalid)
+        {
+            return null;
+        }
+
+        var path = new StringBuilder(1024);
+        var size = (uint)path.Capacity;
+        return QueryFullProcessImageNameW(process, 0, path, ref size) ? path.ToString(0, (int)size) : null;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenThreadToken(IntPtr thread, uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool openAsSelf, out SafeAccessTokenHandle token);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint clientProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageNameW(SafeProcessHandle process, uint flags, StringBuilder path, ref uint size);
 
     /// <summary>
     /// Waits, at most <see cref="ReadLimit"/>, for the caller to close its end once it has the reply: disconnecting

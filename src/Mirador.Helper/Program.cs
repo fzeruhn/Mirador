@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.EventLog;
+using Mirador.Ipc;
 using Mirador.Helper;
 
 // `Mirador.Helper.exe --restore-runtime`: what the uninstaller runs. Puts back the OpenXR runtime Mirador replaced,
@@ -29,7 +30,8 @@ builder.Services.AddSingleton(services => new HelperHandler(
     services.GetRequiredService<IServiceControl>(),
     services.GetRequiredService<IProcessControl>(),
     services.GetRequiredService<IRuntimeRegistry>(),
-    HelperHandler.DefaultBundledManifest));
+    HelperHandler.DefaultBundledManifest,
+    consent: new ElevatedConsent(new RegistryConsentValues())));
 builder.Services.AddHostedService<HelperPipeServer>();
 builder.Build().Run();
 return 0;
