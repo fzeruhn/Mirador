@@ -31,12 +31,16 @@ public static partial class Program
             return SetRuntimeCommand.Run(manifest, ActiveRuntimeWriter.Write);
         }
 
-        // The elevated step of "Run Monado as administrator": records this user's consent. No window, no app.
+        // The elevated step of "Run Monado as administrator": records this user's consent, and SteamVR's Lighthouse DLLs
+        // that Valve didn't sign as they are now. No window, no app.
         if (parsed.AllowElevatedMonado)
         {
             AppLog.Open(AppPaths.Default);
             return AllowElevatedCommand.Run(
-                new ElevatedConsent(new RegistryConsentValues()), AllowElevatedCommand.CurrentUser(), AppLog.Write);
+                new ElevatedConsent(new RegistryConsentValues()),
+                AllowElevatedCommand.CurrentUser(),
+                AllowElevatedCommand.UnsignedLighthouseFiles,
+                AppLog.Write);
         }
 
         // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.

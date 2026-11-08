@@ -40,8 +40,10 @@ public enum HelperCommand
     /// <summary>
     /// Starts the bundled <c>monado-service.exe</c> as administrator in the caller's session, with the caller's linked
     /// (elevated) token, once the checks of <see cref="ElevatedConsent"/>, the caller's image, SteamVR's driver and the
-    /// rest pass (Mirador.md section 4.10 item 46). The request carries an <see cref="ElevatedStart"/> and nothing more.
-    /// The reply's <see cref="HelperReply.Value"/> is the service's process id.
+    /// rest pass (Mirador.md section 4.10 item 46). The request carries an <see cref="ElevatedStart"/> and nothing more:
+    /// the SteamVR files the caller allowed are read from the caller's own consent, never from a request. The reply's
+    /// <see cref="HelperReply.Value"/> is the service's process id; a refusal because those files changed carries
+    /// <see cref="HelperRefusal.SteamVrChanged"/>.
     /// </summary>
     StartMonadoElevated,
 
@@ -77,6 +79,22 @@ public sealed record ElevatedStart(
 /// <summary>A request: a command, and the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>.</summary>
 public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null);
 
+/// <summary>
+/// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing
+/// <see cref="HelperReply.Error"/>. Sent as its name; a number is refused.
+/// </summary>
+[JsonConverter(typeof(HelperRefusalConverter))]
+public enum HelperRefusal
+{
+    /// <summary>
+    /// <see cref="HelperCommand.StartMonadoElevated"/>: a DLL in SteamVR's Lighthouse driver folder is neither signed by
+    /// Valve nor the copy this user allowed (its SHA-256 isn't the one recorded at the consent), as after a SteamVR
+    /// update. Mirador then runs the same Start as the user and offers to allow it again (Mirador.md section 4.10 item
+    /// 46). <see cref="HelperReply.Error"/> names the files.
+    /// </summary>
+    SteamVrChanged,
+}
+
 /// <summary>The helper's answer. <see cref="Error"/> is a message meant for the user when <see cref="Ok"/> is false.</summary>
 /// <param name="Ok">Whether the command was carried out.</param>
 /// <param name="Error">Why it was not, in plain words.</param>
@@ -84,11 +102,14 @@ public sealed record HelperRequest([property: JsonRequired] HelperCommand Comman
 /// <param name="Value">For <see cref="HelperCommand.Ping"/> the version, for <see cref="HelperCommand.GetPimaxEyeBlob"/> the
 /// variant (or null), for <see cref="HelperCommand.StartMonadoElevated"/> the service's process id, for
 /// <see cref="HelperCommand.WaitMonadoElevated"/> the exit code once Monado has ended (null while it runs).</param>
+/// <param name="Refusal">When <see cref="Ok"/> is false: the typed reason, for a refusal Mirador answers in its own way;
+/// null for every other failure.</param>
 public sealed record HelperReply(
     [property: JsonRequired] bool Ok,
     string? Error = null,
     bool? WasRunning = null,
-    string? Value = null)
+    string? Value = null,
+    HelperRefusal? Refusal = null)
 {
     /// <summary>
     /// Set by the client, never sent: the request never reached the helper (it isn't running, or the pipe couldn't be
@@ -103,6 +124,14 @@ public sealed record HelperReply(
 internal sealed class HelperCommandConverter : JsonStringEnumConverter<HelperCommand>
 {
     public HelperCommandConverter() : base(namingPolicy: null, allowIntegerValues: false)
+    {
+    }
+}
+
+/// <summary>The refusal as its name, and nothing else.</summary>
+internal sealed class HelperRefusalConverter : JsonStringEnumConverter<HelperRefusal>
+{
+    public HelperRefusalConverter() : base(namingPolicy: null, allowIntegerValues: false)
     {
     }
 }

@@ -29,6 +29,10 @@ public sealed class AppHost : IAsyncDisposable
     private readonly StationStore stationStore;
     private AppPipeServer? pipe;
 
+    // Set when the helper refused the last elevated Start because SteamVR's unsigned Lighthouse DLLs aren't the copies
+    // the user allowed (that Start ran as the user); cleared by an elevated Start and by allowing again.
+    private volatile bool steamVrChanged;
+
     private AppHost(string appDir, AppPaths paths)
     {
         AppDir = appDir;
@@ -82,8 +86,15 @@ public sealed class AppHost : IAsyncDisposable
             UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e)),
             Stations,
             ElevatedConsented: ElevatedMonadoAllowed,
-            ElevatedLauncher: start => new HelperProcessLauncher(Helper, start, elevatedLogPath)));
+            ElevatedLauncher: start => new HelperProcessLauncher(Helper, start, elevatedLogPath, launcher)
+            {
+                SteamVrChecked = OnSteamVrChecked,
+            }));
     }
+
+    /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>
+    public const string SteamVrChangedReason =
+        "Runs as you: SteamVR's Lighthouse driver changed since you allowed Monado as administrator.";
 
     /// <summary>The folder Mirador.exe is in.</summary>
     public string AppDir { get; }
@@ -181,9 +192,32 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// Whether the last elevated Start ran as the user because SteamVR's Lighthouse driver changed since the user allowed
+    /// Monado as administrator; Home then offers "Allow again".
+    /// </summary>
+    public bool SteamVrChangedSinceAllowed => steamVrChanged;
+
+    /// <summary>
+    /// Says that the consent step just recorded the user's consent again, with SteamVR's files as they are now: the next
+    /// Start runs as administrator, and Home's line goes.
+    /// </summary>
+    public void SteamVrAllowedAgain() => steamVrChanged = false;
+
+    private void OnSteamVrChecked(bool changed, string? reason)
+    {
+        steamVrChanged = changed;
+        if (changed)
+        {
+            // The helper names the files; the user sees only Home's line, so they are kept here.
+            AppLog.Write($"Monado runs as you this time: {reason ?? "SteamVR's Lighthouse driver changed since you allowed Monado as administrator."}");
+        }
+    }
+
+    /// <summary>
     /// Home's Monado card line while consent is on and the selected profile still runs as the user: because it uses a
-    /// build folder (or a module folder such as the Dream Air layer), or sets extra environment variables. Null when the
-    /// profile would run as administrator, or consent is off (Mirador.md §4.10 item 45).
+    /// build folder (or a module folder such as the Dream Air layer), or sets extra environment variables, or because
+    /// SteamVR's Lighthouse driver changed since the user allowed it (<see cref="SteamVrChangedReason"/>). Null when the
+    /// profile would run as administrator, or consent is off (Mirador.md §4.10 items 45 and 46).
     /// </summary>
     public string? RunsAsYouReason()
     {
@@ -210,7 +244,7 @@ public sealed class AppHost : IAsyncDisposable
                 return "Runs as you: this profile uses a build folder.";
             }
 
-            return null;
+            return steamVrChanged ? SteamVrChangedReason : null;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

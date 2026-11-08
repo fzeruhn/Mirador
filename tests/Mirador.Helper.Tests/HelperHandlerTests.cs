@@ -556,12 +556,17 @@ public sealed class HelperHandlerTests : IDisposable
         var values = new FakeConsentValues();
         values.Sids.Add(Alice.Value);
         values.Sids.Add(Bob.Value);
+        values.FileLines[Alice.Value] = ["ArcturusPerception.dll=" + new string('a', 64)];
+        values.FileLines[Bob.Value] = ["ArcturusPerception.dll=" + new string('b', 64)];
 
         // The request is only a command: there is no way to put another SID in it.
         var reply = await ConsentHandler(values).HandleAsync(Request(HelperCommand.RevokeElevatedMonado), Caller(Alice));
 
         Assert.True(reply.Ok);
         Assert.Equal([Bob.Value], values.Sids);
+
+        // The approved SteamVR files go with the consent, and only the caller's.
+        Assert.Equal([Bob.Value], values.FileLines.Keys);
     }
 
     [Fact]

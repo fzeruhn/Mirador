@@ -1110,7 +1110,9 @@ public sealed class SessionController(SessionDeps deps)
     /// <summary>
     /// Which launcher starts this Start: the helper's elevated one when the user allowed it, the profile runs the
     /// bundled Monado, it sets no extra environment variables and its module points at no folder of its own; otherwise
-    /// the job launcher, which runs Monado as the user. Whatever the choice, the rest of the session is the same.
+    /// the job launcher, which runs Monado as the user. The elevated launcher itself runs the Start through the job
+    /// launcher when the helper says SteamVR's Lighthouse driver changed since the consent (<see cref="HelperProcessLauncher"/>).
+    /// Whatever the choice, the rest of the session is the same.
     /// </summary>
     private IProcessLauncher ChooseLauncher(MonadoInstall install, Profile profile, IHeadsetModule? module, MonadoSettings settings)
     {

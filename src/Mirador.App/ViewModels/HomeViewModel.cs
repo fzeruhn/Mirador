@@ -136,6 +136,17 @@ public sealed partial class HomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasRunsAsYouNotice))]
     public partial string? RunsAsYouNotice { get; set; }
 
+    /// <summary>
+    /// Whether the "Runs as you" line offers "Allow again": the last Start ran as the user because SteamVR's Lighthouse
+    /// driver changed since the user allowed Monado as administrator (Mirador.md §4.10 item 46).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool OffersAllowAgain { get; set; }
+
+    /// <summary>False while "Allow again" waits for its UAC prompt.</summary>
+    [ObservableProperty]
+    public partial bool CanAllowAgain { get; set; } = true;
+
     /// <summary>The "OpenXR runtime" row of the runtimes card.</summary>
     [ObservableProperty]
     public partial StatusItem OpenXrRow { get; set; } = new("OpenXR runtime", "", StatusLevel.Info);
@@ -580,7 +591,42 @@ public sealed partial class HomeViewModel : ObservableObject
 
         RuntimeNotice = host.Session.RuntimeNotice;
         RunsAsYouNotice = host.RunsAsYouReason();
+        OffersAllowAgain = RunsAsYouNotice == AppHost.SteamVrChangedReason;
         RefreshOpenVr(isActive, active);
+    }
+
+    /// <summary>
+    /// "Allow again" on the "Runs as you" line: the consent step through UAC (<see cref="ElevatedMonado.AllowAsync"/>),
+    /// which records SteamVR's Lighthouse files as they are now. Once it has, the line goes and the next Start runs as
+    /// administrator; a cancelled prompt changes nothing.
+    /// </summary>
+    [RelayCommand]
+    private async Task AllowAgainAsync()
+    {
+        CanAllowAgain = false;
+        try
+        {
+            var code = await ElevatedMonado.AllowAsync();
+            if (code == 0)
+            {
+                host.SteamVrAllowedAgain();
+                RemoveNotice("allow-again");
+            }
+            else if (code != ElevatedRuntime.PromptCancelled)
+            {
+                ShowNotice("allow-again", "Monado", "Mirador couldn't record the consent for Monado to run as administrator. The reason is in mirador.log.", InfoBarSeverity.Error);
+            }
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Allowing Monado to run as administrator again failed", e);
+            ShowNotice("allow-again", "Monado", $"Allowing Monado to run as administrator again failed ({e.Message.Trim().TrimEnd('.')}).", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            CanAllowAgain = true;
+            RefreshRuntime();
+        }
     }
 
     /// <summary>

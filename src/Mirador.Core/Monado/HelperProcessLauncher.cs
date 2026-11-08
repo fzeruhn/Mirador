@@ -9,10 +9,20 @@ namespace Mirador.Core.Monado;
 /// It never passes the spec's program or environment: it sends <see cref="HelperCommand.StartMonadoElevated"/> with the
 /// typed settings and module it was built with. Its <see cref="IRunningProcess"/> follows the helper's log file for the
 /// session's lines, learns the exit code by polling <see cref="HelperCommand.WaitMonadoElevated"/>, and stops Monado
-/// with <see cref="HelperCommand.StopMonadoElevated"/>.
+/// with <see cref="HelperCommand.StopMonadoElevated"/>. When the helper refuses because SteamVR's Lighthouse driver
+/// changed since the user allowed it (<see cref="HelperRefusal.SteamVrChanged"/>), the same Start runs as the user
+/// through <paramref name="asUser"/> instead (Mirador.md section 4.10 item 46).
 /// </summary>
-public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart start, string logPath) : IProcessLauncher
+/// <param name="asUser">The job launcher, which runs Monado as the user: what every Start that isn't elevated uses.</param>
+public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart start, string logPath, IProcessLauncher asUser) : IProcessLauncher
 {
+    /// <summary>
+    /// Told after each Start the helper answered either way: <c>true</c> with the helper's message (which names the
+    /// files) when SteamVR's Lighthouse driver changed since the user allowed Monado as administrator, so this Start ran
+    /// as the user; <c>false</c> when Monado started as administrator. Not told when the Start failed.
+    /// </summary>
+    public Action<bool, string?>? SteamVrChecked { get; init; }
+
     /// <summary>How often the exit is polled.</summary>
     internal TimeSpan PollInterval { get; init; } = TimeSpan.FromMilliseconds(500);
 
@@ -21,20 +31,32 @@ public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart st
 
     /// <summary>
     /// Asks the helper to start the elevated service and returns a process that follows its log and its exit. The spec
-    /// is ignored on purpose: the helper runs only its own bundled service, with the environment it builds itself.
+    /// goes only to <c>asUser</c>, when SteamVR changed: the helper runs only its own bundled service, with the
+    /// environment it builds itself.
     /// </summary>
-    /// <exception cref="MiradorException">The helper refused or couldn't start it; the message is for the user.</exception>
+    /// <exception cref="MiradorException">The helper refused for any other reason, or couldn't start it (or the
+    /// Start as the user failed); the message is for the user.</exception>
     public IRunningProcess Start(ProcessSpec spec)
     {
         var reply = client.SendAsync(new HelperRequest(HelperCommand.StartMonadoElevated, start), CancellationToken.None)
             .GetAwaiter().GetResult();
+        if (!reply.Ok && reply.Refusal == HelperRefusal.SteamVrChanged)
+        {
+            // Not a failure: the user allowed Monado as administrator with other copies of SteamVR's unsigned DLLs (an
+            // update since). This Start runs as the user, as it would without consent, and Home offers to allow again.
+            SteamVrChecked?.Invoke(true, reply.Error);
+            return asUser.Start(spec);
+        }
+
         if (!reply.Ok)
         {
             throw new MiradorException(reply.Error ?? "Mirador's helper service couldn't start Monado as administrator.");
         }
 
         var id = int.TryParse(reply.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pid) ? pid : 0;
-        return new ElevatedRunningProcess(client, id, logPath, PollInterval, FollowInterval);
+        var process = new ElevatedRunningProcess(client, id, logPath, PollInterval, FollowInterval);
+        SteamVrChecked?.Invoke(false, null);
+        return process;
     }
 }
 
