@@ -174,6 +174,10 @@
                 <ToggleSwitch IsOn="{x:Bind ViewModel.PowerOffAtMiradorQuit, Mode=TwoWay}" />
             </toolkit:SettingsCard>
             <toolkit:SettingsCard Description="Constant: Scan base station state at all times. When Relevant: Scan base station state only when interacting with them from Mirador" Header="Station state tracking rate">
+                <!-- Below 700 wide the ComboBox goes under the text (the toolkit's default is 476), so the long description keeps its width. -->
+                <toolkit:SettingsCard.Resources>
+                    <x:Double x:Key="SettingsCardWrapThreshold">700</x:Double>
+                </toolkit:SettingsCard.Resources>
                 <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.StationState, Mode=TwoWay}">
                     <ComboBoxItem Content="Constant" />
                     <ComboBoxItem Content="When Relevant" />
