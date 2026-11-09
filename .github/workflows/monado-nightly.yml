@@ -82,8 +82,9 @@ jobs:
         shell: pwsh
         run: |
           $pin = (Get-Content tools\vcpkg-commit.txt -TotalCount 1).Trim()
-          # The whole history (without old file contents): Monado's vcpkg.json names a baseline commit in it.
-          git clone -q --filter=blob:none https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          # The whole history: Monado's vcpkg.json names a baseline commit in it, and vcpkg reads old versions of its
+          # ports from git with a cleaned environment, in which a partial clone can't fetch what it lacks.
+          git clone -q https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
           git -C "$env:RUNNER_TEMP\vcpkg" checkout -q $pin
           & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
