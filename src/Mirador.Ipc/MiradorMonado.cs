@@ -86,7 +86,7 @@ public static partial class MiradorMonado
     public static string FolderOf(string root, string version) =>
         IsVersion(version) ? Path.Combine(root, version) : throw new ArgumentException($"Not a version of Mirador's Monado: {version}", nameof(version));
 
-    [GeneratedRegex(@"^monado-\d{4}\.\d{2}\.\d{2}-[0-9a-f]{7,40}$")]
+    [GeneratedRegex(@"^monado-\d{4}\.\d{2}\.\d{2}-[0-9a-f]{7,40}\z")]
     private static partial Regex VersionPattern();
 }
 

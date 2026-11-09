@@ -1,3 +1,4 @@
+using System.Security.Principal;
 using Mirador.Ipc;
 
 namespace Mirador.Helper.Tests;
@@ -38,29 +39,40 @@ public sealed class HelperHandlerMonadoTests : IDisposable
 
     private string Bundled => temp.File("monado", "runtime", "openxr_monado.json");
 
+    private static readonly CallerInfo Caller = new(new SecurityIdentifier("S-1-5-21-1-2-3-1001"), 1, 1234, null);
+
     private HelperHandler Handler(IMonadoInstaller? installer) =>
         new(new FakeServiceControl(), new FakeProcessControl(), registry, Bundled, "1.0", monado: installer);
 
     [Fact]
     public async Task Install_passes_only_the_version_name_on()
     {
-        var reply = await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "monado-2026.11.10-1a2b3c4d5e"));
+        var reply = await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "monado-2026.11.10-1a2b3c4d5e"), Caller);
 
         Assert.True(reply.Ok);
         Assert.Equal(["monado-2026.11.10-1a2b3c4d5e"], monado.Installed);
     }
 
     [Fact]
+    public async Task Install_and_roll_back_without_a_known_caller_change_nothing()
+    {
+        Assert.False((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "monado-2026.11.10-1a2b3c4d5e"))).Ok);
+        Assert.False((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado))).Ok);
+        Assert.Empty(monado.Installed);
+        Assert.Equal(0, monado.RollBacks);
+    }
+
+    [Fact]
     public async Task Install_and_roll_back_without_an_installer_are_refused()
     {
-        Assert.False((await Handler(null).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "x"))).Ok);
-        Assert.False((await Handler(null).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado))).Ok);
+        Assert.False((await Handler(null).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "x"), Caller)).Ok);
+        Assert.False((await Handler(null).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado), Caller)).Ok);
     }
 
     [Fact]
     public async Task Roll_back_goes_to_the_installer()
     {
-        Assert.True((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado))).Ok);
+        Assert.True((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado), Caller)).Ok);
         Assert.Equal(1, monado.RollBacks);
     }
 

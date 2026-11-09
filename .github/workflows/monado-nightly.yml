@@ -60,6 +60,8 @@ jobs:
               ConvertFrom-Json | Where-Object { $_.tagName -like 'monado-*' } | Sort-Object createdAt -Descending | Select-Object -First 1
           $skip = $env:GITHUB_EVENT_NAME -eq 'schedule' -and $last -and $last.tagName.EndsWith("-$short")
           if ($env:FORCE -eq 'true') { $skip = $false }
+          # The same commit published today already: its tag exists, so there is nothing new to publish.
+          if ($env:GITHUB_EVENT_NAME -ne 'push' -and (gh release list --limit 100 --json tagName | ConvertFrom-Json | Where-Object { $_.tagName -eq $tag })) { $skip = $true }
           Write-Host "Upstream main: $commit; last published: $($last.tagName); skip: $skip"
           "commit=$commit" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT

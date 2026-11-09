@@ -42,6 +42,10 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Invoke-Checked([string]$what, [scriptblock]$command) {
+    # Continue while it runs: Windows PowerShell turns a native program's output on a redirected stderr (cmake's
+    # warnings, vcpkg's notes, when Mirador runs this) into errors, which Stop would end the script at. The exit code
+    # says whether it worked.
+    $ErrorActionPreference = 'Continue'
     & $command
     if ($LASTEXITCODE -ne 0) {
         throw "$what failed (exit code $LASTEXITCODE)."
@@ -49,7 +53,7 @@ function Invoke-Checked([string]$what, [scriptblock]$command) {
 }
 
 if ($ExtraCMakeOptionsFile) {
-    $ExtraCMakeOptions += @(Get-Content -LiteralPath $ExtraCMakeOptionsFile | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
+    $ExtraCMakeOptions += @(Get-Content -LiteralPath $ExtraCMakeOptionsFile -Encoding UTF8 | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
 }
 foreach ($option in $ExtraCMakeOptions) {
     if ($option -notmatch '^-D[A-Za-z_][A-Za-z0-9_.+-]*(:[A-Z]+)?=') {

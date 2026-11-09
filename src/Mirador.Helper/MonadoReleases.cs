@@ -50,6 +50,9 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
 
     private readonly object gate = new();
 
+    // One install at a time: two would share the download's file names (the launch's and the Profiles page's, say).
+    private readonly SemaphoreSlim installing = new(1, 1);
+
     /// <summary>The installer of a normal install: <c>{app}\monado</c> and <c>{app}\standin</c>, one above the helper.</summary>
     public static MonadoInstaller ForInstall(HttpClient http, IRuntimeRegistry registry, string userAgentVersion) => new(
         http,
@@ -75,6 +78,29 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         if (!MiradorMonado.IsVersion(version))
         {
             return new HelperReply(false, "That isn't a version of Mirador's Monado.");
+        }
+
+        await installing.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await InstallOneAsync(version, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            installing.Release();
+        }
+    }
+
+    private async Task<HelperReply> InstallOneAsync(string version, CancellationToken ct)
+    {
+        // The version kept for "Roll back", still whole: going back to it needs no download.
+        lock (gate)
+        {
+            var kept = MiradorMonado.Read(monadoRoot);
+            if (kept.Previous == version && File.Exists(MiradorMonado.ManifestOf(monadoRoot, version)))
+            {
+                return RollBack();
+            }
         }
 
         var releases = await MonadoReleaseList.FetchAsync(http, userAgentVersion, ct).ConfigureAwait(false);
@@ -150,7 +176,11 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
 
         if (Directory.Exists(folder))
         {
-            Directory.Delete(folder, recursive: true);
+            // Moved aside first: a folder a game still holds fails here whole, rather than half deleted.
+            var aside = Path.Combine(monadoRoot, ".download", version + ".old");
+            TryDeleteDirectory(aside);
+            Directory.Move(folder, aside);
+            TryDeleteDirectory(aside);
         }
 
         Directory.Move(part, folder);

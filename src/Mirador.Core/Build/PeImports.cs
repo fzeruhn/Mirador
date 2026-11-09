@@ -46,8 +46,13 @@ public static class PeImports
             0x10B => optional + 96,
             _ => throw new InvalidDataException($"Unknown PE optional header (magic 0x{magic:X})."),
         };
+        if (directories + (ImportDirectory + 1) * 8 > optional + optionalSize)
+        {
+            return [];
+        }
+
         var directoryCount = Int32At(pe, directories - 4);
-        if (directoryCount <= ImportDirectory || directories + (ImportDirectory + 1) * 8 > optional + optionalSize)
+        if (directoryCount <= ImportDirectory)
         {
             return [];
         }

@@ -38,7 +38,8 @@ public sealed record BuildTools(string Recipe, string? ToolsDir, string PowerShe
 /// <summary>
 /// Builds a branch profile's Monado (Mirador.md §4.11 item 49, Mirador_Plan.md Task 61): clones or pulls the branch into
 /// <c>Builds\&lt;profile&gt;\src</c>, builds it in <c>…\build</c> with Mirador's recipe and installs it in
-/// <c>…\install</c>, then runs the checks. The last good install stays until a new build passes; the checks only warn.
+/// <c>…\install</c>, then runs the checks. The last good install stays until a new build passes; the checks only warn
+/// (a build cancelled during them stays: it built).
 /// Each build's log is kept in <c>…\logs</c>. One build at a time per profile.
 /// </summary>
 public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, BuildTools tools, BuildChecks checks, TimeProvider time)
@@ -137,8 +138,10 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
             return new BuildOutcome(false, fetchFailed, null, null, logPath);
         }
 
-        // 2. The recipe, into a new install folder: the last good one stays until this one is built.
+        // 2. The recipe, into a new install folder: the last good one stays until this one is built. The configure cache
+        //    starts afresh, so an option taken out of the profile (or another fork's) doesn't linger; objects are kept.
         DeleteFolder(fresh);
+        TryDelete(Path.Combine(build, "CMakeCache.txt"));
         var optionsFile = Path.Combine(root, "cmake-options.txt");
         await File.WriteAllLinesAsync(optionsFile, source.Options, CancellationToken.None).ConfigureAwait(false);
         var arguments = new List<string>
@@ -159,7 +162,7 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
         catch (OperationCanceledException)
         {
             Line("Cancelled. The last good build stays.");
-            DeleteFolder(fresh);
+            TryDeleteFolder(fresh);
             throw;
         }
         catch (MiradorException e)
@@ -170,24 +173,38 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
 
         if (code != 0)
         {
-            DeleteFolder(fresh);
+            TryDeleteFolder(fresh);
             var failed = $"The build failed (exit code {code}). The last good build stays; the build log says what went wrong.";
             Line(failed);
             return new BuildOutcome(false, failed, commit, null, logPath);
         }
 
-        // 3. The new install replaces the last one.
+        // 3. The new install replaces the last one: moved aside whole first, which fails cleanly (and keeps it) while
+        //    Monado runs from it, where deleting it would stop half way.
+        var old = install + ".old";
         try
         {
-            DeleteFolder(install);
+            DeleteFolder(old);
+            if (Directory.Exists(install))
+            {
+                Directory.Move(install, old);
+            }
+
             Directory.Move(fresh, install);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            if (!Directory.Exists(install) && Directory.Exists(old))
+            {
+                Directory.Move(old, install);
+            }
+
             var busy = $"The new build couldn't replace the last one ({e.Message.TrimEnd('.')}). Stop Monado and build again.";
             Line(busy);
             return new BuildOutcome(false, busy, commit, null, logPath);
         }
+
+        TryDeleteFolder(old);
 
         // 4. The checks: they warn, they don't undo the build.
         var result = await checks.RunAsync(install, build, tools.Ctest, commit, Line, ct).ConfigureAwait(false);
@@ -254,6 +271,29 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
             }
+        }
+    }
+
+    private static void TryDeleteFolder(string folder)
+    {
+        try
+        {
+            DeleteFolder(folder);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A program the build started may still be letting go of it; the next build clears it.
+        }
+    }
+
+    private static void TryDelete(string file)
+    {
+        try
+        {
+            File.Delete(file);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
         }
     }
 

@@ -179,9 +179,25 @@ public sealed class HelperHandler
         // A download takes minutes: it doesn't hold up the other commands (the installer takes its own lock).
         if (command == HelperCommand.InstallMonado)
         {
-            return monado is null
-                ? new HelperReply(false, NoMiradorsMonado)
-                : monado.InstallAsync(request.Version ?? "", CancellationToken.None).GetAwaiter().GetResult();
+            if (monado is null)
+            {
+                return new HelperReply(false, NoMiradorsMonado);
+            }
+
+            // Only a caller Windows names: it changes the Monado every user's elevated start and runtime use.
+            if (caller is null)
+            {
+                return new HelperReply(false, NoCaller);
+            }
+
+            try
+            {
+                return monado.InstallAsync(request.Version ?? "", CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                return new HelperReply(false, Shorten($"Mirador's Monado couldn't be installed ({e.Message.TrimEnd('.')})."));
+            }
         }
 
         return Locked(() => command switch
@@ -193,7 +209,7 @@ public sealed class HelperHandler
             HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
             HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
             HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
-            HelperCommand.RollBackMonado => monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
+            HelperCommand.RollBackMonado => caller is null ? new HelperReply(false, NoCaller) : monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
             HelperCommand.SetRuntimeApproved => SetRuntimeApproved(request.Build),
             _ => new HelperReply(false, UnknownCommand),
         });

@@ -98,8 +98,10 @@ public sealed class Builds(MonadoBuilder builder)
             {
                 run.Cancelled = true;
             }
-            catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
+            catch (Exception e)
             {
+                // Whatever went wrong, the build has ended: the page must not stay on "Building…".
+                AppLog.Write("A branch build failed", e);
                 run.Add(e.Message);
                 run.Outcome = new BuildOutcome(false, e.Message, null, null, builder.LastLog(profile.Id) ?? "");
             }

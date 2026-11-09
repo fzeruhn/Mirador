@@ -154,6 +154,34 @@ public class MonadoInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task Installing_the_kept_version_again_swaps_back_without_a_download()
+    {
+        Publish(V1);
+        Publish(V2);
+        await installer.InstallAsync(V1, CancellationToken.None);
+        await installer.InstallAsync(V2, CancellationToken.None);
+        github.Asked.Clear();
+
+        var reply = await installer.InstallAsync(V1, CancellationToken.None);
+
+        Assert.True(reply.Ok, reply.Error);
+        Assert.Equal(new MiradorMonadoVersions(V1, V2), MiradorMonado.Read(Root));
+        Assert.Empty(github.Asked);
+    }
+
+    [Fact]
+    public async Task Two_installs_at_once_take_turns()
+    {
+        Publish(V1);
+
+        var replies = await Task.WhenAll(installer.InstallAsync(V1, CancellationToken.None), installer.InstallAsync(V1, CancellationToken.None));
+
+        Assert.All(replies, r => Assert.True(r.Ok, r.Error));
+        Assert.Equal(new MiradorMonadoVersions(V1, null), MiradorMonado.Read(Root));
+        Assert.True(File.Exists(Path.Combine(Root, V1, "bin", "service", "monado-service.exe")));
+    }
+
+    [Fact]
     public void Roll_back_without_an_earlier_version_says_so()
     {
         Assert.False(installer.RollBack().Ok);
