@@ -1,0 +1,171 @@
+name: Monado nightly
+
+# Mirador's Monado (Mirador.md §4.11 item 55): upstream main, built once a night with Mirador's recipe
+# (tools\build-monado.ps1) and checked (tools\check-monado-build.ps1), published as a prerelease
+# monado-<yyyy.mm.dd>-<short sha> when its checks pass. Skipped when upstream has no new commit since the last
+# published build; a failed night publishes nothing and fails the run. The last 7 are kept.
+#
+# A push that changes the recipe, the checks or this file builds and checks too, without publishing.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build and publish even when upstream has no new commit
+        type: boolean
+        default: false
+  push:
+    paths:
+      - tools/build-monado.ps1
+      - tools/check-monado-build.ps1
+      - tools/vcpkg-commit.txt
+      - .github/workflows/monado-nightly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: monado-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UPSTREAM: https://gitlab.freedesktop.org/monado/monado.git
+  KEEP: 7
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    outputs:
+      skip: ${{ steps.upstream.outputs.skip }}
+      commit: ${{ steps.upstream.outputs.commit }}
+      tag: ${{ steps.upstream.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Upstream's head, and whether it is built already
+        id: upstream
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          $commit = ((git ls-remote $env:UPSTREAM refs/heads/main) -split '\s+')[0]
+          if ($commit -notmatch '^[0-9a-f]{40}$') { throw "Upstream's main couldn't be read: $commit" }
+          $short = $commit.Substring(0, 10)
+          $tag = "monado-$([DateTime]::UtcNow.ToString('yyyy.MM.dd'))-$short"
+          $last = gh release list --limit 100 --json tagName,isPrerelease,createdAt |
+              ConvertFrom-Json | Where-Object { $_.tagName -like 'monado-*' } | Sort-Object createdAt -Descending | Select-Object -First 1
+          $skip = $env:GITHUB_EVENT_NAME -eq 'schedule' -and $last -and $last.tagName.EndsWith("-$short")
+          if ($env:FORCE -eq 'true') { $skip = $false }
+          Write-Host "Upstream main: $commit; last published: $($last.tagName); skip: $skip"
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "skip=$($skip.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Upstream's source
+        if: steps.upstream.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          COMMIT: ${{ steps.upstream.outputs.commit }}
+        run: |
+          git init -q monado
+          git -C monado fetch -q --depth 1 $env:UPSTREAM $env:COMMIT
+          git -C monado checkout -q FETCH_HEAD
+          git -C monado remote add origin $env:UPSTREAM
+
+      - name: Mirador's vcpkg
+        if: steps.upstream.outputs.skip != 'true'
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $pin = (Get-Content tools\vcpkg-commit.txt -TotalCount 1).Trim()
+          # The whole history (without old file contents): Monado's vcpkg.json names a baseline commit in it.
+          git clone -q --filter=blob:none https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          git -C "$env:RUNNER_TEMP\vcpkg" checkout -q $pin
+          & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cache = New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\vcpkg-cache"
+          "VCPKG_ROOT=$env:RUNNER_TEMP\vcpkg" >> $env:GITHUB_ENV
+          "VCPKG_DEFAULT_BINARY_CACHE=$($cache.FullName)" >> $env:GITHUB_ENV
+          "pin=$pin" >> $env:GITHUB_OUTPUT
+
+      # A night without dependency changes doesn't build them again.
+      - name: vcpkg's binary cache
+        if: steps.upstream.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-${{ steps.vcpkg.outputs.pin }}-${{ hashFiles('monado/vcpkg.json') }}
+          restore-keys: vcpkg-${{ steps.vcpkg.outputs.pin }}-
+
+      - name: Build
+        if: steps.upstream.outputs.skip != 'true'
+        shell: pwsh
+        run: tools\build-monado.ps1 -Source monado -Build "$env:RUNNER_TEMP\monado-build" -Install "$env:RUNNER_TEMP\monado-install"
+
+      - name: Checks
+        if: steps.upstream.outputs.skip != 'true'
+        shell: pwsh
+        run: tools\check-monado-build.ps1 -Install "$env:RUNNER_TEMP\monado-install" -Build "$env:RUNNER_TEMP\monado-build"
+
+      - name: The zip
+        if: steps.upstream.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path "$env:RUNNER_TEMP\monado-install\*" -DestinationPath "out\$env:TAG.zip" -CompressionLevel Optimal
+          (Get-FileHash -Algorithm SHA256 "out\$env:TAG.zip").Hash.ToLowerInvariant() | Set-Content "out\$env:TAG.zip.sha256" -NoNewline
+
+      - name: Upload the build
+        if: steps.upstream.outputs.skip != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: monado
+          if-no-files-found: error
+          path: out/
+
+      - name: The build log of a failed night
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: monado-failure
+          path: |
+            ${{ runner.temp }}/monado-build/CMakeFiles/CMakeConfigureLog.yaml
+            ${{ runner.temp }}/monado-build/Testing/Temporary/
+            ${{ runner.temp }}/monado-build/vcpkg-manifest-install.log
+
+  # Only a scheduled or started night publishes, and only this job may write.
+  publish:
+    needs: build
+    if: needs.build.outputs.skip != 'true' && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.build.outputs.tag }}
+      COMMIT: ${{ needs.build.outputs.commit }}
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: monado
+
+      - name: The prerelease
+        run: |
+          hash=$(cat "$TAG.zip.sha256")
+          [ "$(sha256sum "$TAG.zip" | cut -d' ' -f1)" = "$hash" ] || { echo "The zip changed on its way." >&2; exit 1; }
+          gh release create "$TAG" "$TAG.zip" --prerelease --target "$GITHUB_SHA" --title "Monado ${TAG#monado-}" \
+            --notes "Upstream Monado main at $COMMIT, built by Mirador's CI with tools/build-monado.ps1; its checks (checks.json in the zip) passed. SHA-256: $hash"
+
+      - name: Keep the last ${{ env.KEEP }}
+        run: |
+          gh release list --limit 100 --json tagName,createdAt --jq '[.[] | select(.tagName | startswith("monado-"))] | sort_by(.createdAt) | reverse | .[(env.KEEP | tonumber):] | .[].tagName' |
+            while read -r old; do
+              gh release delete "$old" --cleanup-tag --yes
+            done
