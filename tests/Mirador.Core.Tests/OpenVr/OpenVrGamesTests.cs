@@ -83,13 +83,13 @@ public class OpenVrGamesTests
     }
 
     [Fact]
-    public void No_bundle_no_write()
+    public void Nothing_downloaded_no_write()
     {
         using var w = new World(bundle: false);
         var before = File.ReadAllText(w.PathsFile);
 
         Assert.False(w.Games.Available);
-        Assert.Equal("OpenComposite isn't in this Mirador build.", w.Games.UseMonado());
+        Assert.Equal("Mirador has no OpenComposite yet: press \"Get OpenComposite\" first.", w.Games.UseMonado());
         Assert.Equal(before, File.ReadAllText(w.PathsFile));
     }
 

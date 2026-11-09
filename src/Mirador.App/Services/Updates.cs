@@ -117,26 +117,45 @@ public sealed class Updates(AppHost host)
         return message;
     }
 
-    /// <summary>"Use the bundled OpenComposite": puts the bundled one back and deletes the downloads, then asks GitHub again.</summary>
+    /// <summary>
+    /// "Get OpenComposite" (Mirador.md §4.11 item 56): the fork's latest release, downloaded and checked like an update.
+    /// </summary>
     /// <returns>What happened, in words for the user.</returns>
     /// <exception cref="MiradorException">Why nothing changed.</exception>
-    public async Task<string> UseBundledOpenCompositeAsync()
+    public async Task<string> GetOpenCompositeAsync()
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var (answered, latest) = await UpdateCheck.LatestAsync(http, UpdateCheck.OpenCompositeRepository, AppInfo.Version, CancellationToken.None);
+        if (!answered)
+        {
+            throw new MiradorException("Mirador couldn't reach GitHub. Try again later.");
+        }
+
+        return latest is null
+            ? throw new MiradorException("The OpenComposite fork has no release yet.")
+            : await UpdateOpenCompositeAsync(latest);
+    }
+
+    /// <summary>"Roll back": the OpenComposite before the one in use, then asks GitHub again.</summary>
+    /// <returns>What happened, in words for the user.</returns>
+    /// <exception cref="MiradorException">Why nothing changed.</exception>
+    public async Task<string> RollBackOpenCompositeAsync()
     {
         CopyOutcome outcome;
         try
         {
-            outcome = await Task.Run(host.OpenCompositeCopy.UseBundled);
+            outcome = await Task.Run(host.OpenCompositeCopy.RollBack);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new MiradorException($"Mirador couldn't put the bundled OpenComposite back ({e.Message.Trim().TrimEnd('.')})");
+            throw new MiradorException($"Mirador couldn't put the earlier OpenComposite back ({e.Message.Trim().TrimEnd('.')})");
         }
 
         var message = outcome switch
         {
             CopyOutcome.InUse => "A game is using OpenComposite. Close it and try again.",
-            CopyOutcome.NoBundle => "OpenComposite isn't in this Mirador build.",
-            _ => "The bundled OpenComposite is in place.",
+            CopyOutcome.NothingEarlier => "There is no earlier OpenComposite to go back to.",
+            _ => $"OpenComposite {host.OpenCompositeCopy.CopySource?.Describe()} is in place again.",
         };
         AppLog.Write(message);
         await CheckAsync();

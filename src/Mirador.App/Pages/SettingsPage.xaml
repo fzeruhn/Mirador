@@ -60,8 +60,8 @@
             <toolkit:SettingsCard Description="{x:Bind ViewModel.OpenCompositeDescription, Mode=OneWay}" Header="OpenComposite">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Button
-                        Command="{x:Bind ViewModel.UseBundledOpenCompositeCommand}"
-                        Content="Use the bundled OpenComposite"
+                        Command="{x:Bind ViewModel.RollBackOpenCompositeCommand}"
+                        Content="Roll back"
                         Visibility="{x:Bind ViewModel.HoldsDownload, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
                     <HyperlinkButton Content="github.com/fzeruhn/OpenComposite" NavigateUri="https://github.com/fzeruhn/OpenComposite" />
                 </StackPanel>

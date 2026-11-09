@@ -115,10 +115,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>The "OpenComposite" card of About: the version and commit, and where this copy came from.</summary>
     public string OpenCompositeDescription =>
         (host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource) is { } source
-            ? $"{source.Describe()}. {(host.OpenCompositeCopy.HoldsDownload ? "Updated from GitHub." : "Bundled with Mirador.")}"
-            : "Not in this build.";
+            ? $"{source.Describe()}. {(host.OpenCompositeCopy.HoldsDownload ? "From GitHub." : "Bundled with Mirador.")}"
+            : "Not downloaded yet: Home has \"Get OpenComposite\".";
 
-    /// <summary>Whether the copy holds a download, so "Use the bundled OpenComposite" shows.</summary>
+    /// <summary>Whether the copy holds a download, so "Roll back" shows.</summary>
     public bool HoldsDownload => host.OpenCompositeCopy.HoldsDownload;
 
     /// <summary>"today at 09:10" or "yesterday at 14:02", else "on 3 Nov at 14:02".</summary>
@@ -254,17 +254,17 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task UseBundledOpenCompositeAsync()
+    private async Task RollBackOpenCompositeAsync()
     {
         try
         {
             Problem = null;
-            await ShowOutcome(App.Current.Updates.UseBundledOpenCompositeAsync());
+            await ShowOutcome(App.Current.Updates.RollBackOpenCompositeAsync());
         }
         catch (Exception e)
         {
-            AppLog.Write("Going back to the bundled OpenComposite failed", e);
-            Problem = $"Going back to the bundled OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
+            AppLog.Write("Rolling OpenComposite back failed", e);
+            Problem = $"Rolling OpenComposite back failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
         }
 
         OpenCompositeChanged();

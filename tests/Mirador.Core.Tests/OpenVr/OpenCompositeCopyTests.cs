@@ -165,13 +165,65 @@ public class OpenCompositeCopyTests
     }
 
     [Fact]
-    public void No_bundle()
+    public void Nothing_downloaded_and_no_bundle_is_none_yet()
     {
         using var d = new Dirs();
 
         Assert.False(d.Copy().HasBundle);
-        Assert.Equal(CopyOutcome.NoBundle, d.Copy().Update());
-        Assert.False(Directory.Exists(d.Runtime));
+        Assert.False(d.Copy().HasSomethingToCopy);
+        Assert.Equal(CopyOutcome.NoneYet, d.Copy().Update());
+        Assert.False(Directory.Exists(Path.Combine(d.Runtime, "bin")));
+    }
+
+    [Fact]
+    public void Without_a_bundle_the_newest_download_is_copied()
+    {
+        using var d = new Dirs();
+        d.Release("2026.11.06", [6]);
+        d.Release("2026.11.20", [20]);
+
+        Assert.True(d.Copy().HasSomethingToCopy);
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Update());
+
+        Assert.Equal([20], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.True(d.Copy().HoldsDownload);
+        Assert.Equal("OpenComposite: 2026.11.20 (7534249), from GitHub", d.Copy().VersionLine());
+    }
+
+    [Fact]
+    public void Installing_keeps_the_release_in_use_and_one_before_it()
+    {
+        using var d = new Dirs();
+        d.Release("2026.11.01", [1]);
+        d.Release("2026.11.06", [6]);
+        var newest = d.Release("2026.11.20", [20]);
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().Install(newest));
+
+        Assert.False(Directory.Exists(Path.Combine(d.Runtime, "download", "2026.11.01")));
+        Assert.True(Directory.Exists(d.DownloadDir("2026.11.06")));
+        Assert.True(Directory.Exists(d.DownloadDir("2026.11.20")));
+    }
+
+    [Fact]
+    public void Roll_back_goes_to_the_release_before_and_drops_the_newer_download()
+    {
+        using var d = new Dirs();
+        d.Release("2026.11.06", [6]);
+        d.Copy().Install(d.Release("2026.11.20", [20]));
+
+        Assert.Equal(CopyOutcome.Updated, d.Copy().RollBack());
+
+        Assert.Equal([6], File.ReadAllBytes(d.CopyBin(Dll)));
+        Assert.Equal("2026.11.06", d.Copy().CopySource!.Version);
+        Assert.False(Directory.Exists(d.DownloadDir("2026.11.20")));
+
+        // The launch doesn't bring the newer one back.
+        Assert.Equal(CopyOutcome.Current, d.Copy().Update());
+        Assert.Equal([6], File.ReadAllBytes(d.CopyBin(Dll)));
+
+        // Nothing earlier now.
+        Assert.Equal(CopyOutcome.NothingEarlier, d.Copy().RollBack());
     }
 
     [Fact]
@@ -180,7 +232,7 @@ public class OpenCompositeCopyTests
         using var d = new Dirs();
         Directory.CreateDirectory(d.Bundle);
         Assert.Null(d.Copy().Commit());
-        Assert.Equal("OpenComposite: not in this build", d.Copy().VersionLine());
+        Assert.Equal("OpenComposite: none yet", d.Copy().VersionLine());
 
         File.WriteAllText(Path.Combine(d.Bundle, "SOURCE.txt"), "cff07db75c4823afe93ed7027b03d5f7bc86f164\nOpenComposite from …\n");
 

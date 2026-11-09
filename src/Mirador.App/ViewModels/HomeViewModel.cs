@@ -165,6 +165,10 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanSetOpenComposite { get; set; }
 
+    /// <summary>Whether "Get OpenComposite" shows: there is no OpenComposite to copy yet.</summary>
+    [ObservableProperty]
+    public partial bool CanGetOpenComposite { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRuntimeProblem))]
     public partial string? RuntimeProblem { get; set; }
@@ -651,12 +655,15 @@ public sealed partial class HomeViewModel : ObservableObject
     /// </summary>
     private void RefreshOpenVr(bool openXrIsMonado, string? activeOpenXr)
     {
-        ShowOpenVr = host.OpenVr.Available;
-        if (!ShowOpenVr)
+        // Without OpenComposite yet the row says so and offers "Get OpenComposite" (Mirador.md §4.11 item 56).
+        ShowOpenVr = true;
+        CanGetOpenComposite = !host.OpenVr.Available;
+        if (CanGetOpenComposite)
         {
+            OpenVrRow = new StatusItem("OpenVR runtime", "OpenComposite isn't downloaded yet", StatusLevel.Info);
             CanSetOpenComposite = false;
             OpenVrWarning = null;
-            OpenVrProblem = null;
+            OpenVrProblem = openCompositeProblem;
             return;
         }
 
@@ -683,6 +690,29 @@ public sealed partial class HomeViewModel : ObservableObject
         CanSetOpenComposite = view.OffersOpenComposite;
         OpenVrWarning = view.Warning;
         OpenVrProblem = openCompositeProblem ?? view.Problem;
+    }
+
+    /// <summary>
+    /// "Get OpenComposite": the fork's latest release, downloaded and checked into the per-user copy (Mirador.md §4.11
+    /// item 56). It doesn't switch OpenVR games: "Set OpenComposite" then does.
+    /// </summary>
+    [RelayCommand]
+    private async Task GetOpenCompositeAsync()
+    {
+        CanGetOpenComposite = false;
+        try
+        {
+            var message = await App.Current.Updates.GetOpenCompositeAsync();
+            openCompositeProblem = null;
+            ShowNotice("opencomposite-update", "OpenComposite", message, InfoBarSeverity.Informational);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Getting OpenComposite failed", e);
+            openCompositeProblem = $"Getting OpenComposite failed ({e.Message.Trim().TrimEnd('.')}).";
+        }
+
+        RefreshRuntime();
     }
 
     /// <summary>"Set OpenComposite": OpenComposite first for OpenVR games, until the owner or SteamVR changes it.</summary>
