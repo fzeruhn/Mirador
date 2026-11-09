@@ -2,6 +2,7 @@ using System.Security.Principal;
 using Microsoft.Win32;
 using Mirador.Core;
 using Mirador.Core.BaseStations;
+using Mirador.Core.Build;
 using Mirador.Core.Elevation;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
@@ -48,6 +49,9 @@ public sealed class AppHost : IAsyncDisposable
         Helper = new HelperClient();
         Runtime = new OpenXrRuntime(new RegistryRuntimeReader());
         Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir);
+        Builds = new Builds(new MonadoBuilder(
+            new CommandRunner(), Locator, BuildTools.For(appDir, paths),
+            new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System));
         Usb = new WmiUsbDevices();
         Processes = new SystemProcessList();
         Context = new ModuleContext(paths, Helper, Processes, Usb, TimeProvider.System);
@@ -119,6 +123,9 @@ public sealed class AppHost : IAsyncDisposable
     public OpenXrRuntime Runtime { get; }
 
     public MonadoLocator Locator { get; }
+
+    /// <summary>The branch builds (Mirador_Plan.md Task 61).</summary>
+    public Builds Builds { get; }
 
     public IUsbDevices Usb { get; }
 

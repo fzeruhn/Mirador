@@ -1,4 +1,4 @@
-#Requires -Version 7.3
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Mirador's Monado build recipe: configures, builds and installs a Monado source tree, the same way on CI (the
@@ -19,6 +19,10 @@
     vcpkg\, cmake\bin\, ninja\, git\cmd\) come first; without it, what is on PATH, and vcpkg from VCPKG_ROOT or
     VCPKG_INSTALLATION_ROOT (GitHub's runners). MSVC is never shipped or downloaded here: vswhere finds Visual Studio
     or its Build Tools with the C++ x64 tools.
+
+    It runs in Windows PowerShell 5.1 as well as PowerShell 7: Mirador runs it with the powershell.exe every Windows
+    has. Extra options come one per line in -ExtraCMakeOptionsFile when run that way (a value starting with "-" can't
+    be passed as an argument through -File).
 .EXAMPLE
     tools\build-monado.ps1 -Source C:\src\monado -Build C:\src\monado\build -Install C:\src\monado\install
 .EXAMPLE
@@ -30,6 +34,7 @@ param(
     [Parameter(Mandatory)] [string]$Build,
     [Parameter(Mandatory)] [string]$Install,
     [string[]]$ExtraCMakeOptions = @(),
+    [string]$ExtraCMakeOptionsFile,
     [string]$Tools
 )
 
@@ -40,6 +45,15 @@ function Invoke-Checked([string]$what, [scriptblock]$command) {
     & $command
     if ($LASTEXITCODE -ne 0) {
         throw "$what failed (exit code $LASTEXITCODE)."
+    }
+}
+
+if ($ExtraCMakeOptionsFile) {
+    $ExtraCMakeOptions += @(Get-Content -LiteralPath $ExtraCMakeOptionsFile | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
+}
+foreach ($option in $ExtraCMakeOptions) {
+    if ($option -notmatch '^-D[A-Za-z_][A-Za-z0-9_.+-]*(:[A-Z]+)?=') {
+        throw "'$option' isn't a CMake setting of the form -DNAME=value."
     }
 }
 
@@ -132,10 +146,15 @@ else {
 
 # 5. What was built.
 function Get-GitValue([string]$dir, [string[]]$gitArgs) {
+    # Continue, not Stop: Windows PowerShell turns a native program's redirected error output into errors.
+    $ErrorActionPreference = 'Continue'
     $value = git -C $dir @gitArgs 2>$null
     if ($LASTEXITCODE -eq 0 -and $value) { "$value".Trim() } else { $null }
 }
-$compiler = (& cl.exe 2>&1 | Select-Object -First 1 | Out-String).Trim()
+$compiler = & {
+    $ErrorActionPreference = 'Continue'
+    (& cl.exe 2>&1 | Select-Object -First 1 | ForEach-Object { "$_" } | Out-String).Trim()
+}
 $info = [ordered]@{
     format         = 1
     sourceUrl      = Get-GitValue $Source @('remote', 'get-url', 'origin')
@@ -150,6 +169,7 @@ $info = [ordered]@{
     options        = @($options | Where-Object { $_ -notlike '-DCMAKE_TOOLCHAIN_FILE=*' -and $_ -notlike '-DCMAKE_INSTALL_PREFIX=*' })
     builtAt        = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 }
-$info | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $Install 'build-info.json') -Encoding utf8NoBOM
+# UTF-8 without a byte order mark, in both PowerShells.
+[IO.File]::WriteAllText((Join-Path $Install 'build-info.json'), ($info | ConvertTo-Json -Depth 3), (New-Object Text.UTF8Encoding $false))
 
 Write-Host "Monado $($info.describe) installed in $Install"

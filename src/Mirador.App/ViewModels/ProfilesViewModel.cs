@@ -42,6 +42,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public ProfilesViewModel(AppHost host)
     {
         this.host = host;
+        Build = new BuildViewModel(host, App.Current.Ui);
         Headsets.Add(new HeadsetItem(null, "None"));
         foreach (var module in host.Modules.Values)
         {
@@ -65,6 +66,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
     }
 
     public ObservableCollection<ProfileItem> Profiles { get; } = [];
+
+    /// <summary>The build card of a branch profile.</summary>
+    public BuildViewModel Build { get; }
 
     public ObservableCollection<HeadsetItem> Headsets { get; } = [];
 
@@ -185,14 +189,20 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public void Attach()
     {
         host.Session.Changed += OnSessionChanged;
+        Build.Attach();
         IsRunning = host.Session.State != SessionState.Stopped;
+        Build.MonadoRuns = IsRunning;
         if (!IsDirty)
         {
             LoadList(keep: Selected?.Id); // unsaved edits stay as they were left
         }
     }
 
-    public void Detach() => host.Session.Changed -= OnSessionChanged;
+    public void Detach()
+    {
+        host.Session.Changed -= OnSessionChanged;
+        Build.Detach();
+    }
 
     /// <summary>A name no profile has yet: <paramref name="wanted"/>, else with 2, 3, … after it.</summary>
     public string FreeName(string wanted)
@@ -422,6 +432,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = false;
+        Build.Show(p);
+        Build.Unsaved = false;
         Validate(Edited());
         OnPropertyChanged(nameof(UsesBaseStations));
     }
@@ -505,6 +517,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = true;
+        Build.Unsaved = true;
         Validate(Edited());
 
         // While untouched, the toggle follows the headset and the variables.
@@ -557,5 +570,5 @@ public sealed partial class ProfilesViewModel : ObservableObject
     }
 
     private void OnSessionChanged() =>
-        App.Current.Ui.TryEnqueue(() => IsRunning = host.Session.State != SessionState.Stopped);
+        App.Current.Ui.TryEnqueue(() => Build.MonadoRuns = IsRunning = host.Session.State != SessionState.Stopped);
 }

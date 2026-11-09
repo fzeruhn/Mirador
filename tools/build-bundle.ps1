@@ -14,7 +14,7 @@
       monado\VERSION.txt             git describe of the Monado source
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
       layer\                         dreamair_vk_layer.json, .dll, dreamair-display-check.exe
-      tools\                         gaze_world.exe, openxr_loader.dll
+      tools\                         build-monado.ps1 and vcpkg-commit.txt; gaze_world.exe, openxr_loader.dll when given
       opencomposite\bin\             vrclient_x64.dll and version.txt (empty; Mirador copies them per user)
       opencomposite\                 SOURCE.txt (line 1: version and commit), OpenComposite's licences and notes
 
@@ -160,6 +160,10 @@ $gazeWorldDir = if ($GazeWorld) { $GazeWorld } else { Join-Path $repo 'artifacts
 Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.App\Mirador.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 "-p:GazeWorldDir=$gazeWorldDir" -o $Out } 'Publishing the app'
 Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.Helper\Mirador.Helper.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -o (Join-Path $Out 'helper') } 'Publishing the helper'
 Copy-Item -LiteralPath $standin -Destination (New-Item -ItemType Directory -Force -Path (Join-Path $Out 'standin')).FullName -Force
+# Mirador's Monado build recipe and its vcpkg pin, which the app runs to build a profile's branch (Mirador.md §4.11
+# item 49).
+$toolsDir = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'tools')
+Copy-Item -LiteralPath (Join-Path $repo 'tools\build-monado.ps1'), (Join-Path $repo 'tools\vcpkg-commit.txt') -Destination $toolsDir.FullName
 
 # 6. Monado: the runtime with the stand-in below it, and the real service where the runtime DLL doesn't look.
 $version = $null

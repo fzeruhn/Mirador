@@ -165,6 +165,38 @@
                     <TextBox AcceptsReturn="True" MinHeight="60" Text="{x:Bind ViewModel.MonadoOptions, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </toolkit:SettingsCard>
                 <toolkit:SettingsCard
+                    Description="{x:Bind ViewModel.Build.Status, Mode=OneWay}"
+                    Header="Build"
+                    Visibility="{x:Bind ViewModel.Build.IsVisible, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.Build.IsBuilding, Mode=OneWay}" />
+                        <Button Command="{x:Bind ViewModel.Build.CancelCommand}" Content="Cancel" />
+                        <Button Command="{x:Bind ViewModel.Build.OpenLogCommand}" Content="Open log" />
+                        <Button
+                            Command="{x:Bind ViewModel.Build.BuildCommand}"
+                            Content="{x:Bind ViewModel.Build.BuildLabel, Mode=OneWay}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
+                <Expander
+                    Margin="0,0,0,4"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    Header="Build log"
+                    Visibility="{x:Bind ViewModel.Build.IsVisible, Mode=OneWay}">
+                    <TextBox
+                        MaxHeight="320"
+                        FontFamily="Consolas"
+                        FontSize="12"
+                        IsReadOnly="True"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        Text="{x:Bind ViewModel.Build.Log, Mode=OneWay}"
+                        TextWrapping="NoWrap" />
+                </Expander>
+                <toolkit:SettingsCard
                     ContentAlignment="Vertical"
                     Header="Monado build folder"
                     HorizontalContentAlignment="Stretch"
