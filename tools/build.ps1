@@ -1,9 +1,13 @@
 <#
 .SYNOPSIS
     Builds Mirador (Release, x64); with -Test it also runs the tests.
+.PARAMETER SkipHardware
+    With -Test: leaves out the tests marked Category=Hardware (they need this PC's headset, devices or set-up), as
+    CI does.
 #>
 param(
-    [switch]$Test
+    [switch]$Test,
+    [switch]$SkipHardware
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,7 +28,8 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     if ($Test) {
-        dotnet test Mirador.slnx -c Release -p:Platform=x64 --no-build
+        $filter = if ($SkipHardware) { @('--filter', 'Category!=Hardware') } else { @() }
+        dotnet test Mirador.slnx -c Release -p:Platform=x64 --no-build --logger trx @filter
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 }
