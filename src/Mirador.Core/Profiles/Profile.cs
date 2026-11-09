@@ -94,7 +94,9 @@ public sealed record EnvVar(string Name, string Value);
 /// A named way of running Monado. <paramref name="ModuleId"/> says which headset module goes with it (null: none);
 /// <paramref name="ModuleOptions"/> holds that module's own settings by key.
 /// <paramref name="Lighthouse"/> is the user's choice whether Mirador switches the base stations with this profile
-/// (null: decide from the profile, see <see cref="UsesBaseStations"/>).
+/// (null: decide from the profile, see <see cref="UsesBaseStations"/>). <paramref name="RunAsAdministrator"/> is "Run as
+/// administrator" for a branch or build folder (Mirador.md §4.11 item 51): its approved build may run elevated and be the
+/// OpenXR runtime.
 /// </summary>
 public sealed record Profile(
     string Id,
@@ -103,7 +105,8 @@ public sealed record Profile(
     BuildSource Monado,
     IReadOnlyList<EnvVar> ExtraEnvironment,
     IReadOnlyDictionary<string, string> ModuleOptions,
-    bool? Lighthouse = null)
+    bool? Lighthouse = null,
+    bool RunAsAdministrator = false)
 {
     /// <summary>A new id, unique among profiles.</summary>
     public static string NewId() => Guid.NewGuid().ToString("N");

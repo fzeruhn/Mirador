@@ -33,14 +33,16 @@ builder.Services.AddSingleton(services =>
 {
     var registry = services.GetRequiredService<IRuntimeRegistry>();
     var monado = MonadoInstaller.ForInstall(new HttpClient(), registry, HelperHandler.OwnVersionNumber());
+    var approved = new RegistryApprovedBuildStore();
     return new HelperHandler(
         services.GetRequiredService<IServiceControl>(),
         services.GetRequiredService<IProcessControl>(),
         registry,
         HelperHandler.DefaultBundledManifest,
         consent: elevatedConsent,
-        elevated: new ElevatedMonadoRunner(elevatedConsent, monado: monado),
-        monado: monado);
+        elevated: new ElevatedMonadoRunner(elevatedConsent, monado: monado, approved: approved),
+        monado: monado,
+        approved: approved);
 });
 builder.Services.AddHostedService<HelperPipeServer>();
 builder.Build().Run();

@@ -1118,11 +1118,13 @@ public sealed class SessionController(SessionDeps deps)
     /// </summary>
     private IProcessLauncher ChooseLauncher(MonadoInstall install, Profile profile, IHeadsetModule? module, MonadoSettings settings)
     {
-        // install is the profile's own bundled Monado exactly when the profile's kind is Bundled (MonadoLocator).
+        // install is in Mirador's admin-only folder exactly when the profile runs Mirador's (or the bundled) Monado
+        // (MonadoLocator). A branch or build folder runs elevated only as its approved copy, which the helper checks.
+        var approvedBuild = !install.IsBundled && profile.RunAsAdministrator && deps.ApprovedBuildCurrent?.Invoke(profile) == true;
         var eligible = deps.ElevatedLauncher is not null
             && deps.ElevatedConsented?.Invoke() == true
-            && install.IsBundled
-            && Elevation.ElevatedChoice.RunsAsYouReason(profile, module, deps.ElevatedInstalledCopy?.Invoke() == true) is null;
+            && (install.IsBundled || approvedBuild)
+            && Elevation.ElevatedChoice.RunsAsYouReason(profile, module, deps.ElevatedInstalledCopy?.Invoke() == true, approvedBuild) is null;
 
         if (!eligible)
         {
@@ -1134,7 +1136,8 @@ public sealed class SessionController(SessionDeps deps)
             settings.RenderScalePercent,
             settings.CompositorMinTimeMs,
             settings.StopWhenLastAppCloses,
-            module?.Id ?? "");
+            module?.Id ?? "",
+            approvedBuild ? profile.Id : "");
         return deps.ElevatedLauncher!(start);
     }
 

@@ -32,6 +32,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     private readonly string installDir;
     private readonly string bundledServerDir;
     private readonly IMonadoInstaller? monado;
+    private readonly IApprovedBuildStore? approved;
     private readonly string logDir;
     private readonly ConcurrentDictionary<string, ElevatedService> sessions = new();
     private readonly object gate = new();
@@ -39,8 +40,10 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     /// <param name="consent">Where users' consent lives, with the SteamVR files each allowed; the caller's SID must be allowed.</param>
     /// <param name="signer">The Authenticode signer subject of a file; the real one is <see cref="WinTrustSigner.SubjectOf"/>.</param>
     /// <param name="monado">Mirador's Monado: its current version is the one started, else the bundled Monado of an older install.</param>
-    public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null, IMonadoInstaller? monado = null)
+    /// <param name="approved">The builds owners approved to run as administrator (Mirador.md §4.11 item 51).</param>
+    public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null, IMonadoInstaller? monado = null, IApprovedBuildStore? approved = null)
     {
+        this.approved = approved;
         this.consent = consent;
         this.signer = signer ?? WinTrustSigner.SubjectOf;
         this.monado = monado;
@@ -131,8 +134,28 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 return Fail(refusal);
             }
 
-            // Mirador's Monado's current version, read at each Start: an update or a roll back may have changed it.
-            var serverDir = monado?.CurrentServerDir() ?? bundledServerDir;
+            // Mirador's Monado's current version, read at each Start: an update or a roll back may have changed it. Or a
+            // profile's approved build, every file checked against its approval at each Start.
+            string serverDir;
+            if (start.Build.Length > 0)
+            {
+                if (approved is null || !ApprovedBuilds.IsProfileId(start.Build) || approved.Get(start.Build) is not { } build)
+                {
+                    return Fail("This profile's build isn't approved to run as administrator.");
+                }
+
+                if (ApprovedBuilds.Verify(build, installDir) is { } problem)
+                {
+                    return Fail(problem);
+                }
+
+                serverDir = build.ServerDir;
+            }
+            else
+            {
+                serverDir = monado?.CurrentServerDir() ?? bundledServerDir;
+            }
+
             var serviceExe = Path.Combine(serverDir, "monado-service.exe");
             if (!File.Exists(serviceExe))
             {

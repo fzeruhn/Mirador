@@ -95,6 +95,7 @@ public sealed class AppHost : IAsyncDisposable
             UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e)),
             Stations,
             ElevatedConsented: ElevatedMonadoAllowed,
+            ApprovedBuildCurrent: ApprovedBuildCurrent,
             ElevatedLauncher: start => new HelperProcessLauncher(Helper, start, elevatedLogPath, launcher)
             {
                 SteamVrChecked = OnSteamVrChecked,
@@ -292,7 +293,7 @@ public sealed class AppHost : IAsyncDisposable
         {
             var profile = Profiles.Load().Selected;
             var module = profile.ModuleId is { } id ? Modules.GetValueOrDefault(id) : null;
-            return ElevatedChoice.RunsAsYouReason(profile, module, IsInstalledCopy(askHelper: false))
+            return ElevatedChoice.RunsAsYouReason(profile, module, IsInstalledCopy(askHelper: false), ApprovedBuildCurrent(profile))
                 ?? (steamVrChanged ? SteamVrChangedReason : null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -365,6 +366,82 @@ public sealed class AppHost : IAsyncDisposable
         _ = Task.Run(() => host.IsInstalledCopy(askHelper: true));
         host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="profile"/> has "Run as administrator" on and its build as it is now is the approved one
+    /// (Mirador.md §4.11 item 51). The helper checks the approved copy's every file again at the Start.
+    /// </summary>
+    public bool ApprovedBuildCurrent(Profile profile)
+    {
+        if (!profile.RunAsAdministrator || profile.Monado.Kind is not (SourceKind.Branch or SourceKind.Folder))
+        {
+            return false;
+        }
+
+        try
+        {
+            return new RegistryApprovedBuildStore().Get(profile.Id) is { } approved
+                && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(Locator.Locate(profile).Manifest)!);
+        }
+        catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Runs <c>Mirador.exe --approve-build</c> through one UAC prompt for <paramref name="profile"/>'s build as it is now.
+    /// Null when it is approved, else why not.
+    /// </summary>
+    public async Task<string?> ApproveBuildAsync(Profile profile)
+    {
+        MonadoInstall install;
+        try
+        {
+            install = Locator.Locate(profile);
+        }
+        catch (MiradorException e)
+        {
+            return e.Message;
+        }
+
+        var folder = Path.GetDirectoryName(install.Manifest)!;
+        if (!File.Exists(Path.Combine(folder, "bin", "monado-service.exe")))
+        {
+            return "Only an installed build can be approved (Monado's install layout, as Mirador's branch builds are). Build it with \"cmake --install\", or let Mirador build the branch.";
+        }
+
+        var commit = Core.Build.BuildInfo.Load(folder)?.Commit is { Length: >= 7 } c ? c : "folder";
+        var info = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Mirador.exe"))
+        {
+            Verb = "runas",
+            UseShellExecute = true,
+        };
+        foreach (var argument in new[] { AppArgs.ApproveBuildFlag, profile.Id, commit, folder })
+        {
+            info.ArgumentList.Add(argument);
+        }
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(info);
+            if (process is null)
+            {
+                return "The approval couldn't be started.";
+            }
+
+            await process.WaitForExitAsync();
+            return process.ExitCode == 0 ? null : "The build couldn't be approved; mirador.log says why.";
+        }
+        catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == ElevatedRuntime.PromptCancelled)
+        {
+            return "You cancelled the prompt; the build runs as you.";
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            return $"The approval couldn't be started ({e.Message.TrimEnd('.')}).";
+        }
     }
 
     /// <summary>

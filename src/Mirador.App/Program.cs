@@ -43,6 +43,23 @@ public static partial class Program
                 AppLog.Write);
         }
 
+        // The elevated step of "Run as administrator" for a branch or build folder (Mirador.md §4.11 item 51): copies the
+        // build into the install folder, which only administrators can change, and records each file's hash. No window.
+        if (parsed.ApproveBuild is { } approve)
+        {
+            AppLog.Open(AppPaths.Default);
+            try
+            {
+                Mirador.Ipc.ApprovedBuilds.Approve(approve.ProfileId, approve.Commit, approve.Source, AppContext.BaseDirectory, new Mirador.Ipc.RegistryApprovedBuildStore());
+                return 0;
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                AppLog.Write("Approving the build failed", e);
+                return 1;
+            }
+        }
+
         // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.
         if (parsed.RestoreOpenVr)
         {

@@ -182,6 +182,18 @@
                     </StackPanel>
                 </toolkit:SettingsCard>
                 <toolkit:SettingsCard
+                    Description="Only turn this on if you trust this Monado branch: it gets full control of your PC while it runs. Approving copies the build where only administrators can change it; each new build runs as you until you approve it again. Monado as administrator also needs the elevation fix, which upstream doesn't have yet."
+                    Header="Run as administrator"
+                    Visibility="{x:Bind ViewModel.CanApprove, Mode=OneWay}">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.RunAsAdministrator, Mode=TwoWay}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="{x:Bind ViewModel.ApprovalStatus, Mode=OneWay}"
+                    Header="Approved build"
+                    Visibility="{x:Bind ViewModel.CanApprove, Mode=OneWay}">
+                    <Button Command="{x:Bind ViewModel.ApproveCommand}" Content="Approve" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
                     Description="{x:Bind ViewModel.Build.Status, Mode=OneWay}"
                     Header="Build"
                     Visibility="{x:Bind ViewModel.Build.IsVisible, Mode=OneWay}">

@@ -76,6 +76,12 @@ public enum HelperCommand
 
     /// <summary>Makes the previous version of Mirador's Monado current again ("Roll back"); the reply's value is it.</summary>
     RollBackMonado,
+
+    /// <summary>
+    /// Makes the approved copy of the build of the profile named by <see cref="HelperRequest.Build"/> the active OpenXR
+    /// runtime (Mirador.md §4.11 item 51), once every file is checked against the hashes recorded at the approval.
+    /// </summary>
+    SetRuntimeApproved,
 }
 
 /// <summary>
@@ -89,18 +95,24 @@ public enum HelperCommand
 /// <param name="CompositorMinTimeMs">Compositor minimum frame time; <see cref="MonadoSettingsEnvironment.CompositorMinTimeRange"/>.</param>
 /// <param name="ExitOnDisconnect">Whether Monado exits when the last app disconnects.</param>
 /// <param name="Module">The headset module's name: <c>""</c> for none, or <c>"dreamair"</c>.</param>
+/// <param name="Build">
+/// <c>""</c> for Mirador's Monado; else the id of the profile whose approved build runs (Mirador.md §4.11 item 51). The
+/// helper finds that build in its own record and checks every file's hash; the request names no path.
+/// </param>
 public sealed record ElevatedStart(
     [property: JsonRequired] int LighthouseWaitMs,
     [property: JsonRequired] int RenderScalePercent,
     [property: JsonRequired] int CompositorMinTimeMs,
     [property: JsonRequired] bool ExitOnDisconnect,
-    [property: JsonRequired] string Module);
+    [property: JsonRequired] string Module,
+    string Build = "");
 
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and
-/// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a nightly's name, checked by the helper).
+/// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a nightly's name, checked by the helper), and
+/// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper).
 /// </summary>
-public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null);
+public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null);
 
 /// <summary>
 /// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing

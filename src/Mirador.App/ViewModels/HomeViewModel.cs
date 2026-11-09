@@ -346,7 +346,9 @@ public sealed partial class HomeViewModel : ObservableObject
         CanSetRuntime = false;
         try
         {
-            RuntimeProblem = await RuntimeSwitch.SetAsync(install, host.Helper, ElevatedRuntime.RunAsync, host.Runtime);
+            var profile = SelectedSet().Selected;
+            RuntimeProblem = await RuntimeSwitch.SetAsync(
+                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null);
         }
         catch (Exception e)
         {

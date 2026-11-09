@@ -106,6 +106,18 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [ObservableProperty]
     public partial string MonadoBranch { get; set; } = "";
 
+    /// <summary>"Run as administrator" for a branch or build folder (Mirador.md §4.11 item 51).</summary>
+    [ObservableProperty]
+    public partial bool RunAsAdministrator { get; set; }
+
+    /// <summary>Whether the approval card shows: the saved profile builds a branch or uses a build folder.</summary>
+    [ObservableProperty]
+    public partial bool CanApprove { get; set; }
+
+    /// <summary>The approval's state: approved, a newer build waiting, or none.</summary>
+    [ObservableProperty]
+    public partial string ApprovalStatus { get; set; } = "";
+
     /// <summary>Extra CMake options for a branch, one per line or separated by spaces.</summary>
     [ObservableProperty]
     public partial string MonadoOptions { get; set; } = "";
@@ -339,6 +351,39 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     partial void OnMonadoBranchChanged(string value) => Changed();
 
+    partial void OnRunAsAdministratorChanged(bool value) => Changed();
+
+    /// <summary>"Approve": one UAC prompt copies the saved profile's build where only administrators can change it.</summary>
+    [RelayCommand]
+    private async Task ApproveAsync()
+    {
+        if (editing is null || IsDirty)
+        {
+            ApprovalStatus = "Save the profile first.";
+            return;
+        }
+
+        ApprovalStatus = "Approving…";
+        var problem = await host.ApproveBuildAsync(editing);
+        RefreshApproval(problem);
+    }
+
+    private void RefreshApproval(string? problem = null)
+    {
+        CanApprove = editing?.Monado.Kind is SourceKind.Branch or SourceKind.Folder;
+        if (!CanApprove || editing is null)
+        {
+            return;
+        }
+
+        var state = !editing.RunAsAdministrator
+            ? "Off: this build runs as you."
+            : host.ApprovedBuildCurrent(editing)
+                ? "Approved: this build runs as administrator and can be the OpenXR runtime."
+                : "The new build runs as you until you approve it.";
+        ApprovalStatus = problem is null ? state : $"{problem} {state}";
+    }
+
     partial void OnMonadoOptionsChanged(string value) => Changed();
 
     partial void OnMonadoFolderChanged(string value) => Changed();
@@ -423,6 +468,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
                 _ => MiradorSource,
             };
             MonadoFolder = p?.Monado.Folder ?? "";
+            RunAsAdministrator = p?.RunAsAdministrator ?? false;
             MonadoLink = p?.Monado.Kind == SourceKind.Branch && !p.Monado.IsUpstreamMain ? p.Monado.Url ?? "" : "";
             MonadoBranch = MonadoLink.Length > 0 ? p!.Monado.Ref ?? "" : "";
             MonadoOptions = MonadoLink.Length > 0 ? string.Join(Environment.NewLine, p!.Monado.Options) : "";
@@ -441,6 +487,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = false;
+        RefreshApproval();
         MiradorMonado.Show(MonadoSource == MiradorSource);
         Build.Show(p);
         Build.Unsaved = false;
@@ -468,7 +515,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
             EditedSource(),
             [.. Extra.Select(r => new EnvVar(r.Name.Trim(), r.Value))],
             options,
-            lighthouse);
+            lighthouse,
+            RunAsAdministrator && MonadoSource is LinkSource or UpstreamSource or FolderSource);
     }
 
     /// <summary>
