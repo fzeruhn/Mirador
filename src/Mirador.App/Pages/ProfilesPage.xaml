@@ -134,11 +134,35 @@
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Builds" />
-                <toolkit:SettingsCard Description="The Monado that comes with Mirador, or one you built yourself." Header="Monado build">
+                <toolkit:SettingsCard Description="Mirador's Monado is upstream's nightly build. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
                     <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.MonadoSource, Mode=TwoWay}">
-                        <ComboBoxItem Content="Comes with Mirador" />
+                        <ComboBoxItem Content="Mirador's Monado" />
+                        <ComboBoxItem Content="Build upstream main" />
+                        <ComboBoxItem Content="Build from a link" />
                         <ComboBoxItem Content="A build folder" />
                     </ComboBox>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    ContentAlignment="Vertical"
+                    Description="A branch or merge request on GitLab or GitHub: paste its page's link."
+                    Header="Link"
+                    HorizontalContentAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.MonadoFromLink, Mode=OneWay}">
+                    <TextBox PlaceholderText="https://gitlab.freedesktop.org/you/monado/-/tree/your-branch" Text="{x:Bind ViewModel.MonadoLink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="Filled in from the link."
+                    Header="Branch"
+                    Visibility="{x:Bind ViewModel.MonadoFromLink, Mode=OneWay}">
+                    <TextBox MinWidth="200" Text="{x:Bind ViewModel.MonadoBranch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    ContentAlignment="Vertical"
+                    Description="Only if the branch needs them: -DNAME=value, one per line. They come after Mirador's own."
+                    Header="Extra CMake options"
+                    HorizontalContentAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.MonadoFromLink, Mode=OneWay}">
+                    <TextBox AcceptsReturn="True" MinHeight="60" Text="{x:Bind ViewModel.MonadoOptions, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </toolkit:SettingsCard>
                 <toolkit:SettingsCard
                     ContentAlignment="Vertical"

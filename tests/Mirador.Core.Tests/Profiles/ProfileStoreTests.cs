@@ -35,7 +35,7 @@ public class ProfileStoreTests
         Assert.Equal(@"D:\layer folder", first.ModuleOptions["layerFolder"]);
         Assert.Single(first.ModuleOptions);
 
-        Assert.Equal(BuildSource.Bundled, loaded.Profiles[1].Monado);
+        Assert.Equal(BuildSource.Mirador, loaded.Profiles[1].Monado);
         Assert.Empty(loaded.Profiles[1].ExtraEnvironment);
         Assert.Empty(loaded.Profiles[1].ModuleOptions);
     }
@@ -243,6 +243,6 @@ public class ProfileStoreTests
         Assert.Equal(defaults.Profiles.Select(p => p.Name), loaded.Profiles.Select(p => p.Name));
         Assert.Equal(defaults.Profiles.Select(p => p.ModuleId), loaded.Profiles.Select(p => p.ModuleId));
         Assert.Equal(defaults.SelectedId, loaded.SelectedId);
-        Assert.All(loaded.Profiles, p => Assert.Equal(BuildSource.Bundled, p.Monado));
+        Assert.All(loaded.Profiles, p => Assert.Equal(BuildSource.Mirador, p.Monado));
     }
 }

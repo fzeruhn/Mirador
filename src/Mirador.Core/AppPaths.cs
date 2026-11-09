@@ -21,6 +21,12 @@ public sealed class AppPaths(string root)
     public string ChecksDir { get; } = Path.Combine(root, "checks");
     public string BackupsDir { get; } = Path.Combine(root, "calibration-backups");
 
+    /// <summary>Where branch profiles are built: <c>Builds\&lt;profile id&gt;\</c> with <c>src</c>, <c>build</c> and <c>install</c>.</summary>
+    public string BuildsDir { get; } = Path.Combine(root, "Builds");
+
+    /// <summary>Mirador's own copies of the build tools (Mirador.md §4.11 item 49): <c>vcpkg</c>, <c>cmake</c>, <c>ninja</c>, <c>git</c>.</summary>
+    public string ToolsDir { get; } = Path.Combine(root, "tools");
+
     /// <summary>The per-user copy of the bundled OpenComposite, the runtime folder OpenVR games load it from.</summary>
     public string OpenCompositeDir { get; } = Path.Combine(root, "OpenComposite");
 

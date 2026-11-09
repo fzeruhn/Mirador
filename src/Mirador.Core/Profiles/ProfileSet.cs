@@ -8,11 +8,11 @@ namespace Mirador.Core.Profiles;
 /// </summary>
 public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string SelectedId)
 {
-    /// <summary>The first-run set: Dream Air (selected) and Custom, both on the bundled Monado.</summary>
+    /// <summary>The first-run set: Dream Air (selected) and Custom, both on Mirador's Monado.</summary>
     public static ProfileSet Defaults() => new(
         [
-            new Profile("dreamair", "Dream Air", "dreamair", BuildSource.Bundled, [], new Dictionary<string, string>()),
-            new Profile("custom", "Custom", null, BuildSource.Bundled, [], new Dictionary<string, string>()),
+            new Profile("dreamair", "Dream Air", "dreamair", BuildSource.Mirador, [], new Dictionary<string, string>()),
+            new Profile("custom", "Custom", null, BuildSource.Mirador, [], new Dictionary<string, string>()),
         ],
         "dreamair");
 

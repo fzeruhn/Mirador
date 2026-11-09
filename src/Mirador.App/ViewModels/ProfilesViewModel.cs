@@ -82,9 +82,25 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsDreamAir))]
     public partial HeadsetItem? Headset { get; set; }
 
+    /// <summary>
+    /// The "Monado" drop-down (Mirador.md §4.11 item 55): 0 Mirador's Monado, 1 build upstream main, 2 build from a
+    /// link, 3 a build folder.
+    /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MonadoBundled), nameof(MonadoSource))]
-    public partial bool MonadoFromFolder { get; set; }
+    [NotifyPropertyChangedFor(nameof(MonadoFromFolder), nameof(MonadoFromLink))]
+    public partial int MonadoSource { get; set; }
+
+    /// <summary>The pasted link of a branch or merge request (or the repository's URL).</summary>
+    [ObservableProperty]
+    public partial string MonadoLink { get; set; } = "";
+
+    /// <summary>The branch or ref to build; filled in from <see cref="MonadoLink"/>, and changeable.</summary>
+    [ObservableProperty]
+    public partial string MonadoBranch { get; set; } = "";
+
+    /// <summary>Extra CMake options for a branch, one per line or separated by spaces.</summary>
+    [ObservableProperty]
+    public partial string MonadoOptions { get; set; } = "";
 
     [ObservableProperty]
     public partial string MonadoFolder { get; set; } = "";
@@ -117,23 +133,19 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     public bool IsDreamAir => Headset?.Id == DreamAirModule.ModuleId;
 
-    public bool MonadoBundled
-    {
-        get => !MonadoFromFolder;
-        set => MonadoFromFolder = !value;
-    }
+    public bool MonadoFromFolder => MonadoSource == FolderSource;
+
+    public bool MonadoFromLink => MonadoSource == LinkSource;
+
+    private const int MiradorSource = 0;
+    private const int UpstreamSource = 1;
+    private const int LinkSource = 2;
+    private const int FolderSource = 3;
 
     public bool LayerBundled
     {
         get => !LayerFromFolder;
         set => LayerFromFolder = !value;
-    }
-
-    /// <summary>The "Monado build" drop-down: 0 the one that comes with Mirador, 1 a build folder.</summary>
-    public int MonadoSource
-    {
-        get => MonadoFromFolder ? 1 : 0;
-        set => MonadoFromFolder = value == 1;
     }
 
     /// <summary>The "Vulkan layer" drop-down: 0 the one that comes with Mirador, 1 a layer folder.</summary>
@@ -210,7 +222,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [RelayCommand]
     private void Add()
     {
-        var profile = new Profile(Profile.NewId(), FreeName("New profile"), null, BuildSource.Bundled, [], new Dictionary<string, string>());
+        var profile = new Profile(Profile.NewId(), FreeName("New profile"), null, BuildSource.Mirador, [], new Dictionary<string, string>());
         Change(set => set.Add(profile), profile.Id);
     }
 
@@ -286,7 +298,29 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     partial void OnHeadsetChanged(HeadsetItem? value) => Changed();
 
-    partial void OnMonadoFromFolderChanged(bool value) => Changed();
+    partial void OnMonadoSourceChanged(int value) => Changed();
+
+    /// <summary>A pasted link fills in its branch (a merge request's ref), which the owner can still change.</summary>
+    partial void OnMonadoLinkChanged(string value)
+    {
+        if (!loading)
+        {
+            try
+            {
+                MonadoBranch = BranchLink.Parse(value).Ref;
+            }
+            catch (MiradorException)
+            {
+                // Validate says why.
+            }
+        }
+
+        Changed();
+    }
+
+    partial void OnMonadoBranchChanged(string value) => Changed();
+
+    partial void OnMonadoOptionsChanged(string value) => Changed();
 
     partial void OnMonadoFolderChanged(string value) => Changed();
 
@@ -362,8 +396,17 @@ public sealed partial class ProfilesViewModel : ObservableObject
         {
             Name = p?.Name ?? "";
             Headset = Headsets.FirstOrDefault(h => h.Id == p?.ModuleId) ?? Headsets[^1];
-            MonadoFromFolder = p?.Monado.Kind == SourceKind.Folder;
+            MonadoSource = p?.Monado switch
+            {
+                { Kind: SourceKind.Folder } => FolderSource,
+                { IsUpstreamMain: true } => UpstreamSource,
+                { Kind: SourceKind.Branch } => LinkSource,
+                _ => MiradorSource,
+            };
             MonadoFolder = p?.Monado.Folder ?? "";
+            MonadoLink = p?.Monado.Kind == SourceKind.Branch && !p.Monado.IsUpstreamMain ? p.Monado.Url ?? "" : "";
+            MonadoBranch = MonadoLink.Length > 0 ? p!.Monado.Ref ?? "" : "";
+            MonadoOptions = MonadoLink.Length > 0 ? string.Join(Environment.NewLine, p!.Monado.Options) : "";
             var layer = p is null ? null : DreamAirModule.LayerFolder(p);
             LayerFromFolder = layer is not null;
             LayerFolder = layer ?? "";
@@ -400,10 +443,54 @@ public sealed partial class ProfilesViewModel : ObservableObject
             editing?.Id ?? "",
             Name.Trim(),
             Headset?.Id,
-            MonadoFromFolder ? new BuildSource(SourceKind.Folder, MonadoFolder.Trim()) : BuildSource.Bundled,
+            EditedSource(),
             [.. Extra.Select(r => new EnvVar(r.Name.Trim(), r.Value))],
             options,
             lighthouse);
+    }
+
+    /// <summary>
+    /// The Monado the editor shows. A link that can't be read is kept as typed, so that validation names the problem
+    /// (<see cref="LinkProblem"/>).
+    /// </summary>
+    private BuildSource EditedSource() => MonadoSource switch
+    {
+        FolderSource => new BuildSource(SourceKind.Folder, MonadoFolder.Trim()),
+        UpstreamSource => BuildSource.UpstreamMain,
+        LinkSource => BuildSource.FromBranch(
+            LinkUrl() ?? MonadoLink.Trim(), MonadoBranch.Trim(), BranchLink.SplitOptions(MonadoOptions)),
+        _ => BuildSource.Mirador,
+    };
+
+    private string? LinkUrl()
+    {
+        try
+        {
+            return BranchLink.Parse(MonadoLink).Url;
+        }
+        catch (MiradorException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Why the pasted link can't be built from, or null.</summary>
+    private string? LinkProblem()
+    {
+        if (MonadoSource != LinkSource)
+        {
+            return null;
+        }
+
+        try
+        {
+            BranchLink.Parse(MonadoLink);
+            return null;
+        }
+        catch (MiradorException e)
+        {
+            return e.Message;
+        }
     }
 
     /// <summary>Whether the headset being edited tracks with Lighthouse (its module says so).</summary>
@@ -427,6 +514,13 @@ public sealed partial class ProfilesViewModel : ObservableObject
     private bool Validate(Profile p)
     {
         var problems = ProfileValidation.Problems(p, host.Locator, LayerProblem).ToList();
+        if (LinkProblem() is { } linkProblem)
+        {
+            // Instead of the URL's own problem: the link is what the owner typed.
+            problems.RemoveAll(x => x.Contains(MonadoLink.Trim(), StringComparison.Ordinal) && MonadoLink.Trim().Length > 0);
+            problems.Insert(0, linkProblem);
+        }
+
         if (IsDreamAir && LayerFromFolder && string.IsNullOrWhiteSpace(LayerFolder))
         {
             problems.Add("Pick the layer folder, or choose the layer that comes with Mirador.");

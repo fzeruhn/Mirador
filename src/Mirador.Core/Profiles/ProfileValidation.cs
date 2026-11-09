@@ -7,7 +7,7 @@ public static class ProfileValidation
 {
     /// <summary>
     /// The profile's problems, empty when it can be saved: a name, a Monado build that can be found (a folder build is
-    /// checked through <paramref name="locator"/>), extra variables with names that are set, have no <c>=</c> and appear
+    /// checked through <paramref name="locator"/>; a branch's link, ref and CMake options must be ones Mirador builds), extra variables with names that are set, have no <c>=</c> and appear
     /// once (ignoring case, as Windows does); then whatever <paramref name="moduleProblem"/> finds (the Dream Air's
     /// layer folder).
     /// </summary>
@@ -28,12 +28,17 @@ public static class ProfileValidation
         {
             try
             {
-                locator.Locate(p.Monado);
+                locator.Locate(p);
             }
             catch (MiradorException e)
             {
                 problems.Add(e.Message);
             }
+        }
+        else if (p.Monado.Kind == SourceKind.Branch && BranchLink.Problem(p.Monado) is { } branchProblem)
+        {
+            // A branch not built yet is no problem: the profile is saved, then built (its Start says it isn't yet).
+            problems.Add(branchProblem);
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

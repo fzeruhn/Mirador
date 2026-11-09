@@ -14,7 +14,7 @@ public class ProfileSetTests
         Assert.Null(s.Profiles[1].ModuleId);
         Assert.Equal("dreamair", s.SelectedId);
         Assert.Same(s.Profiles[0], s.Selected);
-        Assert.All(s.Profiles, p => Assert.Equal(SourceKind.Bundled, p.Monado.Kind));
+        Assert.All(s.Profiles, p => Assert.Equal(SourceKind.Mirador, p.Monado.Kind));
         Assert.All(s.Profiles, p => Assert.Empty(p.ExtraEnvironment));
         Assert.All(s.Profiles, p => Assert.Empty(p.ModuleOptions));
     }

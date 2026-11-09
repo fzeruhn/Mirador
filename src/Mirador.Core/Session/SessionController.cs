@@ -313,9 +313,9 @@ public sealed class SessionController(SessionDeps deps)
         try
         {
             var profile = deps.Profiles.Load().Selected;
-            if (profile.Monado.Kind == SourceKind.Folder)
+            if (profile.Monado.Kind is SourceKind.Folder or SourceKind.Branch)
             {
-                var install = deps.Locator.Locate(profile.Monado);
+                var install = deps.Locator.Locate(profile);
                 StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe);
             }
         }
@@ -656,7 +656,7 @@ public sealed class SessionController(SessionDeps deps)
             return Fail($"This profile uses a headset Mirador doesn't know ({moduleId}).");
         }
 
-        var install = deps.Locator.Locate(profile.Monado);
+        var install = deps.Locator.Locate(profile);
         if (run.GameStandIn is { } gameStandIn && !StandIn.BelongsTo(gameStandIn, install))
         {
             return Fail(OtherMonado(gameStandIn, install, profile));

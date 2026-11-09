@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using Mirador.Core;
+using Mirador.Core.Build;
+using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 
@@ -41,12 +43,20 @@ public static class AppInfo
         }
     }
 
-    /// <summary>Which Monado the profile runs: the bundled one's <c>VERSION.txt</c>, or the build folder.</summary>
+    /// <summary>
+    /// Which Monado the profile runs: Mirador's Monado's version, a branch with the commit it was built from, a build
+    /// folder, or the bundled one's <c>VERSION.txt</c> (an older install).
+    /// </summary>
     public static string Monado(Profile profile, string appDir)
     {
-        if (profile.Monado.Kind == SourceKind.Folder)
+        switch (profile.Monado.Kind)
         {
-            return $"build folder {profile.Monado.Folder}";
+            case SourceKind.Folder:
+                return $"build folder {profile.Monado.Folder}";
+            case SourceKind.Mirador:
+                return $"Mirador's Monado {MiradorMonado.Read(Path.Combine(appDir, "monado")).Current ?? "(not installed)"}";
+            case SourceKind.Branch:
+                return $"{profile.Monado.Describe()}{BuiltCommit(profile)}";
         }
 
         try
@@ -57,6 +67,13 @@ public static class AppInfo
         {
             return "bundled (no VERSION.txt: a development build without a bundled Monado)";
         }
+    }
+
+    /// <summary>The commit and compiler of a branch profile's build, from its <c>build-info.json</c>.</summary>
+    private static string BuiltCommit(Profile profile)
+    {
+        var info = BuildInfo.Load(Path.Combine(AppPaths.Default.BuildsDir, profile.Id, "install"));
+        return info is null ? " (not built yet)" : $" at {info.ShortCommit}, {info.Compiler}";
     }
 
     /// <summary>The lines of versions.txt and the Diagnostics page.</summary>

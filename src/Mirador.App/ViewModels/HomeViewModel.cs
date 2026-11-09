@@ -324,7 +324,7 @@ public sealed partial class HomeViewModel : ObservableObject
         MonadoInstall install;
         try
         {
-            install = host.Session.CurrentInstall ?? host.Locator.Locate(SelectedSet().Selected.Monado);
+            install = host.Session.CurrentInstall ?? host.Locator.Locate(SelectedSet().Selected);
         }
         catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
         {
@@ -567,15 +567,32 @@ public sealed partial class HomeViewModel : ObservableObject
     private void RefreshRuntime()
     {
         MonadoInstall? install = host.Session.CurrentInstall;
+        string? noMonado = null;
         if (install is null)
         {
             try
             {
-                install = host.Locator.Locate(SelectedSet().Selected.Monado);
+                install = host.Locator.Locate(SelectedSet().Selected);
             }
             catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
             {
                 install = null;
+                noMonado = e.Message;
+            }
+        }
+
+        // A profile with no Monado yet can't Start, and says why (Mirador_Plan.md Task 60).
+        if (State == SessionState.Stopped)
+        {
+            CanStartStop = noMonado is null;
+            if (noMonado is null)
+            {
+                RemoveNotice("nomonado");
+            }
+            else if (Notices.FirstOrDefault(n => n.Key == "nomonado")?.Message != noMonado)
+            {
+                RemoveNotice("nomonado");
+                Notices.Insert(0, new NoticeItem("nomonado", "No Monado yet", noMonado, InfoBarSeverity.Warning, IsClosable: false));
             }
         }
 

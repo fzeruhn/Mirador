@@ -58,6 +58,60 @@ public sealed partial class MainWindow : Window
         NavView.SelectedItem = NavView.MenuItems[0];
         App.Current.Host.ProfilesChanged += ShowHeadsetPages;
         ShowHeadsetPages();
+        if (!File.Exists(App.Current.Host.Paths.ProfilesFile))
+        {
+            _ = AskWhereMonadoComesFromAsync();
+        }
+    }
+
+    /// <summary>
+    /// The first run's question (Mirador.md §4.11 item 55): where the profiles' Monado comes from, Mirador's Monado
+    /// first. The answer goes into every first-run profile and is saved, so it is asked once; building from a link or
+    /// picking a build folder continues on the Profiles page.
+    /// </summary>
+    private async Task AskWhereMonadoComesFromAsync()
+    {
+        try
+        {
+            var root = await LoadedRootAsync();
+            var choices = new RadioButtons { SelectedIndex = 0 };
+            choices.Items.Add("Mirador's Monado (recommended): upstream's nightly build, ready to run");
+            choices.Items.Add("Build upstream main here (needs the build tools)");
+            choices.Items.Add("Build a branch or merge request from its link");
+            choices.Items.Add("A Monado I built myself (a build folder)");
+            var dialog = new ContentDialog
+            {
+                XamlRoot = root.XamlRoot,
+                Title = "Where should Monado come from?",
+                Content = new StackPanel
+                {
+                    Spacing = 12,
+                    Children =
+                    {
+                        new TextBlock { Text = "Each profile can use another later, on the Profiles page.", TextWrapping = TextWrapping.Wrap },
+                        choices,
+                    },
+                },
+                PrimaryButtonText = "OK",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            await dialog.ShowAsync();
+
+            var host = App.Current.Host;
+            var source = choices.SelectedIndex == 1 ? Core.Profiles.BuildSource.UpstreamMain : Core.Profiles.BuildSource.Mirador;
+            var set = host.Profiles.Load();
+            set = set with { Profiles = [.. set.Profiles.Select(p => p with { Monado = source })] };
+            host.Profiles.Save(set);
+            host.NotifyProfilesChanged();
+            if (choices.SelectedIndex > 0)
+            {
+                Navigate("Profiles");
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.AppLog.Write("The first run's question failed", ex);
+        }
     }
 
     /// <summary>The smallest window at 100 % scale: every page still fits next to the open pane.</summary>

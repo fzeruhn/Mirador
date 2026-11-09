@@ -47,7 +47,7 @@ public sealed class AppHost : IAsyncDisposable
         Settings = new AppSettingsStore(paths.SettingsFile);
         Helper = new HelperClient();
         Runtime = new OpenXrRuntime(new RegistryRuntimeReader());
-        Locator = new MonadoLocator(Path.Combine(appDir, "monado"));
+        Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir);
         Usb = new WmiUsbDevices();
         Processes = new SystemProcessList();
         Context = new ModuleContext(paths, Helper, Processes, Usb, TimeProvider.System);
