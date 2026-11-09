@@ -6,6 +6,7 @@ using Mirador.Core.Build;
 using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
+using Mirador.Ipc;
 
 namespace Mirador.App.Services;
 

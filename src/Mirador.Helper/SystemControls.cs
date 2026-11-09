@@ -301,6 +301,21 @@ public sealed class SystemRuntimeRegistry : IRuntimeRegistry
         key?.DeleteValue(RecordedValue, throwOnMissingValue: false);
     }
 
+    public void SetAvailable(string manifest, bool available)
+    {
+        using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+        if (available)
+        {
+            using var key = root.CreateSubKey(activeKey + @"\AvailableRuntimes", writable: true);
+            key.SetValue(manifest, 0, RegistryValueKind.DWord);
+        }
+        else
+        {
+            using var key = root.OpenSubKey(activeKey + @"\AvailableRuntimes", writable: true);
+            key?.DeleteValue(manifest, throwOnMissingValue: false);
+        }
+    }
+
     private string? Read(string subKey, string value)
     {
         using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);

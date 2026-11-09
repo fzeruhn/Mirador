@@ -43,6 +43,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         this.host = host;
         Build = new BuildViewModel(host, App.Current.Ui);
+        MiradorMonado = new MiradorMonadoViewModel(host);
         Headsets.Add(new HeadsetItem(null, "None"));
         foreach (var module in host.Modules.Values)
         {
@@ -69,6 +70,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     /// <summary>The build card of a branch profile.</summary>
     public BuildViewModel Build { get; }
+
+    /// <summary>The card of Mirador's Monado: installed, newest, Update, Roll back.</summary>
+    public MiradorMonadoViewModel MiradorMonado { get; }
 
     public ObservableCollection<HeadsetItem> Headsets { get; } = [];
 
@@ -192,6 +196,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         Build.Attach();
         IsRunning = host.Session.State != SessionState.Stopped;
         Build.MonadoRuns = IsRunning;
+        MiradorMonado.MonadoRuns = IsRunning;
         if (!IsDirty)
         {
             LoadList(keep: Selected?.Id); // unsaved edits stay as they were left
@@ -308,7 +313,11 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     partial void OnHeadsetChanged(HeadsetItem? value) => Changed();
 
-    partial void OnMonadoSourceChanged(int value) => Changed();
+    partial void OnMonadoSourceChanged(int value)
+    {
+        MiradorMonado.Show(value == MiradorSource);
+        Changed();
+    }
 
     /// <summary>A pasted link fills in its branch (a merge request's ref), which the owner can still change.</summary>
     partial void OnMonadoLinkChanged(string value)
@@ -432,6 +441,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = false;
+        MiradorMonado.Show(MonadoSource == MiradorSource);
         Build.Show(p);
         Build.Unsaved = false;
         Validate(Edited());
@@ -570,5 +580,5 @@ public sealed partial class ProfilesViewModel : ObservableObject
     }
 
     private void OnSessionChanged() =>
-        App.Current.Ui.TryEnqueue(() => Build.MonadoRuns = IsRunning = host.Session.State != SessionState.Stopped);
+        App.Current.Ui.TryEnqueue(() => MiradorMonado.MonadoRuns = Build.MonadoRuns = IsRunning = host.Session.State != SessionState.Stopped);
 }

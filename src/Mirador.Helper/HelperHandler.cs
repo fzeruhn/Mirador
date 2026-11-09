@@ -61,6 +61,9 @@ public interface IRuntimeRegistry
 
     /// <summary>Records the replaced runtime; null forgets it.</summary>
     void SetRecorded(string? path);
+
+    /// <summary>Lists <paramref name="manifest"/> under OpenXR's <c>AvailableRuntimes</c>, or takes it off.</summary>
+    void SetAvailable(string manifest, bool available);
 }
 
 /// <summary>Who is on the other end of the pipe, as Windows reports it; nothing in it comes from a request.</summary>
@@ -77,7 +80,8 @@ public sealed record CallerInfo(SecurityIdentifier Sid, int SessionId, int Proce
 /// </summary>
 public sealed class HelperHandler
 {
-    private const string BundledMissing = "This Mirador has no bundled Monado.";
+    private const string BundledMissing = "Mirador's Monado isn't installed yet. Install it on the Profiles page.";
+    private const string NoMiradorsMonado = "This helper can't install Mirador's Monado.";
     private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
     private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
     private const string NoElevated = "Mirador's helper service can't start Monado as administrator.";
@@ -95,6 +99,7 @@ public sealed class HelperHandler
     private readonly IElevatedMonado? elevated;
     private readonly string version;
     private readonly string installDir;
+    private readonly IMonadoInstaller? monado;
     private readonly object gate = new();
 
     /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
@@ -102,10 +107,13 @@ public sealed class HelperHandler
     /// <param name="consent">Where users' consent to run Monado as administrator is; without it, revoking fails with a message.</param>
     /// <param name="elevated">Starts and stops the elevated Monado; without it, the elevated commands fail with a message.</param>
     /// <param name="installDir">What <see cref="HelperCommand.GetInstallFolder"/> answers; <see cref="DefaultInstallDir"/> when null.</param>
+    /// <param name="monado">Mirador's Monado; without it, installing fails with a message and only the bundled Monado is set.</param>
     public HelperHandler(
         IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
-        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null, string? installDir = null)
+        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null, string? installDir = null,
+        IMonadoInstaller? monado = null)
     {
+        this.monado = monado;
         this.services = services;
         this.processes = processes;
         this.registry = registry;
@@ -165,6 +173,14 @@ public sealed class HelperHandler
             return WaitMonadoElevated(caller);
         }
 
+        // A download takes minutes: it doesn't hold up the other commands (the installer takes its own lock).
+        if (command == HelperCommand.InstallMonado)
+        {
+            return monado is null
+                ? new HelperReply(false, NoMiradorsMonado)
+                : monado.InstallAsync(request.Version ?? "", CancellationToken.None).GetAwaiter().GetResult();
+        }
+
         return Locked(() => command switch
         {
             HelperCommand.SetRuntimeBundled => SetRuntimeBundled(),
@@ -174,6 +190,7 @@ public sealed class HelperHandler
             HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
             HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
             HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
+            HelperCommand.RollBackMonado => monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
             _ => new HelperReply(false, UnknownCommand),
         });
     }
@@ -249,9 +266,11 @@ public sealed class HelperHandler
         return new HelperReply(true);
     }
 
+    /// <summary>Mirador's Monado's current version when one is installed, else the bundled Monado of an older install.</summary>
     private HelperReply SetRuntimeBundled()
     {
-        if (!File.Exists(bundledManifest))
+        var manifest = monado?.CurrentManifest() ?? bundledManifest;
+        if (!File.Exists(manifest))
         {
             return new HelperReply(false, BundledMissing);
         }
@@ -262,7 +281,7 @@ public sealed class HelperHandler
             registry.SetRecorded(active);
         }
 
-        registry.SetActive(bundledManifest);
+        registry.SetActive(manifest);
         return new HelperReply(true);
     }
 
@@ -388,13 +407,20 @@ public sealed class HelperHandler
         }
     }
 
-    /// <summary>Whether <paramref name="manifest"/> is the bundled one: the same full path, ignoring case.</summary>
+    /// <summary>
+    /// Whether <paramref name="manifest"/> is Mirador's: the bundled one (the same full path, ignoring case) or a version
+    /// of Mirador's Monado.
+    /// </summary>
     private bool IsBundled(string manifest) =>
-        string.Equals(Path.GetFullPath(manifest), bundledManifest, StringComparison.OrdinalIgnoreCase);
+        string.Equals(Path.GetFullPath(manifest), bundledManifest, StringComparison.OrdinalIgnoreCase)
+        || monado?.IsMiradors(manifest) == true;
 
     /// <summary>Keeps a reply within one protocol line.</summary>
     private static string Shorten(string message) =>
         message.Length <= MaxErrorLength ? message : message[..(MaxErrorLength - 3)] + "...";
+
+    /// <summary>The helper's version as numbers only, for GitHub's User-Agent.</summary>
+    public static string OwnVersionNumber() => OwnVersion().Split('+')[0];
 
     private static string OwnVersion() =>
         typeof(HelperHandler).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion

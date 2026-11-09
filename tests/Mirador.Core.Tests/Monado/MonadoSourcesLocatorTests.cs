@@ -1,5 +1,6 @@
 using Mirador.Core.Monado;
 using Mirador.Core.Profiles;
+using Mirador.Ipc;
 
 namespace Mirador.Core.Tests.Monado;
 

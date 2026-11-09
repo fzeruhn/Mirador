@@ -10,14 +10,14 @@ namespace Mirador.Core.Elevation;
 public static class ElevatedChoice
 {
     public const string NotInstalledCopy = "Runs as you: this copy of Mirador isn't the installed one.";
-    public const string BuildFolder = "Runs as you: this profile uses a build folder.";
+    public const string BuildFolder = "Runs as you: this profile uses a build folder or a branch built here.";
     public const string ExtraVariables = "Runs as you: this profile sets extra environment variables.";
 
     /// <summary>
     /// Why this profile runs as the user although the user allowed Monado as administrator, as Home's line; null when
     /// it may run as administrator. In order: this Mirador isn't the installed one (the helper starts Monado only for
     /// <c>Mirador.exe</c> in its own install folder: <see cref="Mirador.Ipc.InstalledMirador"/>), the profile uses a
-    /// build folder, it sets extra environment variables, or its module points at a folder of its own.
+    /// build folder or a branch built here (anything but Mirador's Monado), it sets extra environment variables, or its module points at a folder of its own.
     /// </summary>
     /// <param name="installedCopy">Whether this Mirador is the installed one, as the helper judges it.</param>
     public static string? RunsAsYouReason(Profile profile, IHeadsetModule? module, bool installedCopy)
@@ -27,7 +27,9 @@ public static class ElevatedChoice
             return NotInstalledCopy;
         }
 
-        if (profile.Monado.Kind != SourceKind.Bundled)
+        // Mirador's Monado lives in the admin-only install folder, as the bundled one did (Mirador.md §4.11 item 55); a
+        // branch built here or a build folder is where the user can write (approving one is Task 65).
+        if (profile.Monado.Kind is not (SourceKind.Bundled or SourceKind.Mirador))
         {
             return BuildFolder;
         }

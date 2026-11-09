@@ -1,4 +1,5 @@
 using Mirador.Core.Profiles;
+using Mirador.Ipc;
 
 namespace Mirador.Core.Monado;
 

@@ -13,7 +13,8 @@ public enum HelperCommand
     Ping,
 
     /// <summary>
-    /// Makes the Monado that came with Mirador the active OpenXR runtime, remembering the one it replaces. Putting that
+    /// Makes Mirador's Monado (its current version; on an older install, the Monado that came with Mirador) the active
+    /// OpenXR runtime, remembering the one it replaces. Putting that
     /// one back is not a command: only the uninstaller does it (<c>Mirador.Helper.exe --restore-runtime</c>), because
     /// the remembered runtime may be one in a folder any user can change.
     /// </summary>
@@ -64,6 +65,17 @@ public enum HelperCommand
     /// so a copy the helper would refuse runs Monado as the user instead (Mirador.md section 4.10 item 46).
     /// </summary>
     GetInstallFolder,
+
+    /// <summary>
+    /// Installs the version of Mirador's Monado named by <see cref="HelperRequest.Version"/> and makes it current
+    /// (Mirador.md §4.11 item 55). The helper fetches the list of Mirador's releases itself and takes the download and
+    /// its SHA-256 only from there: the request carries the version's name and nothing else. The reply's
+    /// <see cref="HelperReply.Value"/> is the version now current.
+    /// </summary>
+    InstallMonado,
+
+    /// <summary>Makes the previous version of Mirador's Monado current again ("Roll back"); the reply's value is it.</summary>
+    RollBackMonado,
 }
 
 /// <summary>
@@ -84,8 +96,11 @@ public sealed record ElevatedStart(
     [property: JsonRequired] bool ExitOnDisconnect,
     [property: JsonRequired] string Module);
 
-/// <summary>A request: a command, and the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>.</summary>
-public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null);
+/// <summary>
+/// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and
+/// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a nightly's name, checked by the helper).
+/// </summary>
+public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null);
 
 /// <summary>
 /// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing

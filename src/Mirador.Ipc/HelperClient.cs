@@ -36,6 +36,9 @@ public sealed class HelperClient(string pipeName = "mirador-helper") : IHelperCl
     /// <summary>How long the helper has to take the request and answer it. Stopping Pimax's service can take 20 s.</summary>
     internal TimeSpan ReplyTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long installing Mirador's Monado may take: a download of up to a few hundred MB.</summary>
+    internal TimeSpan InstallTimeout { get; init; } = TimeSpan.FromMinutes(15);
+
     public Task<HelperReply> SendAsync(HelperCommand command, CancellationToken ct) =>
         SendAsync(new HelperRequest(command), ct);
 
@@ -58,7 +61,7 @@ public sealed class HelperClient(string pipeName = "mirador-helper") : IHelperCl
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(ReplyTimeout);
+        timeout.CancelAfter(request.Command == HelperCommand.InstallMonado ? InstallTimeout : ReplyTimeout);
         try
         {
             await LineCodec.WriteAsync(pipe, request, timeout.Token).ConfigureAwait(false);

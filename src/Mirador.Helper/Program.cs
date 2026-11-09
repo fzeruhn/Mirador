@@ -10,7 +10,8 @@ using Mirador.Helper.ElevatedMonado;
 if (args is ["--restore-runtime"])
 {
     var restorer = new HelperHandler(
-        new SystemServiceControl(), new SystemProcessControl(), new SystemRuntimeRegistry(), HelperHandler.DefaultBundledManifest);
+        new SystemServiceControl(), new SystemProcessControl(), new SystemRuntimeRegistry(), HelperHandler.DefaultBundledManifest,
+    monado: MonadoInstaller.ForInstall(new HttpClient(), new SystemRuntimeRegistry(), "0"));
     var result = await restorer.RestoreRuntimeAsync();
     if (!result.Ok)
     {
@@ -28,13 +29,19 @@ builder.Services.AddSingleton<IServiceControl, SystemServiceControl>();
 builder.Services.AddSingleton<IProcessControl, SystemProcessControl>();
 builder.Services.AddSingleton<IRuntimeRegistry, SystemRuntimeRegistry>();
 var elevatedConsent = new ElevatedConsent(new RegistryConsentValues());
-builder.Services.AddSingleton(services => new HelperHandler(
-    services.GetRequiredService<IServiceControl>(),
-    services.GetRequiredService<IProcessControl>(),
-    services.GetRequiredService<IRuntimeRegistry>(),
-    HelperHandler.DefaultBundledManifest,
-    consent: elevatedConsent,
-    elevated: new ElevatedMonadoRunner(elevatedConsent)));
+builder.Services.AddSingleton(services =>
+{
+    var registry = services.GetRequiredService<IRuntimeRegistry>();
+    var monado = MonadoInstaller.ForInstall(new HttpClient(), registry, HelperHandler.OwnVersionNumber());
+    return new HelperHandler(
+        services.GetRequiredService<IServiceControl>(),
+        services.GetRequiredService<IProcessControl>(),
+        registry,
+        HelperHandler.DefaultBundledManifest,
+        consent: elevatedConsent,
+        elevated: new ElevatedMonadoRunner(elevatedConsent, monado: monado),
+        monado: monado);
+});
 builder.Services.AddHostedService<HelperPipeServer>();
 builder.Build().Run();
 return 0;

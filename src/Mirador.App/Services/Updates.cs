@@ -13,13 +13,18 @@ namespace Mirador.App.Services;
 /// <param name="NewerMirador">Mirador's latest full release when it is newer; null otherwise (also when GitHub couldn't be asked).</param>
 /// <param name="OpenComposite">The OpenComposite in use: its release version (or commit); null when this build has none.</param>
 /// <param name="NewerOpenComposite">OpenComposite's latest full release when it is newer; null otherwise.</param>
+/// <param name="NewerMonado">
+/// Mirador's Monado's newest nightly when it isn't the one installed (Mirador.md §4.11 item 50); null otherwise, and when
+/// no profile runs Mirador's Monado.
+/// </param>
 public sealed record UpdateReport(
     DateTimeOffset At,
     bool Reached,
     string Mirador,
     Release? NewerMirador,
     string? OpenComposite,
-    Release? NewerOpenComposite)
+    Release? NewerOpenComposite,
+    string? NewerMonado = null)
 {
     /// <summary>The report in words, for the "Updates" card.</summary>
     public string Describe()
@@ -40,6 +45,11 @@ public sealed record UpdateReport(
         else if (OpenComposite is not null)
         {
             parts.Add($"OpenComposite {OpenComposite} is up to date.");
+        }
+
+        if (NewerMonado is { } monado)
+        {
+            parts.Add($"Mirador's Monado {monado} is out: update it on the Profiles page.");
         }
 
         parts.Add($"Checked at {At.ToLocalTime():HH:mm}.");
@@ -133,6 +143,29 @@ public sealed class Updates(AppHost host)
         return message;
     }
 
+    /// <summary>
+    /// The newest nightly of Mirador's Monado when a profile runs Mirador's Monado and a newer one than the installed is
+    /// out; never installed from here (Mirador.md §4.11 item 50: "Never installed by itself").
+    /// </summary>
+    private async Task<string?> NewerMonadoAsync(HttpClient http)
+    {
+        try
+        {
+            if (!host.Profiles.Load().Profiles.Any(p => p.Monado.Kind == Core.Profiles.SourceKind.Mirador))
+            {
+                return null;
+            }
+
+            var newest = (await Ipc.MonadoReleaseList.FetchAsync(http, AppInfo.Version, CancellationToken.None))?.FirstOrDefault();
+            var current = Ipc.MiradorMonado.Read(host.Locator.MiradorRoot).Current;
+            return newest is not null && newest.Version != current ? newest.Version : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The daily check at launch: only when it is on and a day has passed since the last. Null when it didn't ask.</summary>
     public async Task<UpdateReport?> CheckDailyAsync()
     {
@@ -165,13 +198,15 @@ public sealed class Updates(AppHost host)
         var (mAnswered, mLatest) = await UpdateCheck.LatestAsync(http, UpdateCheck.MiradorRepository, AppInfo.Version, CancellationToken.None);
         var (oAnswered, oLatest) = await UpdateCheck.LatestAsync(http, UpdateCheck.OpenCompositeRepository, AppInfo.Version, CancellationToken.None);
 
+        var newerMonado = await NewerMonadoAsync(http);
         var report = new UpdateReport(
             now,
             mAnswered && oAnswered,
             AppInfo.Version,
             mLatest is { } m && UpdateCheck.IsNewer(AppInfo.Version, m.Tag) ? m : null,
             installed is null ? null : installed.Version ?? installed.Describe(),
-            oLatest is { } o && installed is not null && (installed.Version is null || UpdateCheck.IsNewer(installed.Version, o.Tag)) ? o : null);
+            oLatest is { } o && installed is not null && (installed.Version is null || UpdateCheck.IsNewer(installed.Version, o.Tag)) ? o : null,
+            newerMonado);
 
         if (report.Reached)
         {

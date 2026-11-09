@@ -155,9 +155,10 @@ public class LineCodecTests
 
         Assert.Equal(new HelperRequest(HelperCommand.StartMonadoElevated, new ElevatedStart(3000, 100, 6, false, "dreamair")), request);
 
-        // Nor could a later field hold one: a request is a command word and settings of plain numbers, switches and the
-        // module's name.
-        Assert.Equal(["Command", "Start"], typeof(HelperRequest).GetProperties().Select(p => p.Name).Order());
+        // Nor could a later field hold one: a request is a command word, settings of plain numbers, switches and the
+        // module's name, and a version's name (InstallMonado), which the helper looks up in Mirador's own release list.
+        Assert.Equal(["Command", "Start", "Version"], typeof(HelperRequest).GetProperties().Select(p => p.Name).Order());
+        Assert.Equal(typeof(string), typeof(HelperRequest).GetProperty("Version")!.PropertyType);
         foreach (var property in typeof(ElevatedStart).GetProperties())
         {
             Assert.True(

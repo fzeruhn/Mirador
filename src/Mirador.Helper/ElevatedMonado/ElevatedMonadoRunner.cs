@@ -30,21 +30,22 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     private readonly ElevatedConsent consent;
     private readonly Func<string, string?> signer;
     private readonly string installDir;
-    private readonly string serverDir;
-    private readonly string serviceExe;
+    private readonly string bundledServerDir;
+    private readonly IMonadoInstaller? monado;
     private readonly string logDir;
     private readonly ConcurrentDictionary<string, ElevatedService> sessions = new();
     private readonly object gate = new();
 
     /// <param name="consent">Where users' consent lives, with the SteamVR files each allowed; the caller's SID must be allowed.</param>
     /// <param name="signer">The Authenticode signer subject of a file; the real one is <see cref="WinTrustSigner.SubjectOf"/>.</param>
-    public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null)
+    /// <param name="monado">Mirador's Monado: its current version is the one started, else the bundled Monado of an older install.</param>
+    public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null, IMonadoInstaller? monado = null)
     {
         this.consent = consent;
         this.signer = signer ?? WinTrustSigner.SubjectOf;
+        this.monado = monado;
         installDir = HelperHandler.DefaultInstallDir;
-        serverDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "monado", "server"));
-        serviceExe = Path.Combine(serverDir, "monado-service.exe");
+        bundledServerDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "monado", "server"));
         logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado");
     }
 
@@ -130,6 +131,9 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 return Fail(refusal);
             }
 
+            // Mirador's Monado's current version, read at each Start: an update or a roll back may have changed it.
+            var serverDir = monado?.CurrentServerDir() ?? bundledServerDir;
+            var serviceExe = Path.Combine(serverDir, "monado-service.exe");
             if (!File.Exists(serviceExe))
             {
                 return Fail(BundledMissing);
