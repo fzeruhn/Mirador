@@ -12,8 +12,15 @@
         <StackPanel Style="{StaticResource PageStack}">
             <TextBlock Style="{StaticResource PageTitle}" Text="Eye tracking" />
 
-            <TextBlock Style="{StaticResource FirstSectionHeader}" Text="Calibration" />
-            <toolkit:SettingsCard Description="{x:Bind ViewModel.CheckDescription, Mode=OneWay}" Header="Check my calibration">
+            <!-- The check needs gaze_world, which only Finn's local builds carry (Mirador.md §4.11 item 54): hidden without it. -->
+            <TextBlock
+                Style="{StaticResource FirstSectionHeader}"
+                Text="Calibration"
+                Visibility="{x:Bind ViewModel.HasGazeWorld}" />
+            <toolkit:SettingsCard
+                Description="{x:Bind ViewModel.CheckDescription, Mode=OneWay}"
+                Header="Check my calibration"
+                Visibility="{x:Bind ViewModel.HasGazeWorld}">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <ProgressRing
                         Width="20"
@@ -25,7 +32,10 @@
                         Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
             </toolkit:SettingsCard>
-            <toolkit:SettingsCard Description="{x:Bind ViewModel.LastCheck, Mode=OneWay}" Header="Last check" />
+            <toolkit:SettingsCard
+                Description="{x:Bind ViewModel.LastCheck, Mode=OneWay}"
+                Header="Last check"
+                Visibility="{x:Bind ViewModel.HasGazeWorld}" />
             <InfoBar
                 Closed="OnResultClosed"
                 IsClosable="True"

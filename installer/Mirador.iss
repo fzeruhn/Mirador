@@ -9,6 +9,10 @@
   #define AppVersion "0.1.0"
 #endif
 #define Bundle "..\artifacts\bundle"
+; Monado and the layer are optional in the bundle (tools\build-bundle.ps1; Mirador.md section 4.11 items 48 and 54):
+; what isn't there is not registered.
+#define BundleHasMonado FileExists(AddBackslash(SourcePath) + Bundle + "\monado\runtime\openxr_monado.json")
+#define BundleHasLayer FileExists(AddBackslash(SourcePath) + Bundle + "\layer\dreamair_vk_layer.json")
 #define ServiceName "MiradorHelper"
 
 [Setup]
@@ -56,10 +60,14 @@ Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs 
 Name: "{autoprograms}\Mirador"; Filename: "{app}\Mirador.exe"
 
 [Registry]
+#if BundleHasLayer
 ; The bundled layer, registered as an implicit layer; it acts only when DREAMAIR_VK_LAYER=1 (in Monado's process).
 Root: HKLM64; Subkey: "SOFTWARE\Khronos\Vulkan\ImplicitLayers"; ValueType: dword; ValueName: "{app}\layer\dreamair_vk_layer.json"; ValueData: "0"; Flags: uninsdeletevalue
+#endif
+#if BundleHasMonado
 ; The bundled Monado, listed as an available OpenXR runtime.
 Root: HKLM64; Subkey: "SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes"; ValueType: dword; ValueName: "{app}\monado\runtime\openxr_monado.json"; ValueData: "0"; Flags: uninsdeletevalue
+#endif
 ; Where the stand-in finds Mirador when no user has run it yet.
 Root: HKLM64; Subkey: "SOFTWARE\Mirador"; ValueType: string; ValueName: "AppPath"; ValueData: "{app}\Mirador.exe"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
@@ -198,7 +206,9 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+#if BundleHasLayer
     RemoveOtherLayers;
+#endif
     InstallHelper;
   end;
 end;

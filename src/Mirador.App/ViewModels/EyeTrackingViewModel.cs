@@ -32,6 +32,12 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         Refresh();
     }
 
+    /// <summary>
+    /// Whether this install has <c>gaze_world</c>, which the check needs. A CI-built installer has none (Mirador.md
+    /// §4.11 item 54), so the check is hidden there.
+    /// </summary>
+    public bool HasGazeWorld => File.Exists(host.GazeWorldExe);
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCheckCommand))]
     [NotifyPropertyChangedFor(nameof(CheckDescription))]
@@ -322,5 +328,5 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         }
     }
 
-    private bool CanRunCheck() => !IsChecking;
+    private bool CanRunCheck() => !IsChecking && HasGazeWorld;
 }
