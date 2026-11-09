@@ -4,6 +4,7 @@ using Mirador.Core.BaseStations;
 namespace Mirador.Core.Tests.BaseStations;
 
 /// <summary>Talks to the real base stations; skipped unless MIRADOR_BLUETOOTH_TESTS=1 (see <see cref="BluetoothFactAttribute"/>).</summary>
+[Trait("Category", "Hardware")]
 public class WinRtStationRadioTests
 {
     private static string[] StationNames

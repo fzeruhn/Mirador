@@ -3,6 +3,7 @@ using Mirador.Core.Modules;
 
 namespace Mirador.DreamAir.Tests;
 
+[Trait("Category", "Hardware")]
 public class MachineGeometryTests
 {
     /// <summary>
