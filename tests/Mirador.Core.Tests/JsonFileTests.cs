@@ -15,8 +15,10 @@ public partial class JsonFileTests
         var saving = true;
         var loads = 0;
         var wrong = new List<string>();
+        using var reading = new ManualResetEventSlim();
         var reads = Task.Run(() =>
         {
+            reading.Set();
             while (Volatile.Read(ref saving))
             {
                 var loaded = JsonFile.Load(path, SampleJsonContext.Default.Sample);
@@ -27,6 +29,8 @@ public partial class JsonFileTests
                 }
             }
         });
+        // The saves start once the reader runs: on a fast machine they could otherwise all be done before it starts.
+        reading.Wait();
         try
         {
             for (var i = 0; i < 300; i++)

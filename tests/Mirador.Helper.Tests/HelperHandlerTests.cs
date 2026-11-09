@@ -260,7 +260,7 @@ public sealed class HelperHandlerTests : IDisposable
         var r = await Handler(bundleExists: false).HandleAsync(Request(HelperCommand.SetRuntimeBundled));
 
         Assert.False(r.Ok);
-        Assert.Equal("This Mirador has no bundled Monado.", r.Error);
+        Assert.Equal("Mirador's Monado isn't installed yet. Install it on the Profiles page.", r.Error);
         Assert.Equal(@"C:\Program Files\Pimax\Runtime\PiOpenXR_64.json", registry.Active);
         Assert.Null(registry.Recorded);
         Assert.Equal(0, registry.Writes);
