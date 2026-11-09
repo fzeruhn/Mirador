@@ -1,16 +1,22 @@
-name: Release
+name: Installer
 
-# A v* tag builds Mirador's installer and makes a draft release with it (Mirador.md §4.11 item 54). The installer has
+# Builds Mirador's installer on every push, so a broken installer shows before a release; a v* tag also makes a draft
+# release with it (Mirador.md §4.11 item 54). The tests run in build.yml, for tags too. The installer has
 # no Monado, no OpenComposite and no gaze_world: each profile gets its Monado from Mirador (§4.11 item 55), Home offers
 # "Get OpenComposite" (item 56), and "Check my calibration" is hidden. Unsigned until §10.2 is settled.
 
 on:
   push:
+    branches: ['**']
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   installer:
@@ -22,10 +28,6 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-
-      - name: Build and test
-        shell: pwsh
-        run: tools\build.ps1 -Test -SkipHardware
 
       - name: Inno Setup
         shell: pwsh
@@ -41,29 +43,39 @@ jobs:
           tools\build-bundle.ps1
           tools\build-installer.ps1
 
-      - name: The draft release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          # The tag must name the version the app was built with (Directory.Build.props), so the installer's name and
-          # the release agree.
-          $version = $env:TAG.Substring(1)
-          $installer = "artifacts\Mirador-$version-setup.exe"
-          if (-not (Test-Path -LiteralPath $installer)) {
-              $built = (Get-ChildItem artifacts -Filter 'Mirador-*-setup.exe').Name -join ', '
-              throw "The tag $env:TAG doesn't match the version built ($built): set <Version> in Directory.Build.props."
-          }
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
-          $notes = "Unsigned. SHA-256 of the installer: $hash"
-          gh release create $env:TAG $installer --draft --verify-tag --title "Mirador $version" --notes $notes
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Upload the installer
         uses: actions/upload-artifact@v5
         with:
-          name: installer-${{ github.sha }}
+          name: installer
           if-no-files-found: error
           path: artifacts/Mirador-*-setup.exe
+
+  # Only a v* tag gets write access, and only here.
+  release:
+    needs: installer
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: installer
+
+      - name: The draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # The tag must name the version the app was built with (<Version> in Directory.Build.props), so the
+          # installer's name and the release agree.
+          version="${TAG#v}"
+          installer="Mirador-$version-setup.exe"
+          if [ ! -f "$installer" ]; then
+            echo "The tag $TAG doesn't match the version built ($(ls Mirador-*-setup.exe)): set <Version> in Directory.Build.props." >&2
+            exit 1
+          fi
+          hash=$(sha256sum "$installer" | cut -d' ' -f1)
+          gh release create "$TAG" "$installer" --draft --verify-tag --title "Mirador $version" \
+            --notes "Unsigned. SHA-256 of the installer: $hash"
