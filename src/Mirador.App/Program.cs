@@ -50,7 +50,18 @@ public static partial class Program
             AppLog.Open(AppPaths.Default);
             try
             {
-                Mirador.Ipc.ApprovedBuilds.Approve(approve.ProfileId, approve.Commit, approve.Source, AppContext.BaseDirectory, new Mirador.Ipc.RegistryApprovedBuildStore());
+                var owner = AllowElevatedCommand.CurrentUser()?.Value ?? throw new InvalidOperationException("Windows didn't say who you are.");
+                var build = Mirador.Ipc.ApprovedBuilds.Approve(owner, approve.ProfileId, approve.Commit, approve.Source, AppContext.BaseDirectory, new Mirador.Ipc.RegistryApprovedBuildStore());
+
+                // When the machine's runtime was this profile's earlier approved copy, it is the new one now: the old
+                // copy goes.
+                var profileRoot = Mirador.Ipc.ApprovedBuilds.ProfileRoot(AppContext.BaseDirectory, owner, approve.ProfileId) + Path.DirectorySeparatorChar;
+                if (new RegistryRuntimeReader().ActiveRuntime() is { } active
+                    && Path.GetFullPath(active).StartsWith(profileRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    ActiveRuntimeWriter.Write(build.Manifest);
+                }
+
                 return 0;
             }
             catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)

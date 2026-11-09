@@ -210,7 +210,7 @@ public sealed class HelperHandler
             HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
             HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
             HelperCommand.RollBackMonado => caller is null ? new HelperReply(false, NoCaller) : monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
-            HelperCommand.SetRuntimeApproved => SetRuntimeApproved(request.Build),
+            HelperCommand.SetRuntimeApproved => SetRuntimeApproved(request.Build, caller),
             _ => new HelperReply(false, UnknownCommand),
         });
     }
@@ -309,9 +309,15 @@ public sealed class HelperHandler
     /// The approved copy of a profile's build as the runtime (Mirador.md §4.11 item 51): only once every file matches its
     /// recorded hash, so the machine's runtime never points at anything but what was approved.
     /// </summary>
-    private HelperReply SetRuntimeApproved(string? profileId)
+    private HelperReply SetRuntimeApproved(string? profileId, CallerInfo? caller)
     {
-        if (approved is null || !ApprovedBuilds.IsProfileId(profileId) || approved.Get(profileId!) is not { } build)
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        // The caller's own approval only: the record is per user.
+        if (approved is null || !ApprovedBuilds.IsProfileId(profileId) || approved.Get(caller.Sid.Value, profileId!) is not { } build)
         {
             return new HelperReply(false, NotApproved);
         }

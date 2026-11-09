@@ -1,21 +1,24 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace Mirador.Ipc;
 
 /// <summary>
-/// A build the owner approved to run as administrator or as the machine's OpenXR runtime (Mirador.md §4.11 item 51):
-/// a copy in <c>{app}\builds\&lt;profile&gt;\&lt;commit&gt;\</c>, which only administrators can change, and the SHA-256 of
-/// each of its files, kept in <c>HKLM\SOFTWARE\Mirador\ApprovedBuilds\&lt;profile&gt;</c>.
+/// A build a user approved to run as administrator or as the machine's OpenXR runtime (Mirador.md §4.11 item 51): a
+/// copy in <c>{app}\builds\&lt;user SID&gt;\&lt;profile&gt;\&lt;commit&gt;\</c>, which only administrators can change, and
+/// the SHA-256 of each of its files, kept in <c>HKLM\SOFTWARE\Mirador\ApprovedBuilds\&lt;user SID&gt;\&lt;profile&gt;</c>.
+/// Per user: profile ids such as <c>custom</c> are the same for everyone, and one user's approval is not another's.
 /// </summary>
+/// <param name="Owner">The SID of the user who approved it.</param>
 /// <param name="ProfileId">The profile the build is for.</param>
 /// <param name="Commit">The commit it was built from (or <c>folder</c> for a build folder with no git).</param>
 /// <param name="Folder">The approved copy.</param>
 /// <param name="Files">Each file of the copy, by its path relative to <see cref="Folder"/>, with its SHA-256 (lower case).</param>
-public sealed record ApprovedBuild(string ProfileId, string Commit, string Folder, IReadOnlyDictionary<string, string> Files)
+public sealed record ApprovedBuild(string Owner, string ProfileId, string Commit, string Folder, IReadOnlyDictionary<string, string> Files)
 {
-    /// <summary>The copy's runtime manifest (Monado's install layout).</summary>
+    /// <summary>The copy's runtime manifest, which Mirador writes itself at the approval (it names the copy's own DLL).</summary>
     public string Manifest => Path.Combine(Folder, "openxr_monado.json");
 
     /// <summary>The copy's service folder.</summary>
@@ -25,11 +28,11 @@ public sealed record ApprovedBuild(string ProfileId, string Commit, string Folde
 /// <summary>Where approved builds are recorded; only an administrator can write it.</summary>
 public interface IApprovedBuildStore
 {
-    ApprovedBuild? Get(string profileId);
+    ApprovedBuild? Get(string owner, string profileId);
 
     void Set(ApprovedBuild build);
 
-    void Remove(string profileId);
+    void Remove(string owner, string profileId);
 }
 
 /// <summary>
@@ -39,23 +42,34 @@ public interface IApprovedBuildStore
 /// </summary>
 public static partial class ApprovedBuilds
 {
+    /// <summary>The DLL the approved copy's manifest names, relative to the copy.</summary>
+    public static readonly string RuntimeDll = Path.Combine("bin", "openxr_monado.dll");
+
     /// <summary>The folder of all approved builds below Mirador's install folder.</summary>
     public static string Root(string appDir) => Path.Combine(appDir, "builds");
+
+    /// <summary>The folder of one user's approved builds of one profile.</summary>
+    public static string ProfileRoot(string appDir, string owner, string profileId) => Path.Combine(Root(appDir), owner, profileId);
 
     /// <summary>Whether <paramref name="id"/> is a profile id (a GUID's digits or a default profile's name): never a path.</summary>
     public static bool IsProfileId(string? id) => id is not null && ProfileIdPattern().IsMatch(id);
 
+    /// <summary>Whether <paramref name="sid"/> looks like a SID: never a path.</summary>
+    public static bool IsOwner(string? sid) => sid is not null && OwnerPattern().IsMatch(sid);
+
     /// <summary>
-    /// Copies the install in <paramref name="source"/> to <c>{appDir}\builds\&lt;profile&gt;\&lt;commit&gt;\</c>, hashes the
-    /// copy and records it, replacing the profile's earlier approved build. A link or junction anywhere in the source is
-    /// refused: it could point the copy at files outside the build.
+    /// Copies the install in <paramref name="source"/> to <c>{appDir}\builds\&lt;owner&gt;\&lt;profile&gt;\&lt;commit&gt;\</c>,
+    /// writes the copy's runtime manifest itself (naming the copy's own DLL, whatever the build's manifest said), hashes
+    /// the copy and records it. Only then do the profile's earlier copies go, as far as they can (one still in use stays
+    /// until the next approval). A link or junction anywhere in the source is refused: it could point the copy at files
+    /// outside the build.
     /// </summary>
     /// <exception cref="InvalidOperationException">The source can't be approved; the message says why.</exception>
-    public static ApprovedBuild Approve(string profileId, string commit, string source, string appDir, IApprovedBuildStore store)
+    public static ApprovedBuild Approve(string owner, string profileId, string commit, string source, string appDir, IApprovedBuildStore store)
     {
-        if (!IsProfileId(profileId))
+        if (!IsOwner(owner) || !IsProfileId(profileId))
         {
-            throw new InvalidOperationException("That isn't a profile.");
+            throw new InvalidOperationException("That isn't a user's profile.");
         }
 
         if (!CommitPattern().IsMatch(commit))
@@ -64,7 +78,7 @@ public static partial class ApprovedBuilds
         }
 
         var from = Path.GetFullPath(source);
-        foreach (var file in new[] { "openxr_monado.json", Path.Combine("bin", "openxr_monado.dll"), Path.Combine("bin", "monado-service.exe") })
+        foreach (var file in new[] { "openxr_monado.json", RuntimeDll, Path.Combine("bin", "monado-service.exe") })
         {
             if (!File.Exists(Path.Combine(from, file)))
             {
@@ -72,43 +86,41 @@ public static partial class ApprovedBuilds
             }
         }
 
-        var profileRoot = Path.Combine(Root(appDir), profileId);
+        var profileRoot = ProfileRoot(appDir, owner, profileId);
         var target = Path.Combine(profileRoot, commit);
         var staging = target + ".new";
-        if (Directory.Exists(staging))
-        {
-            Directory.Delete(staging, recursive: true);
-        }
-
+        TryDeleteDirectory(staging);
         Copy(new DirectoryInfo(from), staging);
+        WriteManifest(staging);
         var files = Hash(staging);
 
-        // Only now the earlier approval goes: the profile's other copies, and this commit's if it was approved before.
-        store.Remove(profileId);
-        if (Directory.Exists(profileRoot))
+        // The new copy in place and recorded first; an earlier copy of the same commit is moved aside whole.
+        if (Directory.Exists(target))
         {
-            foreach (var old in Directory.GetDirectories(profileRoot).Where(d => !string.Equals(d, staging, StringComparison.OrdinalIgnoreCase)))
-            {
-                Directory.Delete(old, recursive: true);
-            }
+            Directory.Move(target, target + ".old-" + Guid.NewGuid().ToString("N"));
         }
 
         Directory.Move(staging, target);
-        var build = new ApprovedBuild(profileId, commit, target, files);
+        var build = new ApprovedBuild(owner, profileId, commit, target, files);
         store.Set(build);
+
+        foreach (var old in Directory.GetDirectories(profileRoot).Where(d => !string.Equals(d, target, StringComparison.OrdinalIgnoreCase)))
+        {
+            TryDeleteDirectory(old);
+        }
+
         return build;
     }
 
     /// <summary>
     /// Null when <paramref name="build"/> is still exactly what was approved: in its place under
-    /// <paramref name="appDir"/>, with every recorded file there with its recorded hash, and no program or library
-    /// added. Otherwise why not, in plain words.
+    /// <paramref name="appDir"/>, its manifest naming its own DLL, every recorded file there with its recorded hash, and
+    /// no program or library added. Otherwise why not, in plain words.
     /// </summary>
     public static string? Verify(ApprovedBuild build, string appDir)
     {
-        var expected = Path.Combine(Root(appDir), build.ProfileId, build.Commit);
-        if (!IsProfileId(build.ProfileId) || !CommitPattern().IsMatch(build.Commit)
-            || !string.Equals(Path.GetFullPath(build.Folder), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase))
+        if (!IsOwner(build.Owner) || !IsProfileId(build.ProfileId) || !CommitPattern().IsMatch(build.Commit)
+            || !string.Equals(Path.GetFullPath(build.Folder), Path.GetFullPath(Path.Combine(ProfileRoot(appDir, build.Owner, build.ProfileId), build.Commit)), StringComparison.OrdinalIgnoreCase))
         {
             return "The approved build's record doesn't name its own folder. Approve the build again.";
         }
@@ -118,14 +130,22 @@ public static partial class ApprovedBuilds
             return "The approved build is gone. Approve the build again.";
         }
 
+        var root = Path.GetFullPath(build.Folder) + Path.DirectorySeparatorChar;
         foreach (var (relative, hash) in build.Files)
         {
             var path = Path.GetFullPath(Path.Combine(build.Folder, relative));
-            if (!path.StartsWith(Path.GetFullPath(build.Folder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)
                 || !File.Exists(path) || !string.Equals(HashOf(path), hash, StringComparison.OrdinalIgnoreCase))
             {
                 return $"The approved build changed since it was approved ({relative}). Approve it again.";
             }
+        }
+
+        if (!build.Files.ContainsKey("openxr_monado.json") || LibraryOf(build.Manifest) is not { } library
+            || !string.Equals(library, Path.Combine(build.Folder, RuntimeDll), StringComparison.OrdinalIgnoreCase)
+            || !build.Files.ContainsKey(RuntimeDll))
+        {
+            return "The approved build's manifest doesn't name its own DLL. Approve the build again.";
         }
 
         foreach (var file in Directory.EnumerateFiles(build.Folder, "*", SearchOption.AllDirectories))
@@ -146,7 +166,7 @@ public static partial class ApprovedBuilds
     /// </summary>
     public static bool Matches(ApprovedBuild build, string sourceInstall)
     {
-        foreach (var relative in new[] { Path.Combine("bin", "openxr_monado.dll"), Path.Combine("bin", "monado-service.exe") })
+        foreach (var relative in new[] { RuntimeDll, Path.Combine("bin", "monado-service.exe") })
         {
             var file = Path.Combine(sourceInstall, relative);
             if (!build.Files.TryGetValue(relative, out var hash) || !File.Exists(file)
@@ -164,6 +184,29 @@ public static partial class ApprovedBuilds
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexStringLower(SHA256.HashData(stream));
+    }
+
+    /// <summary>
+    /// The copy's manifest, written by Mirador: a build's own may name a DLL anywhere (an absolute path into the user's
+    /// build folder), and every OpenXR program would load that.
+    /// </summary>
+    private static void WriteManifest(string folder) =>
+        File.WriteAllText(Path.Combine(folder, "openxr_monado.json"),
+            """{"file_format_version": "1.0.0", "runtime": {"name": "Monado (Mirador, approved build)", "library_path": "./bin/openxr_monado.dll"}}""");
+
+    /// <summary>The full path of the DLL a manifest names, or null when it can't be read.</summary>
+    private static string? LibraryOf(string manifest)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(manifest));
+            var library = doc.RootElement.GetProperty("runtime").GetProperty("library_path").GetString();
+            return library is null || Path.IsPathRooted(library) ? null : Path.GetFullPath(library, Path.GetDirectoryName(manifest)!);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or IOException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static bool IsCode(string file) =>
@@ -197,15 +240,33 @@ public static partial class ApprovedBuilds
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .ToDictionary(f => Path.GetRelativePath(folder, f), HashOf, StringComparer.OrdinalIgnoreCase);
 
-    [GeneratedRegex(@"^[A-Za-z0-9_-]{1,64}$")]
+    private static void TryDeleteDirectory(string folder)
+    {
+        try
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Still in use (a game, the elevated service): it goes at the next approval.
+        }
+    }
+
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{1,64}\z")]
     private static partial Regex ProfileIdPattern();
 
-    [GeneratedRegex(@"^([0-9a-f]{7,40}|folder)$")]
+    [GeneratedRegex(@"^S-1(-[0-9]{1,10}){1,15}\z")]
+    private static partial Regex OwnerPattern();
+
+    [GeneratedRegex(@"^([0-9a-f]{7,40}|folder)\z")]
     private static partial Regex CommitPattern();
 }
 
 /// <summary>
-/// The approved builds in <c>HKLM\SOFTWARE\Mirador\ApprovedBuilds</c> (64-bit view): a key per profile with
+/// The approved builds in <c>HKLM\SOFTWARE\Mirador\ApprovedBuilds</c> (64-bit view): a key per user SID and profile with
 /// <c>Commit</c> and <c>Folder</c>, and its <c>Files</c> subkey with a value per file (relative path → SHA-256).
 /// </summary>
 public sealed class RegistryApprovedBuildStore : IApprovedBuildStore
@@ -228,15 +289,15 @@ public sealed class RegistryApprovedBuildStore : IApprovedBuildStore
         this.keyPath = keyPath;
     }
 
-    public ApprovedBuild? Get(string profileId)
+    public ApprovedBuild? Get(string owner, string profileId)
     {
-        if (!ApprovedBuilds.IsProfileId(profileId))
+        if (!ApprovedBuilds.IsOwner(owner) || !ApprovedBuilds.IsProfileId(profileId))
         {
             return null;
         }
 
         using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
-        using var key = root.OpenSubKey($@"{keyPath}\{profileId}");
+        using var key = root.OpenSubKey($@"{keyPath}\{owner}\{profileId}");
         using var files = key?.OpenSubKey("Files");
         if (key?.GetValue("Commit") is not string commit || key.GetValue("Folder") is not string folder || files is null)
         {
@@ -252,14 +313,14 @@ public sealed class RegistryApprovedBuildStore : IApprovedBuildStore
             }
         }
 
-        return new ApprovedBuild(profileId, commit, folder, hashes);
+        return new ApprovedBuild(owner, profileId, commit, folder, hashes);
     }
 
     public void Set(ApprovedBuild build)
     {
-        Remove(build.ProfileId);
+        Remove(build.Owner, build.ProfileId);
         using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
-        using var key = root.CreateSubKey($@"{keyPath}\{build.ProfileId}", writable: true);
+        using var key = root.CreateSubKey($@"{keyPath}\{build.Owner}\{build.ProfileId}", writable: true);
         key.SetValue("Commit", build.Commit, RegistryValueKind.String);
         key.SetValue("Folder", build.Folder, RegistryValueKind.String);
         using var files = key.CreateSubKey("Files", writable: true);
@@ -269,14 +330,14 @@ public sealed class RegistryApprovedBuildStore : IApprovedBuildStore
         }
     }
 
-    public void Remove(string profileId)
+    public void Remove(string owner, string profileId)
     {
-        if (!ApprovedBuilds.IsProfileId(profileId))
+        if (!ApprovedBuilds.IsOwner(owner) || !ApprovedBuilds.IsProfileId(profileId))
         {
             return;
         }
 
         using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
-        root.DeleteSubKeyTree($@"{keyPath}\{profileId}", throwOnMissingSubKey: false);
+        root.DeleteSubKeyTree($@"{keyPath}\{owner}\{profileId}", throwOnMissingSubKey: false);
     }
 }

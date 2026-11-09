@@ -57,8 +57,10 @@ Type: filesandordirs; Name: "{app}\tools"
 Type: filesandordirs; Name: "{app}\opencomposite"
 
 [UninstallDelete]
-; Mirador's Monado, which the helper installed (Mirador.md section 4.11 item 55), and its download folder.
+; Mirador's Monado, which the helper installed (Mirador.md section 4.11 item 55), and its download folder; and the
+; builds users approved to run as administrator (item 51), which the elevated approval step copied.
 Type: filesandordirs; Name: "{app}\monado"
+Type: filesandordirs; Name: "{app}\builds"
 
 [Files]
 Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -210,13 +212,16 @@ begin
   HelperStep('started', Sc('start {#ServiceName}'));
 end;
 
-{ Whether Manifest is one of Mirador's: the bundled one of an older install, or a version of Mirador's Monado. }
+{ Whether Manifest is one of Mirador's: the bundled one of an older install, a version of Mirador's Monado, or an
+  approved build's copy. }
 function IsMiradorsManifest(const Manifest: String): Boolean;
 var
-  Root: String;
+  Monado, Builds: String;
 begin
-  Root := Lowercase(ExpandConstant('{app}\monado\'));
-  Result := (Copy(Lowercase(Manifest), 1, Length(Root)) = Root) and HasSuffix(Lowercase(Manifest), '\openxr_monado.json');
+  Monado := Lowercase(ExpandConstant('{app}\monado\'));
+  Builds := Lowercase(ExpandConstant('{app}\builds\'));
+  Result := ((Copy(Lowercase(Manifest), 1, Length(Monado)) = Monado) or (Copy(Lowercase(Manifest), 1, Length(Builds)) = Builds))
+    and HasSuffix(Lowercase(Manifest), '\openxr_monado.json');
 end;
 
 { The runtime entries of Mirador's Monado's versions (the helper's) and of an older install's bundled Monado. }
@@ -301,4 +306,6 @@ begin
     the SteamVR files each user allowed (item 46). }
   RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonado');
   RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonadoFiles');
+  { And every user's approved builds (item 51): an approval isn't carried over to a reinstall. }
+  RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ApprovedBuilds');
 end;

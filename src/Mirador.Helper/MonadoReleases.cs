@@ -97,6 +97,11 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         lock (gate)
         {
             var kept = MiradorMonado.Read(monadoRoot);
+            if (kept.Current == version && File.Exists(MiradorMonado.ManifestOf(monadoRoot, version)))
+            {
+                return new HelperReply(true, Value: version);
+            }
+
             if (kept.Previous == version && File.Exists(MiradorMonado.ManifestOf(monadoRoot, version)))
             {
                 return RollBack();

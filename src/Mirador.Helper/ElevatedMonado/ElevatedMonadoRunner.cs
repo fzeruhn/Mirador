@@ -137,9 +137,10 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
             // Mirador's Monado's current version, read at each Start: an update or a roll back may have changed it. Or a
             // profile's approved build, every file checked against its approval at each Start.
             string serverDir;
-            if (start.Build.Length > 0)
+            if (start.Build is { Length: > 0 } buildProfile)
             {
-                if (approved is null || !ApprovedBuilds.IsProfileId(start.Build) || approved.Get(start.Build) is not { } build)
+                // The caller's own approval only: the record is per user.
+                if (approved is null || !ApprovedBuilds.IsProfileId(buildProfile) || approved.Get(caller.Sid.Value, buildProfile) is not { } build)
                 {
                     return Fail("This profile's build isn't approved to run as administrator.");
                 }

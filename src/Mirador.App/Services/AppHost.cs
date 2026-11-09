@@ -381,7 +381,8 @@ public sealed class AppHost : IAsyncDisposable
 
         try
         {
-            return new RegistryApprovedBuildStore().Get(profile.Id) is { } approved
+            return AllowElevatedCommand.CurrentUser()?.Value is { } owner
+                && new RegistryApprovedBuildStore().Get(owner, profile.Id) is { } approved
                 && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(Locator.Locate(profile).Manifest)!);
         }
         catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException or System.Security.SecurityException)
@@ -473,7 +474,12 @@ public sealed class AppHost : IAsyncDisposable
     /// </summary>
     public async Task<(string Message, bool Ok)?> InstallMiradorsMonadoIfNeededAsync()
     {
-        if (!Profiles.Load().Profiles.Any(p => p.Monado.Kind == SourceKind.Mirador)
+        // Also when the machine's runtime is still an older install's bundled Monado, whose files the update removed: the
+        // helper moves it to Mirador's Monado as it installs it.
+        var bundled = Path.Combine(Locator.MiradorRoot, "runtime", "openxr_monado.json");
+        var danglingBundled = Runtime.Active() is { } active
+            && string.Equals(Path.GetFullPath(active), bundled, StringComparison.OrdinalIgnoreCase) && !File.Exists(bundled);
+        if ((!Profiles.Load().Profiles.Any(p => p.Monado.Kind == SourceKind.Mirador) && !danglingBundled)
             || Ipc.MiradorMonado.Read(Locator.MiradorRoot).Current is not null)
         {
             return null;
