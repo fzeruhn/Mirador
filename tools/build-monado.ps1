@@ -141,6 +141,11 @@ $options = @(
 ) + $ExtraCMakeOptions
 
 $env:PYTHONUTF8 = '1'
+
+# MSVC reports __cplusplus as 199711L unless told otherwise, so Monado's u_file.cpp takes <experimental/filesystem>,
+# which MSVC 14.51 (Visual Studio 2026) no longer has. With the real value it takes <filesystem>, with any MSVC.
+# (CMake starts CMAKE_CXX_FLAGS from CXXFLAGS; vcpkg builds its ports in a clean environment, without it.)
+$env:CXXFLAGS = (@($env:CXXFLAGS, '/Zc:__cplusplus') | Where-Object { $_ }) -join ' '
 Write-Host "Configuring $Source in $Build"
 Invoke-Checked 'Configuring Monado' { cmake -S $Source -B $Build -G Ninja @options }
 Write-Host 'Building'
@@ -192,6 +197,7 @@ $info = [ordered]@{
     vcpkgCommit    = Get-GitValue $vcpkg @('rev-parse', 'HEAD')
     buildType      = 'RelWithDebInfo'
     options        = @($options | Where-Object { $_ -notlike '-DCMAKE_TOOLCHAIN_FILE=*' -and $_ -notlike '-DCMAKE_INSTALL_PREFIX=*' })
+    cxxFlags       = $env:CXXFLAGS
     builtAt        = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 }
 # UTF-8 without a byte order mark, in both PowerShells.
