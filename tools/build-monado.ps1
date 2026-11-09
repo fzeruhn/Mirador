@@ -106,6 +106,31 @@ foreach ($tool in 'cmake', 'ninja', 'git') {
     }
 }
 
+# vcpkg's own program, built from its source the first time.
+$vcpkgExe = Join-Path $vcpkg 'vcpkg.exe'
+if (-not (Test-Path -LiteralPath $vcpkgExe)) {
+    Invoke-Checked 'Bootstrapping vcpkg' { & (Join-Path $vcpkg 'bootstrap-vcpkg.bat') -disableMetrics }
+}
+
+# Monado compiles its shaders with glslangValidator, which its vcpkg.json doesn't ask for (upstream's CI has it from
+# the Vulkan SDK). Without one on PATH, vcpkg builds glslang's tools beside the build folder, from the same pinned
+# vcpkg (and its binary cache, so only once).
+if (-not (Get-Command glslangValidator -ErrorAction SilentlyContinue)) {
+    $glslang = "$Build-glslang"
+    $glslangTools = Join-Path $glslang 'x64-windows\tools\glslang'
+    if (-not (Test-Path -LiteralPath (Join-Path $glslangTools 'glslangValidator.exe'))) {
+        Write-Host 'Building glslangValidator with vcpkg'
+        Push-Location ([IO.Path]::GetTempPath())
+        try {
+            Invoke-Checked 'Building glslangValidator' { & $vcpkgExe install 'glslang[tools]:x64-windows' --classic "--x-install-root=$glslang" --disable-metrics }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    $env:PATH = $glslangTools + [IO.Path]::PathSeparator + $env:PATH
+}
+
 # 3. Configure, build, install. A fresh install folder, so nothing of an older build is left in it.
 $options = @(
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo'
