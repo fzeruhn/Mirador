@@ -806,6 +806,13 @@ public sealed partial class HomeViewModel : ObservableObject
         }
     }
 
+    /// <summary>How installing Mirador's Monado at launch went.</summary>
+    public void ShowMonadoNotice(string message, bool ok)
+    {
+        ShowNotice("miradors-monado", "Mirador's Monado", message, ok ? InfoBarSeverity.Success : InfoBarSeverity.Warning);
+        RefreshRuntime();
+    }
+
     private void ShowNotice(string key, string title, string message, InfoBarSeverity severity)
     {
         RemoveNotice(key);

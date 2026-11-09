@@ -162,11 +162,23 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         return new HelperReply(true, Value: version);
     }
 
-    /// <summary>Mirador's runtime stays the active one across an update or a roll back, when it was.</summary>
+    /// <summary>
+    /// Mirador's runtime stays the active one across an update or a roll back, when it was; and so does the bundled
+    /// Monado of an older install (<c>{app}\monado\runtime</c>), whose files that install's update removed
+    /// (Mirador_Plan.md Task 69).
+    /// </summary>
     private void FollowActive(string? from, string to)
     {
-        if (from is not null && registry.GetActive() is { } active
-            && string.Equals(Path.GetFullPath(active), MiradorMonado.ManifestOf(monadoRoot, from), StringComparison.OrdinalIgnoreCase))
+        if (registry.GetActive() is not { } active)
+        {
+            return;
+        }
+
+        var full = Path.GetFullPath(active);
+        var wasMiradors = from is not null && string.Equals(full, MiradorMonado.ManifestOf(monadoRoot, from), StringComparison.OrdinalIgnoreCase);
+        var wasBundled = string.Equals(full, Path.Combine(monadoRoot, "runtime", "openxr_monado.json"), StringComparison.OrdinalIgnoreCase)
+            && !File.Exists(full);
+        if (wasMiradors || wasBundled)
         {
             registry.SetActive(MiradorMonado.ManifestOf(monadoRoot, to));
         }

@@ -47,11 +47,18 @@ MinVersion=10.0.19041
 ; What an older version (or the dev install's helper.new) left there goes, so no stale file is loaded.
 Type: filesandordirs; Name: "{app}\helper"
 Type: filesandordirs; Name: "{app}\helper.new"
-Type: filesandordirs; Name: "{app}\monado"
+; In monado\ only what an older Mirador installed: the versions of Mirador's Monado there are the helper's, and stay.
+Type: filesandordirs; Name: "{app}\monado\runtime"
+Type: filesandordirs; Name: "{app}\monado\server"
+Type: files; Name: "{app}\monado\VERSION.txt"
 Type: filesandordirs; Name: "{app}\layer"
 Type: filesandordirs; Name: "{app}\standin"
 Type: filesandordirs; Name: "{app}\tools"
 Type: filesandordirs; Name: "{app}\opencomposite"
+
+[UninstallDelete]
+; Mirador's Monado, which the helper installed (Mirador.md section 4.11 item 55), and its download folder.
+Type: filesandordirs; Name: "{app}\monado"
 
 [Files]
 Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -84,6 +91,7 @@ Filename: "{app}\Mirador.exe"; Description: "Start Mirador"; Flags: postinstall 
 const
   ImplicitLayers = 'SOFTWARE\Khronos\Vulkan\ImplicitLayers';
   OpenXrKey = 'SOFTWARE\Khronos\OpenXR\1';
+  AvailableRuntimes = 'SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes';
   MiradorKey = 'SOFTWARE\Mirador';
   QuitMirador = 'Mirador is running. Quit it from its tray icon (Quit), then press Retry.';
 
@@ -202,8 +210,35 @@ begin
   HelperStep('started', Sc('start {#ServiceName}'));
 end;
 
+{ Whether Manifest is one of Mirador's: the bundled one of an older install, or a version of Mirador's Monado. }
+function IsMiradorsManifest(const Manifest: String): Boolean;
+var
+  Root: String;
+begin
+  Root := Lowercase(ExpandConstant('{app}\monado\'));
+  Result := (Copy(Lowercase(Manifest), 1, Length(Root)) = Root) and HasSuffix(Lowercase(Manifest), '\openxr_monado.json');
+end;
+
+{ The runtime entries of Mirador's Monado's versions (the helper's) and of an older install's bundled Monado. }
+procedure RemoveMiradorsRuntimes;
+var
+  Names: TArrayOfString;
+  I: Integer;
+begin
+  if RegGetValueNames(HKLM64, AvailableRuntimes, Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+      if IsMiradorsManifest(Names[I]) then
+        RegDeleteValue(HKLM64, AvailableRuntimes, Names[I]);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+#if !BundleHasMonado
+  { An update from an install that bundled Monado (Mirador_Plan.md Task 69): its runtime entry goes with its files. The
+    active runtime, if it was that one, is moved to Mirador's Monado when the helper installs it. }
+  if CurStep = ssInstall then
+    RegDeleteValue(HKLM64, AvailableRuntimes, ExpandConstant('{app}\monado\runtime\openxr_monado.json'));
+#endif
   if CurStep = ssPostInstall then
   begin
 #if BundleHasLayer
@@ -217,7 +252,7 @@ end;
   calibration backups in %LOCALAPPDATA%\Mirador stay. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Active, Ours, Recorded: String;
+  Active, Recorded: String;
   Code: Integer;
 begin
   if CurUninstallStep <> usUninstall then
@@ -237,8 +272,7 @@ begin
   else if Code <> 0 then
     Log(Format('Mirador.exe --remove-sign-in: exit code %d (the start at sign-in could not be removed).', [Code]));
 
-  Ours := ExpandConstant('{app}\monado\runtime\openxr_monado.json');
-  if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
+  if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then
   begin
     if SuppressibleMsgBox('Monado is the active OpenXR runtime. Switch back to the runtime that was active before?',
       mbConfirmation, MB_YESNO, IDYES) = IDYES then
@@ -250,14 +284,15 @@ begin
       if not Exec(ExpandConstant('{app}\helper\Mirador.Helper.exe'), '--restore-runtime', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         Code := -1;
       { However that went: put back what was recorded, if Mirador's runtime is still the active one. }
-      if (Recorded <> '') and RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
+      if (Recorded <> '') and RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then
         RegWriteStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Recorded);
     end;
 
     { Never left pointing at a file this uninstall removes: no runtime rather than a broken one. }
-    if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
+    if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then
       RegDeleteValue(HKLM64, OpenXrKey, 'ActiveRuntime');
   end;
+  RemoveMiradorsRuntimes;
 
   StopHelper;
   Sc('delete {#ServiceName}');

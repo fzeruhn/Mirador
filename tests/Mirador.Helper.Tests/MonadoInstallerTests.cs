@@ -116,6 +116,28 @@ public class MonadoInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task An_older_installs_bundled_runtime_that_is_gone_moves_to_miradors_monado()
+    {
+        Publish(V1);
+        registry.Active = Path.Combine(Root, "runtime", "openxr_monado.json");
+
+        await installer.InstallAsync(V1, CancellationToken.None);
+
+        Assert.Equal(Path.Combine(Root, V1, "openxr_monado.json"), registry.Active);
+    }
+
+    [Fact]
+    public async Task Another_runtime_stays_active()
+    {
+        Publish(V1);
+        registry.Active = @"C:\Program Files\Pimax\openxr.json";
+
+        await installer.InstallAsync(V1, CancellationToken.None);
+
+        Assert.Equal(@"C:\Program Files\Pimax\openxr.json", registry.Active);
+    }
+
+    [Fact]
     public async Task Roll_back_swaps_current_and_previous_and_the_active_runtime_follows()
     {
         Publish(V1);

@@ -354,6 +354,7 @@ public sealed class AppHost : IAsyncDisposable
     {
         var host = new AppHost(appDir, paths);
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
+        host.MigrateProfiles();
         host.CheckStore("Monado settings", paths.MonadoSettingsFile, () => host.MonadoSettings.Load());
         host.CheckStore("settings", paths.SettingsFile, () => host.Settings.Load());
 
@@ -364,6 +365,55 @@ public sealed class AppHost : IAsyncDisposable
         _ = Task.Run(() => host.IsInstalledCopy(askHelper: true));
         host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
+    }
+
+    /// <summary>
+    /// An older install's profiles on the bundled Monado move to Mirador's Monado once the bundle is gone
+    /// (Mirador_Plan.md Task 69); Home says so.
+    /// </summary>
+    private void MigrateProfiles()
+    {
+        try
+        {
+            var bundleGone = !File.Exists(Path.Combine(AppDir, "monado", "runtime", "openxr_monado.json"));
+            var (set, changed) = Core.Migration.ProfileMigration.Migrate(Profiles.Load(), bundleGone);
+            if (changed)
+            {
+                Profiles.Save(set);
+                notices.Add("Mirador no longer comes with Monado: your profiles now use Mirador's Monado, upstream's nightly build, which Mirador downloads for them.");
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write("Couldn't move the profiles to Mirador's Monado", e);
+        }
+    }
+
+    /// <summary>
+    /// When a profile runs Mirador's Monado and none is installed: the helper installs the newest nightly (Mirador.md
+    /// §4.11 item 55: the first run, or an install moved from the bundled Monado). What happened, for Home; null when
+    /// nothing was needed.
+    /// </summary>
+    public async Task<(string Message, bool Ok)?> InstallMiradorsMonadoIfNeededAsync()
+    {
+        if (!Profiles.Load().Profiles.Any(p => p.Monado.Kind == SourceKind.Mirador)
+            || Ipc.MiradorMonado.Read(Locator.MiradorRoot).Current is not null)
+        {
+            return null;
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var newest = (await Ipc.MonadoReleaseList.FetchAsync(http, AppInfo.Version, CancellationToken.None))?.FirstOrDefault();
+        if (newest is null)
+        {
+            return ("Mirador's Monado couldn't be downloaded: GitHub didn't answer, or no build is published yet. Try again on the Profiles page.", false);
+        }
+
+        var reply = await Helper.SendAsync(new Ipc.HelperRequest(Ipc.HelperCommand.InstallMonado, Version: newest.Version), CancellationToken.None);
+        NotifyProfilesChanged();
+        return reply.Ok
+            ? ($"Mirador's Monado {newest.Version} is installed.", true)
+            : ($"Mirador's Monado couldn't be installed: {reply.Error}", false);
     }
 
     /// <summary>Records <c>HKCU\Software\Mirador</c> <c>AppPath</c>, where the stand-in finds Mirador to start it.</summary>

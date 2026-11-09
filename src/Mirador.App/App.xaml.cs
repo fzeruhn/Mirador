@@ -174,6 +174,18 @@ public partial class App : Application
     {
         try
         {
+            if (await Host.InstallMiradorsMonadoIfNeededAsync() is { } installed)
+            {
+                Ui.TryEnqueue(() => Home.ShowMonadoNotice(installed.Message, installed.Ok));
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Installing Mirador's Monado at launch failed", ex);
+        }
+
+        try
+        {
             await Updates.CheckDailyAsync();
         }
         catch (Exception ex)
