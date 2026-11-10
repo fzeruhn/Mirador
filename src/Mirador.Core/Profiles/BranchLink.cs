@@ -38,7 +38,9 @@ public static partial class BranchLink
         {
             (repoPath, gitRef) = (tree.Groups[1].Value, Uri.UnescapeDataString(tree.Groups[2].Value));
         }
-        else if (!path.Contains("/-/", StringComparison.Ordinal) && path.Count(c => c == '/') >= 1)
+        else if (!path.Contains("/-/", StringComparison.Ordinal) && path.Count(c => c == '/') >= 1
+            // On GitHub a repository is owner/name; anything longer is another of its pages (a commit, a file, releases).
+            && !(uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) && path.Count(c => c == '/') != 1))
         {
             (repoPath, gitRef) = (path, BuildSource.UpstreamRef);
         }

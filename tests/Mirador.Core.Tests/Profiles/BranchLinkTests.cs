@@ -31,6 +31,9 @@ public class BranchLinkTests
     [InlineData("https://github.com/")]
     [InlineData("https://gitlab.freedesktop.org/monado/monado/-/issues/5")]
     [InlineData("https://github.com/a/b/tree/--upload-pack=evil")]
+    [InlineData("https://github.com/fzeruhn/monado/commit/0123456789abcdef0123456789abcdef01234567")]
+    [InlineData("https://github.com/fzeruhn/monado/blob/main/README.md")]
+    [InlineData("https://github.com/fzeruhn/monado/releases")]
     public void Other_links_are_refused(string link)
     {
         Assert.Throws<MiradorException>(() => BranchLink.Parse(link));
