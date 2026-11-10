@@ -41,7 +41,9 @@ foreach ($key in 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers', 'HKLM:\SOFTWARE\WOW643
 # Headless, and only this build: the variables go to the service and to xr-check's OpenXR loader.
 $env:XRT_COMPOSITOR_NULL = '1'
 $env:SIMULATED_ENABLE = '1'
-$env:XR_RUNTIME_JSON = $manifest
+$env:XR_RUNTIME_JSON = $manifest # an elevated process's loader ignores it: there, make the build the active runtime first
+# xr-check loads vulkan-1.dll by name: the build's own copy serves where Windows has none (no GPU driver brought one).
+$env:PATH = "$(Join-Path $Install 'bin');$env:PATH"
 
 function Get-MonadoPipe {
     [IO.Directory]::GetFiles('\\.\pipe\') | Where-Object { $_ -like '*monado_comp_ipc' }

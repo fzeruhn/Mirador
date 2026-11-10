@@ -122,16 +122,11 @@ jobs:
         shell: pwsh
         run: tools\check-monado-build.ps1 -Install "$env:RUNNER_TEMP\monado-install" -Build "$env:RUNNER_TEMP\monado-build"
 
-      # The last check: the build starts and serves an OpenXR session on Windows, headless (no GPU here).
+      # The OpenXR test client for the session job, built here where the tools and vcpkg are.
       - name: xr-check
         if: steps.upstream.outputs.skip != 'true'
         shell: pwsh
         run: tools\build-cmake.ps1 -Source tools\xr-check -BuildDir "$env:RUNNER_TEMP\xr-check-build" -Configure -Build
-
-      - name: A session
-        if: steps.upstream.outputs.skip != 'true'
-        shell: pwsh
-        run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check-build\xr-check.exe"
 
       - name: The zip
         if: steps.upstream.outputs.skip != 'true'
@@ -151,6 +146,14 @@ jobs:
           if-no-files-found: error
           path: out/
 
+      - name: Upload xr-check
+        if: steps.upstream.outputs.skip != 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: xr-check
+          if-no-files-found: error
+          path: ${{ runner.temp }}/xr-check-build/xr-check.exe
+
       - name: The build log of a failed night
         if: failure()
         uses: actions/upload-artifact@v5
@@ -160,11 +163,73 @@ jobs:
             ${{ runner.temp }}/monado-build/CMakeFiles/CMakeConfigureLog.yaml
             ${{ runner.temp }}/monado-build/Testing/Temporary/
             ${{ runner.temp }}/monado-build/vcpkg-manifest-install.log
-            ${{ runner.temp }}/monado-session/
+
+  # The last check: the zip just built starts and serves an OpenXR session on Windows, headless. The runner has no GPU,
+  # so a software Vulkan driver (Mesa's lavapipe) stands in; it runs on a machine of its own, never beside the zip
+  # that gets published, and this job can't write anything.
+  session:
+    needs: build
+    if: needs.build.outputs.skip != 'true'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: monado
+          path: ${{ runner.temp }}/monado-zip
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: xr-check
+          path: ${{ runner.temp }}/xr-check
+
+      - name: The build, unpacked
+        shell: pwsh
+        run: Expand-Archive -LiteralPath "$env:RUNNER_TEMP\monado-zip\$env:TAG.zip" -DestinationPath "$env:RUNNER_TEMP\monado-install"
+
+      - name: A software Vulkan driver
+        shell: pwsh
+        run: |
+          $release = gh release view --repo pal1000/mesa-dist-win --json tagName,assets | ConvertFrom-Json
+          $asset = $release.assets | Where-Object { $_.name -like 'mesa3d-*-release-msvc.7z' } | Select-Object -First 1
+          if (-not $asset) { throw "mesa-dist-win $($release.tagName) has no release-msvc archive." }
+          gh release download $release.tagName --repo pal1000/mesa-dist-win --pattern $asset.name --dir "$env:RUNNER_TEMP"
+          $file = Join-Path $env:RUNNER_TEMP $asset.name
+          Write-Host "mesa-dist-win $($release.tagName): $($asset.name), SHA-256 $((Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()) (GitHub's digest: $($asset.digest))"
+          7z x -y -bso0 "-o$env:RUNNER_TEMP\mesa" $file
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $icd = Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\mesa\x64" -Filter 'lvp_icd*.json' | Select-Object -First 1
+          if (-not $icd) { throw 'No lavapipe driver manifest in the archive.' }
+          New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name $icd.FullName -Value 0 -PropertyType DWord -Force | Out-Null
+          Write-Host "Registered $($icd.FullName)"
+
+      # The runner runs elevated, where the OpenXR loader ignores XR_RUNTIME_JSON: the build is made the machine's runtime.
+      - name: The build as the OpenXR runtime
+        shell: pwsh
+        run: |
+          New-Item -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' -Force | Out-Null
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' -Name ActiveRuntime -Value "$env:RUNNER_TEMP\monado-install\openxr_monado.json"
+
+      - name: A session
+        shell: pwsh
+        run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe"
+
+      - name: The session's logs
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: monado-session
+          path: ${{ runner.temp }}/monado-session/
 
   # Only a scheduled or started night publishes, and only this job may write.
   publish:
-    needs: build
+    needs: [build, session]
     if: needs.build.outputs.skip != 'true' && github.event_name != 'push'
     runs-on: ubuntu-latest
     permissions:
