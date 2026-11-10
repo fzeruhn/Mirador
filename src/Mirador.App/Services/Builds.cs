@@ -65,6 +65,18 @@ public sealed class Builds(MonadoBuilder builder)
         }
     }
 
+    /// <summary>Whether any profile's build is running (the build tools aren't changed meanwhile).</summary>
+    public bool AnyRunning
+    {
+        get
+        {
+            lock (runs)
+            {
+                return runs.Values.Any(r => r is { Outcome: null, Cancelled: false });
+            }
+        }
+    }
+
     /// <summary>The newest build log of a profile, from this or an earlier run of Mirador.</summary>
     public string? LastLog(string profileId) => builder.LastLog(profileId);
 

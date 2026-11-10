@@ -12,29 +12,6 @@ namespace Mirador.Core.Build;
 /// <param name="Log">The build's log file.</param>
 public sealed record BuildOutcome(bool Ok, string Message, string? Commit, BuildCheckResult? Checks, string Log);
 
-/// <summary>Where the build tools are: Mirador's own copies when it has them, else what is on <c>PATH</c>.</summary>
-/// <param name="Recipe">Mirador's <c>build-monado.ps1</c> (<c>{app}\tools</c>).</param>
-/// <param name="ToolsDir">Mirador's own vcpkg, CMake, Ninja and Git (<see cref="AppPaths.ToolsDir"/>), when there.</param>
-/// <param name="PowerShell">Windows PowerShell, which runs the recipe.</param>
-public sealed record BuildTools(string Recipe, string? ToolsDir, string PowerShell)
-{
-    /// <summary>The tools of an installed Mirador.</summary>
-    public static BuildTools For(string appDir, AppPaths paths) => new(
-        Path.Combine(appDir, "tools", "build-monado.ps1"),
-        Directory.Exists(paths.ToolsDir) ? paths.ToolsDir : null,
-        Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"));
-
-    /// <summary>Git: Mirador's copy, else the one on <c>PATH</c>.</summary>
-    public string Git => ToolsDir is { } dir && File.Exists(Path.Combine(dir, "git", "cmd", "git.exe"))
-        ? Path.Combine(dir, "git", "cmd", "git.exe")
-        : "git";
-
-    /// <summary>ctest: beside Mirador's CMake, else the one on <c>PATH</c>.</summary>
-    public string Ctest => ToolsDir is { } dir && File.Exists(Path.Combine(dir, "cmake", "bin", "ctest.exe"))
-        ? Path.Combine(dir, "cmake", "bin", "ctest.exe")
-        : "ctest";
-}
-
 /// <summary>
 /// Builds a branch profile's Monado (Mirador.md §4.11 item 49, Mirador_Plan.md Task 61): clones or pulls the branch into
 /// <c>Builds\&lt;profile&gt;\src</c>, builds it in <c>…\build</c> with Mirador's recipe and installs it in
@@ -149,7 +126,7 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
             "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", tools.Recipe,
             "-Source", src, "-Build", build, "-Install", fresh, "-ExtraCMakeOptionsFile", optionsFile,
         };
-        if (tools.ToolsDir is { } toolsDir)
+        if (tools.ExistingToolsDir is { } toolsDir)
         {
             arguments.AddRange(["-Tools", toolsDir]);
         }

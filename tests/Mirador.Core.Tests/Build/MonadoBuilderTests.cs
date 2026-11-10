@@ -57,6 +57,22 @@ public class MonadoBuilderTests : IDisposable
     private Task<BuildOutcome> Build(CancellationToken ct = default) => builder.BuildAsync(Fork, Lines.Add, ct);
 
     [Fact]
+    public async Task Miradors_own_tools_are_used_once_they_are_there_without_a_restart()
+    {
+        var toolsDir = dir.File("tools");
+        var withTools = new MonadoBuilder(
+            runner, locator, new BuildTools(dir.File("app", "tools", "build-monado.ps1"), toolsDir, "powershell.exe"),
+            new BuildChecks(runner, dir.File("system"), time), time);
+
+        await withTools.BuildAsync(Fork, Lines.Add, CancellationToken.None);
+        Assert.DoesNotContain("-Tools", runner.Commands.Last(c => c.FileName == "powershell.exe").Arguments);
+
+        Directory.CreateDirectory(toolsDir);
+        await withTools.BuildAsync(Fork, Lines.Add, CancellationToken.None);
+        Assert.Equal(toolsDir, ArgumentAfter(runner.Commands.Last(c => c.FileName == "powershell.exe"), "-Tools"));
+    }
+
+    [Fact]
     public async Task A_build_fetches_the_branch_runs_the_recipe_and_installs_it_with_its_checks()
     {
         var outcome = await Build();

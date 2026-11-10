@@ -34,6 +34,8 @@ public sealed partial class ProfilesPage : Page
 
     private void OnMessageClosed(InfoBar sender, InfoBarClosedEventArgs args) => ViewModel.DismissMessage();
 
+    private void OnCheckBuildTools(object sender, RoutedEventArgs e) => App.Current.MainWindow.ShowBuildTools();
+
     private async void OnBrowseMonado(object sender, RoutedEventArgs e)
     {
         if (await Pickers.FolderAsync() is { } folder)

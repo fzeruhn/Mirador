@@ -25,6 +25,9 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>How long quitting waits for the base stations' off.</summary>
     private static readonly TimeSpan StationsLimit = TimeSpan.FromSeconds(15);
 
+    /// <summary>The build tools' downloads: no overall timeout (CMake is 50 MB), each download gives up when idle.</summary>
+    private static readonly HttpClient ToolsHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+
     private readonly JobProcessLauncher launcher;
     private readonly List<string> notices = [];
     private readonly WinRtStationRadio radio;
@@ -52,6 +55,12 @@ public sealed class AppHost : IAsyncDisposable
         Builds = new Builds(new MonadoBuilder(
             new CommandRunner(), Locator, BuildTools.For(appDir, paths),
             new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System));
+        BuildToolsSetup = new BuildToolsSetup(
+            new CommandRunner(), ToolsHttp, new UacLauncher(), paths.ToolsDir,
+            BuildToolsCheck.ReadPin(Path.Combine(appDir, "tools", "vcpkg-commit.txt")) ?? "",
+            VsWhere.DefaultPath,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft Visual Studio", "Installer"),
+            WinTrustSigner.SubjectOf, ToolPins.All);
         Usb = new WmiUsbDevices();
         Processes = new SystemProcessList();
         Context = new ModuleContext(paths, Helper, Processes, Usb, TimeProvider.System);
@@ -127,6 +136,9 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>The branch builds (Mirador_Plan.md Task 61).</summary>
     public Builds Builds { get; }
+
+    /// <summary>The build tools' check and "Install what's missing" (Mirador_Plan.md Task 58).</summary>
+    public BuildToolsSetup BuildToolsSetup { get; }
 
     public IUsbDevices Usb { get; }
 

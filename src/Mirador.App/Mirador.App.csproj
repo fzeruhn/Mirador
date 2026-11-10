@@ -25,6 +25,11 @@
     <None Include="$(GazeWorldDir)\gaze_world.exe" Link="tools\gaze_world.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(GazeWorldDir)\gaze_world.exe')" />
     <None Include="$(GazeWorldDir)\openxr_loader.dll" Link="tools\openxr_loader.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(GazeWorldDir)\openxr_loader.dll')" />
   </ItemGroup>
+  <!-- Monado's build recipe and Mirador's vcpkg pin (the bundle copies them too), so a run from the build output builds branches and checks the build tools. -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\tools\build-monado.ps1" Link="tools\build-monado.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\tools\vcpkg-commit.txt" Link="tools\vcpkg-commit.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <!-- The stand-in (standin\build.ps1), when it has been built: copied into build folders, it lets games start Monado. -->
   <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\artifacts\standin\monado-service.exe')">
     <None Include="$(MSBuildThisFileDirectory)..\..\artifacts\standin\monado-service.exe" Link="standin\monado-service.exe" CopyToOutputDirectory="PreserveNewest" />

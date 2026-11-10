@@ -291,54 +291,8 @@ public static class SteamVrDriverCheck
     /// <c>driver_lighthouse.dll</c>: <c>CN=Valve Corp., O=Valve Corp., L=Bellevue, S=Washington, C=US</c>).</summary>
     internal const string ValveName = "Valve Corp.";
 
-    private const string CommonNameOid = "2.5.4.3";
-    private const string OrganizationOid = "2.5.4.10";
-
-    /// <summary>
-    /// Whether a signer subject is Valve's: parsed as a distinguished name (not compared as text, so
-    /// <c>CN=Valve Corp.evil</c> or a quoted <c>CN="Valve Corp., O=Valve Corp."</c> don't pass), it must have exactly one
-    /// CN and exactly one O, each equal to <see cref="ValveName"/>, wherever they sit in the name. A name Windows can't
-    /// parse, or one with a multi-valued RDN, is refused.
-    /// </summary>
-    internal static bool IsValve(string? subject)
-    {
-        if (string.IsNullOrWhiteSpace(subject))
-        {
-            return false;
-        }
-
-        X500DistinguishedName name;
-        try
-        {
-            name = new X500DistinguishedName(subject);
-        }
-        catch (Exception e) when (e is CryptographicException or ArgumentException)
-        {
-            return false;
-        }
-
-        var commonNames = new List<string?>();
-        var organizations = new List<string?>();
-        foreach (var rdn in name.EnumerateRelativeDistinguishedNames())
-        {
-            if (rdn.HasMultipleElements)
-            {
-                return false;
-            }
-
-            switch (rdn.GetSingleElementType().Value)
-            {
-                case CommonNameOid:
-                    commonNames.Add(rdn.GetSingleElementValue());
-                    break;
-                case OrganizationOid:
-                    organizations.Add(rdn.GetSingleElementValue());
-                    break;
-            }
-        }
-
-        return commonNames is [ValveName] && organizations is [ValveName];
-    }
+    /// <summary>Whether a signer subject is Valve's (<see cref="SignerName.Is"/> with <see cref="ValveName"/>).</summary>
+    internal static bool IsValve(string? subject) => SignerName.Is(subject, ValveName);
 
     /// <summary>Every <c>*.dll</c> in the folder, in a fixed order.</summary>
     private static string[] Dlls(string win64) =>
@@ -423,5 +377,58 @@ public sealed record SteamVrDriverHold(IDisposable Hold, HelperReply? Refusal, s
     {
         hold = Hold;
         refusal = Refusal;
+    }
+}
+
+/// <summary>The organisation an Authenticode signer subject (<see cref="WinTrustSigner.SubjectOf"/>) names.</summary>
+public static class SignerName
+{
+    private const string CommonNameOid = "2.5.4.3";
+    private const string OrganizationOid = "2.5.4.10";
+
+    /// <summary>
+    /// Whether <paramref name="subject"/> is <paramref name="organisation"/>'s: parsed as a distinguished name (not
+    /// compared as text, so <c>CN=Valve Corp.evil</c> or a quoted <c>CN="Valve Corp., O=Valve Corp."</c> don't pass), it
+    /// must have exactly one CN and exactly one O, each equal to <paramref name="organisation"/>, wherever they sit in
+    /// the name. A name Windows can't parse, or one with a multi-valued RDN, is refused.
+    /// </summary>
+    public static bool Is(string? subject, string organisation)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            return false;
+        }
+
+        X500DistinguishedName name;
+        try
+        {
+            name = new X500DistinguishedName(subject);
+        }
+        catch (Exception e) when (e is CryptographicException or ArgumentException)
+        {
+            return false;
+        }
+
+        var commonNames = new List<string?>();
+        var organizations = new List<string?>();
+        foreach (var rdn in name.EnumerateRelativeDistinguishedNames())
+        {
+            if (rdn.HasMultipleElements)
+            {
+                return false;
+            }
+
+            switch (rdn.GetSingleElementType().Value)
+            {
+                case CommonNameOid:
+                    commonNames.Add(rdn.GetSingleElementValue());
+                    break;
+                case OrganizationOid:
+                    organizations.Add(rdn.GetSingleElementValue());
+                    break;
+            }
+        }
+
+        return commonNames.Count == 1 && organizations.Count == 1 && commonNames[0] == organisation && organizations[0] == organisation;
     }
 }
