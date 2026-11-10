@@ -80,8 +80,15 @@ public static class JsonFile
             stream.Flush(flushToDisk: true);
         }
 
-        // The move is atomic, but Windows refuses it for a moment while a reader has the old file open, so it is
-        // tried again a few times before the failure is passed on.
+        // A POSIX-style replace first: it works while readers hold the old file (they share delete, as Load does), who
+        // keep reading the old bytes.
+        if (OperatingSystem.IsWindows() && PosixReplace(temp, path))
+        {
+            return;
+        }
+
+        // Elsewhere (a file system without it) the plain move is atomic too, but Windows refuses it for a moment while
+        // a reader has the old file open, so it is tried again a few times before the failure is passed on.
         for (var attempt = 1; ; attempt++)
         {
             try
@@ -95,6 +102,43 @@ public static class JsonFile
             }
         }
     }
+
+    /// <summary>
+    /// Renames <paramref name="from"/> over <paramref name="to"/> with <c>FILE_RENAME_FLAG_POSIX_SEMANTICS</c> (Windows 10
+    /// 1607 and newer, NTFS): the old file's name goes at once even while it is open. False when Windows refuses it,
+    /// for the caller to fall back on.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static bool PosixReplace(string from, string to)
+    {
+        const uint delete = 0x00010000, synchronize = 0x00100000;
+        const uint shareAll = 0x7, openExisting = 3;
+        const int fileRenameInfoEx = 22;
+        const uint replaceIfExists = 0x1, posixSemantics = 0x2;
+
+        using var handle = CreateFileW(Path.GetFullPath(from), delete | synchronize, shareAll, IntPtr.Zero, openExisting, 0, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            return false;
+        }
+
+        // FILE_RENAME_INFO on x64: Flags at 0, RootDirectory at 8, FileNameLength at 16, FileName at 20.
+        var name = Path.GetFullPath(to);
+        var nameBytes = name.Length * sizeof(char);
+        var buffer = new byte[Math.Max(24, 20 + nameBytes + sizeof(char))];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(buffer, replaceIfExists | posixSemantics);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(16), nameBytes);
+        System.Text.Encoding.Unicode.GetBytes(name, buffer.AsSpan(20));
+        return SetFileInformationByHandle(handle, fileRenameInfoEx, buffer, (uint)buffer.Length);
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(
+        string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle file, int infoClass, byte[] info, uint size);
 
     /// <summary><paramref name="value"/> as the JSON <see cref="Save"/> writes.</summary>
     public static string Text<T>(T value, JsonTypeInfo<T> typeInfo)
