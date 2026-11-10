@@ -179,7 +179,7 @@ jobs:
     needs: build
     if: needs.build.outputs.skip != 'true'
     runs-on: ${{ github.event_name == 'push' && 'windows-2025' || fromJSON('["self-hosted", "gpu"]') }}
-    timeout-minutes: 15
+    timeout-minutes: 8 # the GPU runner VM is forced off 10 min after it starts (vr-docs Mirador_GPU_Runner.md)
     env:
       TAG: ${{ needs.build.outputs.tag }}
       APIS: ${{ github.event_name == 'push' && 'none' || 'none,vulkan,d3d11' }}
