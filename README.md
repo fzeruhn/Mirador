@@ -41,9 +41,16 @@ The installer: `tools\build-bundle.ps1` puts the install layout in `artifacts\bu
 arguments it has no Monado and no OpenComposite, as CI builds it; `-Monado <build> -OpenComposite artifacts\opencomposite`
 add them.
 
-CI (`.github/workflows/`): `build.yml` builds and tests every push and pull request on a Windows runner, leaving out
-tests marked `Category=Hardware` (`tools\build.ps1 -Test -SkipHardware`); `release.yml` turns a `v*` tag into a draft
-release with the installer.
+CI (`.github/workflows/`):
+- `build.yml` builds and tests every push and pull request on a Windows runner, leaving out tests marked
+  `Category=Hardware` (`tools\build.ps1 -Test -SkipHardware`).
+- `release.yml` builds the installer on every push (an artifact of the run); only a `v*` tag makes a draft release with
+  it, after checking the tag against `<Version>`.
+- `monado-weekly.yml` builds the bundled Monado: upstream Monado's `main` with `tools\build-monado.ps1`, checked by
+  `tools\check-monado-build.ps1` and then started headless with an OpenXR app connecting
+  (`tools\check-monado-session.ps1`). On Mondays (and when started by hand) it publishes the build as a prerelease
+  `monado-<date>-<commit>`, which Mirador's helper downloads; it keeps the last two. A push that changes the recipe,
+  the checks or the workflow builds and checks without publishing. Scheduled runs only start from `main`.
 
 ## Layout
 
@@ -60,7 +67,8 @@ release with the installer.
 | `installer\` | The Inno Setup script |
 | `tests\` | xUnit tests, one project per source project |
 
-Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`.
+Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`. Uninstalling leaves it there, with the branches Mirador built
+(`Builds\`) and its build tools (`tools\`), often several gigabytes: delete that folder by hand to remove them too.
 
 The helper service is not part of a plain build. To try it on a development machine, run
 `tools\dev-install-helper.ps1` from an administrator PowerShell (it installs the service `MiradorHelper` from

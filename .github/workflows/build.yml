@@ -22,9 +22,9 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: '10.0.x'
 
@@ -33,7 +33,7 @@ jobs:
         run: tools\build.ps1 -Test -SkipHardware
 
       - name: Upload the app, helper and stand-in
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: mirador-${{ github.sha }}
           if-no-files-found: error
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload the test results
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: test-results-${{ github.sha }}
           path: '**/TestResults/*.trx'

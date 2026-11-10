@@ -34,9 +34,11 @@ on:
 permissions:
   contents: read
 
+# A push's run gives way to a newer push; a scheduled or started run is never cancelled (a push to main during the
+# Monday run mustn't cost that week's build), and two of them take turns.
 concurrency:
-  group: monado-weekly-${{ github.ref }}
-  cancel-in-progress: true
+  group: monado-weekly-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
   UPSTREAM: https://gitlab.freedesktop.org/monado/monado.git
@@ -51,7 +53,7 @@ jobs:
       commit: ${{ steps.upstream.outputs.commit }}
       tag: ${{ steps.upstream.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Upstream's head, and whether it is built already
         id: upstream
@@ -59,6 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ inputs.force }}
+          PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
         run: |
           $commit = ((git ls-remote $env:UPSTREAM refs/heads/main) -split '\s+')[0]
           if ($commit -notmatch '^[0-9a-f]{40}$') { throw "Upstream's main couldn't be read: $commit" }
@@ -66,10 +69,16 @@ jobs:
           $tag = "monado-$([DateTime]::UtcNow.ToString('yyyy.MM.dd'))-$short"
           $last = gh release list --limit 100 --json tagName,isPrerelease,createdAt |
               ConvertFrom-Json | Where-Object { $_.tagName -like 'monado-*' } | Sort-Object createdAt -Descending | Select-Object -First 1
-          $skip = $env:GITHUB_EVENT_NAME -eq 'schedule' -and $last -and $last.tagName.EndsWith("-$short")
-          if ($env:FORCE -eq 'true') { $skip = $false }
+          # Only a run that publishes skips: a scheduled one, or a started one with "publish" on, when upstream has no
+          # commit since the last published build ("force" builds and publishes it again). A push, or a started run
+          # that only tries the checks, always builds.
+          $publishing = $env:GITHUB_EVENT_NAME -ne 'push' -and $env:PUBLISH -eq 'true'
+          $skip = $publishing -and $last -and $last.tagName.EndsWith("-$short") -and $env:FORCE -ne 'true'
           # The same commit published today already: its tag exists, so there is nothing new to publish.
-          if ($env:GITHUB_EVENT_NAME -ne 'push' -and (gh release list --limit 100 --json tagName | ConvertFrom-Json | Where-Object { $_.tagName -eq $tag })) { $skip = $true }
+          if ($publishing -and (gh release list --limit 100 --json tagName | ConvertFrom-Json | Where-Object { $_.tagName -eq $tag })) {
+              $skip = $true
+              Write-Host "::notice::$tag is published already today; nothing new to publish (force can't publish a tag twice)."
+          }
           Write-Host "Upstream main: $commit; last published: $($last.tagName); skip: $skip"
           "commit=$commit" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
@@ -111,7 +120,7 @@ jobs:
       # A week without dependency changes doesn't build them again.
       - name: vcpkg's binary cache
         if: steps.upstream.outputs.skip != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/vcpkg-cache
           key: vcpkg-${{ steps.vcpkg.outputs.pin }}-${{ hashFiles('monado/vcpkg.json') }}
@@ -145,7 +154,7 @@ jobs:
 
       - name: Upload the build
         if: steps.upstream.outputs.skip != 'true'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: monado
           if-no-files-found: error
@@ -153,7 +162,7 @@ jobs:
 
       - name: Upload xr-check
         if: steps.upstream.outputs.skip != 'true'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: xr-check
           if-no-files-found: error
@@ -161,7 +170,7 @@ jobs:
 
       - name: The build log of a failed build
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: monado-failure
           path: |
@@ -184,14 +193,14 @@ jobs:
       TAG: ${{ needs.build.outputs.tag }}
       APIS: ${{ github.event_name == 'push' && 'none' || 'none,vulkan,d3d11' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: monado
           path: ${{ runner.temp }}/monado-zip
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: xr-check
           path: ${{ runner.temp }}/xr-check
@@ -217,7 +226,7 @@ jobs:
 
       - name: The session's logs
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: monado-session
           path: ${{ runner.temp }}/monado-session/
@@ -235,7 +244,7 @@ jobs:
       TAG: ${{ needs.build.outputs.tag }}
       COMMIT: ${{ needs.build.outputs.commit }}
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: monado
 
