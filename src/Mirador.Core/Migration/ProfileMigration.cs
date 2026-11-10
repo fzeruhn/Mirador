@@ -24,4 +24,23 @@ public static class ProfileMigration
             Profiles = [.. set.Profiles.Select(p => p.Monado.Kind == SourceKind.Bundled ? p with { Monado = BuildSource.Mirador } : p)],
         }, true);
     }
+
+    /// <summary>
+    /// Profiles under a module's former id get its current one (a renamed module, Mirador_Plan.md Task 67), so the
+    /// Profiles page shows their headset and saving keeps it.
+    /// </summary>
+    /// <param name="renames">Each former id with the module's id now (<c>IHeadsetModule.FormerIds</c>).</param>
+    public static (ProfileSet Set, bool Changed) MigrateModuleIds(ProfileSet set, IEnumerable<(string Former, string Current)> renames)
+    {
+        var map = renames.ToDictionary(r => r.Former, r => r.Current, StringComparer.Ordinal);
+        if (!set.Profiles.Any(p => p.ModuleId is { } id && map.ContainsKey(id)))
+        {
+            return (set, false);
+        }
+
+        return (set with
+        {
+            Profiles = [.. set.Profiles.Select(p => p.ModuleId is { } id && map.TryGetValue(id, out var current) ? p with { ModuleId = current } : p)],
+        }, true);
+    }
 }

@@ -50,8 +50,10 @@ release with the installer.
 | Project | What it is |
 |---|---|
 | `src\Mirador.App` | The WinUI 3 app (`Mirador.exe`) |
-| `src\Mirador.Core` | UI-free core: data paths, profiles, the Monado service and the session |
-| `src\Mirador.DreamAir` | The Pimax Dream Air module |
+| `src\Mirador.Core` | UI-free core: data paths, profiles, the Monado service and the session, builds and Verify, NVIDIA direct mode |
+| `src\Mirador.Pimax` | The Pimax module: the P3C headsets (Crystal Light, Crystal Super, Dream Air SE, Dream Air), each with its own steps |
+| `layer\` | The direct-mode Vulkan layer (C++) |
+| `tools\xr-check\` | Verify's OpenXR test client (C++) |
 | `src\Mirador.Ipc` | Messages between the app and the helper service |
 | `src\Mirador.Helper` | The helper Windows service, which does the steps that need admin rights |
 | `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for `monado-service.exe` and asks Mirador to start Monado |

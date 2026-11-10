@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Mirador.Pimax</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mirador.Pimax.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Mirador.Core\Mirador.Core.csproj" />
+    <ProjectReference Include="..\Mirador.Ipc\Mirador.Ipc.csproj" />
+  </ItemGroup>
+</Project>

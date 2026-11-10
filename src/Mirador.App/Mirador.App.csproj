@@ -49,7 +49,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mirador.Core\Mirador.Core.csproj" />
-    <ProjectReference Include="..\Mirador.DreamAir\Mirador.DreamAir.csproj" />
+    <ProjectReference Include="..\Mirador.Pimax\Mirador.Pimax.csproj" />
     <ProjectReference Include="..\Mirador.Ipc\Mirador.Ipc.csproj" />
   </ItemGroup>
 </Project>

@@ -133,7 +133,7 @@ public static class ElevatedEnvironment
     private static IReadOnlyList<KeyValuePair<string, string>> ModuleFixed(string module) => module switch
     {
         "" => [],
-        DreamAirEnvironment.ModuleId => DreamAirEnvironment.FixedEnvironment,
+        PimaxEnvironment.ModuleId or DreamAirEnvironment.ModuleId => DreamAirEnvironment.FixedEnvironment,
         _ => throw new ArgumentException($"Unknown headset module \"{module}\".", nameof(module)),
     };
 

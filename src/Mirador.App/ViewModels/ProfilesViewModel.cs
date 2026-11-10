@@ -7,7 +7,7 @@ using Mirador.Core;
 using Mirador.Core.DirectMode;
 using Mirador.Core.Profiles;
 using Mirador.Core.Session;
-using Mirador.DreamAir;
+using Mirador.Pimax;
 
 namespace Mirador.App.ViewModels;
 
@@ -259,7 +259,19 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [RelayCommand]
     private void Add()
     {
-        var profile = new Profile(Profile.NewId(), FreeName("New profile"), null, BuildSource.Mirador, [], new Dictionary<string, string>());
+        // New profiles start with no headset module, unless a headset a module knows is plugged in (Mirador.md §4.11 item 53).
+        string? module = null;
+        try
+        {
+            var present = host.Usb.Present();
+            module = host.Modules.Values.FirstOrDefault(m => m.IsPresent(present))?.Id;
+        }
+        catch (MiradorException)
+        {
+            // The devices can't be listed: no module.
+        }
+
+        var profile = new Profile(Profile.NewId(), FreeName("New profile"), module, BuildSource.Mirador, [], new Dictionary<string, string>());
         Change(set => set.Add(profile), profile.Id);
     }
 
@@ -629,7 +641,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>The Dream Air layer folder's problem; the layer that comes with Mirador is checked when Monado starts.</summary>
     private string? LayerProblem(Profile p)
     {
-        if (p.ModuleId != DreamAirModule.ModuleId || DirectModeLayer.FolderOf(p) is not { } folder)
+        if (p.ModuleId != PimaxModule.ModuleId || DirectModeLayer.FolderOf(p) is not { } folder)
         {
             return null;
         }

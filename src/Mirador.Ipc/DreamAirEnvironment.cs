@@ -53,7 +53,7 @@ public static class DirectModeEnvironment
 
 /// <summary>
 /// The Pimax Dream Air module's fixed Monado environment (Mirador.md section 4.3), kept here so the unelevated path
-/// (<c>Mirador.DreamAir</c>) and the elevated one (the helper, which can't reference the module) write the same table.
+/// (<c>Mirador.Pimax</c>) and the elevated one (the helper, which can't reference the module) write the same table.
 /// </summary>
 public static class DreamAirEnvironment
 {

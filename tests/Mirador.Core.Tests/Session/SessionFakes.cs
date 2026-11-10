@@ -400,6 +400,10 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
 
     public bool UsesNvidiaDirectMode { get; set; }
 
+    public IReadOnlyList<string> FormerIds { get; set; } = [];
+
+    public string? ElevatedModuleId { get; set; } = "fake";
+
     /// <summary>When set, BeforeStart throws it (after waiting at <see cref="Gate"/>).</summary>
     public Exception? Refusal { get; set; }
 

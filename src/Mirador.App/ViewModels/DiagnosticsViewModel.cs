@@ -8,7 +8,7 @@ using Mirador.Core.Diagnostics;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Session;
-using Mirador.DreamAir;
+using Mirador.Pimax;
 
 namespace Mirador.App.ViewModels;
 
@@ -142,7 +142,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunCheck))]
     private async Task CheckDisplayAsync()
     {
-        if (Profile() is not { } profile || host.Modules.GetValueOrDefault(DreamAirModule.ModuleId) is not DreamAirModule module)
+        if (Profile() is not { } profile || host.Modules.GetValueOrDefault(PimaxModule.ModuleId) is not PimaxModule module)
         {
             return;
         }
@@ -153,7 +153,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         {
             // Through the session: a Start waits for the check, and recovery restarts Pimax if Mirador goes away meanwhile.
             var (check, pimaxProblem) = await host.Session.RunWhileStoppedAsync(
-                DreamAirModule.ModuleId, (save, ct) => module.CheckDisplayAsync(host.Context, profile, save, ct), CancellationToken.None);
+                PimaxModule.ModuleId, (save, ct) => module.CheckDisplayAsync(host.Context, profile, save, ct), CancellationToken.None);
             CheckPassed = check.Pass;
             var verdict = check.Pass
                 ? (check.Message == "Direct mode works." ? check.Message : $"Direct mode works: {Sentence(check.Message)}")
@@ -254,7 +254,8 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     private void Refresh()
     {
         var profile = Profile();
-        IsDreamAir = profile?.ModuleId == DreamAirModule.ModuleId;
+        // The display check is the Pimax module's: it stops Pimax's software around it.
+        IsDreamAir = profile?.ModuleId == PimaxModule.ModuleId;
         CanCheckDisplay = IsDreamAir && host.Session.State == SessionState.Stopped;
         Versions = profile is null ? $"Mirador {AppInfo.Version}" : AppInfo.Versions(profile, host.AppDir).TrimEnd();
     }

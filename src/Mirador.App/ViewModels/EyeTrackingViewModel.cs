@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
 using Mirador.App.Services;
 using Mirador.Core;
-using Mirador.DreamAir;
+using Mirador.Pimax;
 
 namespace Mirador.App.ViewModels;
 
@@ -138,7 +138,7 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         try
         {
             BackupMessage = await host.Session.RunWhileStoppedAsync(
-                DreamAirModule.ModuleId, (_, _) => Task.Run(action), CancellationToken.None);
+                PimaxModule.ModuleId, (_, _) => Task.Run(action), CancellationToken.None);
             BackupSeverity = InfoBarSeverity.Success;
         }
         catch (MiradorException e)

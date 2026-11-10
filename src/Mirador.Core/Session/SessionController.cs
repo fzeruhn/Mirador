@@ -531,7 +531,7 @@ public sealed class SessionController(SessionDeps deps)
     /// </summary>
     private async Task UndoLeftSessionAsync(string? moduleId, IReadOnlyDictionary<string, string> data, CancellationToken ct)
     {
-        if (moduleId is not null && deps.Modules.TryGetValue(moduleId, out var module))
+        if (FindModule(moduleId) is { } module)
         {
             await module.RecoverAsync(deps.Context, data, ct).ConfigureAwait(false);
         }
@@ -654,7 +654,7 @@ public sealed class SessionController(SessionDeps deps)
 
         var profile = deps.Profiles.Load().Selected;
         IHeadsetModule? module = null;
-        if (profile.ModuleId is { } moduleId && !deps.Modules.TryGetValue(moduleId, out module))
+        if (profile.ModuleId is { } moduleId && (module = FindModule(moduleId)) is null)
         {
             return Fail($"This profile uses a headset Mirador doesn't know ({moduleId}).");
         }
@@ -1146,12 +1146,18 @@ public sealed class SessionController(SessionDeps deps)
             settings.RenderScalePercent,
             settings.CompositorMinTimeMs,
             settings.StopWhenLastAppCloses,
-            module?.Id ?? "",
+            module?.ElevatedModuleId ?? "",
             approvedBuild ? profile.Id : "");
         return deps.ElevatedLauncher!(start);
     }
 
     private static StartOutcome Fail(string message) => new(false, message);
+
+    /// <summary>The module with <paramref name="id"/>, or the one that had it before (<see cref="IHeadsetModule.FormerIds"/>).</summary>
+    private IHeadsetModule? FindModule(string? id) =>
+        id is null ? null
+            : deps.Modules.TryGetValue(id, out var module) ? module
+            : deps.Modules.Values.FirstOrDefault(m => m.FormerIds.Contains(id, StringComparer.Ordinal));
 
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
 

@@ -165,7 +165,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 
             var folders = ReadUserFolders(userToken);
             var testLines = ReadTestLines();
-            var lighthouse = start.Module == DreamAirEnvironment.ModuleId || HasLighthouseEnable(testLines);
+            var lighthouse = start.Module is PimaxEnvironment.ModuleId or DreamAirEnvironment.ModuleId || HasLighthouseEnable(testLines);
 
             IDisposable hold = EmptyHold.Instance;
             string steamVrPath;

@@ -11,7 +11,7 @@ using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Runtime;
 using Mirador.Core.Session;
-using Mirador.DreamAir;
+using Mirador.Pimax;
 using Mirador.Ipc;
 
 namespace Mirador.App.Services;
@@ -69,7 +69,7 @@ public sealed class AppHost : IAsyncDisposable
         Calibrations = new CalibrationStore(
             CalibrationStore.DefaultMonadoDir, paths.BackupsDir, TimeProvider.System, () => Session!.State != SessionState.Stopped);
 
-        var dreamAir = new DreamAirModule(new DreamAirDeps(
+        var dreamAir = new PimaxModule(new PimaxDeps(
             new WindowsRegistryReader(),
             ConsoleProcess.Start,
             new GeometryUploader(ConsoleProcess.Start, Usb, Processes, paths, TimeProvider.System),
@@ -78,7 +78,8 @@ public sealed class AppHost : IAsyncDisposable
             NvidiaDriver.CurrentWindowsVersion,
             DreamAirChecks.FindSteamVr,
             state => BlobChoice.Resolve(state, null).Variant,
-            Calibrations));
+            Calibrations,
+            () => Usb.Present()));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
         CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
         OpenCompositeCopy = new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir);
@@ -224,6 +225,12 @@ public sealed class AppHost : IAsyncDisposable
     /// </summary>
     public void NotifyDevicesChanged()
     {
+        // The Pimax module's model, looked up once per change before the pages read it.
+        foreach (var pimax in Modules.Values.OfType<PimaxModule>())
+        {
+            pimax.RefreshModel();
+        }
+
         DevicesChanged?.Invoke();
         if (radio.State == BluetoothState.Missing)
         {
@@ -238,12 +245,17 @@ public sealed class AppHost : IAsyncDisposable
         _ = Task.Run(Session.PlaceStandIn);
     }
 
-    /// <summary>Whether the selected profile is a Dream Air's; false when the profiles can't be read.</summary>
+    /// <summary>
+    /// Whether the selected profile's headset gets Mirador's eye steps (the Pimax module, with a Dream Air plugged in or
+    /// no Pimax at all); false when the profiles can't be read.
+    /// </summary>
     public bool SelectedIsDreamAir()
     {
         try
         {
-            return Profiles.Load().Selected.ModuleId == DreamAirModule.ModuleId;
+            return Profiles.Load().Selected.ModuleId == PimaxModule.ModuleId
+                && Modules.GetValueOrDefault(PimaxModule.ModuleId) is PimaxModule pimax
+                && pimax.Model().EyeSteps;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -520,6 +532,14 @@ public sealed class AppHost : IAsyncDisposable
     {
         try
         {
+            // A renamed module (the Dream Air module became the Pimax module): its profiles follow it.
+            var (renamed, idsChanged) = Core.Migration.ProfileMigration.MigrateModuleIds(
+                Profiles.Load(), Modules.Values.SelectMany(m => m.FormerIds.Select(former => (former, m.Id))));
+            if (idsChanged)
+            {
+                Profiles.Save(renamed);
+            }
+
             var bundleGone = !File.Exists(Path.Combine(AppDir, "monado", "runtime", "openxr_monado.json"));
             var (set, changed) = Core.Migration.ProfileMigration.Migrate(Profiles.Load(), bundleGone);
             if (changed)
