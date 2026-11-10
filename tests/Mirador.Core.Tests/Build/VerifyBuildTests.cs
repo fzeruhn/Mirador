@@ -229,6 +229,25 @@ public sealed class VerifyBuildTests : IDisposable
     }
 
     [Fact]
+    public void Diagnostics_shows_the_profile_it_was_sent_for_else_the_newest_result()
+    {
+        var yesterday = new VerifyResult("a", new DateTimeOffset(2026, 11, 8, 20, 0, 0, TimeSpan.Zero), [new VerifyStep("A", VerifyOutcome.Failed, "")]);
+        var today = new VerifyResult("b", new DateTimeOffset(2026, 11, 9, 20, 0, 0, TimeSpan.Zero), [new VerifyStep("A", VerifyOutcome.Passed, "")]);
+        (string, VerifyResult?)[] results = [("a", yesterday), ("b", today), ("c", null)];
+
+        Assert.Equal(("a", yesterday), VerifyResult.ForDiagnostics(results, wanted: "a"));
+        Assert.Equal(("b", today), VerifyResult.ForDiagnostics(results, wanted: null));
+        Assert.Equal(("b", today), VerifyResult.ForDiagnostics(results, wanted: "c"));
+    }
+
+    [Fact]
+    public void Diagnostics_has_no_result_to_show_before_any_verify()
+    {
+        Assert.Null(VerifyResult.ForDiagnostics([("a", null)], wanted: null));
+        Assert.Null(VerifyResult.ForDiagnostics([], wanted: "a"));
+    }
+
+    [Fact]
     public void A_result_keeps_where_its_runs_log_is()
     {
         var result = new VerifyResult("k", DateTimeOffset.UnixEpoch, [], LogFile: @"C:\logs\verify-20261109-212204.log");

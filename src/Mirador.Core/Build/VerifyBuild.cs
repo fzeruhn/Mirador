@@ -30,6 +30,25 @@ public sealed record VerifyResult(string Key, DateTimeOffset At, IReadOnlyList<V
     public bool HasFailure() => Steps.Any(s => s.Outcome == VerifyOutcome.Failed);
 
     /// <summary>
+    /// The result Diagnostics shows: the <paramref name="wanted"/> profile's (its card sent the user there) when it has
+    /// one, else the newest of any profile; null when no profile has one.
+    /// </summary>
+    public static (string ProfileId, VerifyResult Result)? ForDiagnostics(
+        IEnumerable<(string ProfileId, VerifyResult? Result)> results, string? wanted)
+    {
+        var known = results.Where(r => r.Result is not null).Select(r => (r.ProfileId, Result: r.Result!)).ToList();
+        foreach (var r in known)
+        {
+            if (r.ProfileId == wanted)
+            {
+                return r;
+            }
+        }
+
+        return known.Count == 0 ? null : known.OrderByDescending(r => r.Result.At).First();
+    }
+
+    /// <summary>
     /// The profile card's line: passed or failed and <paramref name="when"/> (the run's time as the user reads it); the
     /// details are on Diagnostics, which a failure or a skipped check points to.
     /// </summary>

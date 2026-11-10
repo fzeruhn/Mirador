@@ -53,6 +53,12 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
     /// <summary>What the last result says of the elevation fix, for Run as administrator; null when it didn't check.</summary>
     public string? ElevationNote { get; private set; }
 
+    /// <summary>The profile shown, for Diagnostics.</summary>
+    public string? ProfileId => profile?.Id;
+
+    /// <summary>The log of this profile's last run (a run that stopped has one but no result), for Diagnostics.</summary>
+    public string? LastLogFile { get; private set; }
+
     public void Attach() => host.Builds.Changed += OnBuildChanged;
 
     public void Detach() => host.Builds.Changed -= OnBuildChanged;
@@ -137,12 +143,15 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
         {
             Add("Cancelled.");
             Status = "Cancelled: Monado was stopped again.";
+            LastLogFile = logFile;
             return;
         }
         catch (MiradorException e)
         {
             Add(e.Message);
             Status = e.Message;
+            LastLogFile = logFile;
+            PointsToDiagnostics = true;
             return;
         }
         catch (Exception e)
@@ -150,6 +159,7 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
             AppLog.Write("Verify failed", e);
             Add($"Verify stopped: {e.Message}");
             Status = $"Verify stopped: {e.Message} Diagnostics has the details.";
+            LastLogFile = logFile;
             PointsToDiagnostics = true;
             return;
         }
@@ -180,18 +190,20 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
     {
         ElevationNote = null;
         PointsToDiagnostics = false;
+        LastLogFile = null;
         if (profile is null)
         {
             return;
         }
 
+        var result = VerifyResult.Load(host.VerifyResultFile(profile.Id));
+        LastLogFile = result?.LogFile;
         if (install is null)
         {
             Status = "This profile has no Monado yet.";
             return;
         }
 
-        var result = VerifyResult.Load(host.VerifyResultFile(profile.Id));
         if (result is null || result.Key != key)
         {
             Status = "Not verified yet for this build.";

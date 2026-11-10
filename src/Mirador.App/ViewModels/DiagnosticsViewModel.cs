@@ -279,9 +279,22 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         RefreshVerify();
     }
 
+    private string? wantedVerifyProfile;
+    private string? wantedVerifyLog;
+
     /// <summary>
-    /// The newest Verify result of any profile (the run the user most likely came here from, the Profiles page points
-    /// here when one fails), and the newest run's log.
+    /// What the Profiles page's Diagnostics button sends: the profile whose result to show, and the log of its last run
+    /// (a run that stopped has a log but no result). Kept until the next one.
+    /// </summary>
+    public void ShowVerify(string? profileId, string? logFile)
+    {
+        wantedVerifyProfile = profileId;
+        wantedVerifyLog = logFile;
+    }
+
+    /// <summary>
+    /// The Verify result of the profile the Profiles page sent the user here for, else the newest of any
+    /// (<see cref="VerifyResult.ForDiagnostics"/>), and its run's log (else the newest run's).
     /// </summary>
     private void RefreshVerify()
     {
@@ -295,14 +308,14 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             profiles = [];
         }
 
-        var newest = profiles
-            .Select(p => (p.Name, Result: VerifyResult.Load(host.VerifyResultFile(p.Id))))
-            .Where(r => r.Result is not null)
-            .MaxBy(r => r.Result!.At);
-        HasVerify = newest.Result is not null;
-        if (newest.Result is { } result)
+        var shown = VerifyResult.ForDiagnostics(
+            profiles.Select(p => (p.Id, VerifyResult.Load(host.VerifyResultFile(p.Id)))), wantedVerifyProfile);
+        HasVerify = shown is not null;
+        if (shown is { } found)
         {
-            VerifySummary = $"{newest.Name}, {result.At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {result.Summary()}";
+            var name = profiles.FirstOrDefault(p => p.Id == found.ProfileId)?.Name ?? found.ProfileId;
+            var result = found.Result;
+            VerifySummary = $"{name}, {result.At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {result.Summary()}";
             VerifySteps = string.Join(Environment.NewLine, result.Steps.Select(s => $"{s.Outcome switch
             {
                 VerifyOutcome.Passed => "Passed",
@@ -311,7 +324,9 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             }}: {s.Name}. {s.Detail}"));
         }
 
-        var log = ReadTail(DiagnosticsZip.NewestVerifyLog(host.Paths.LogsDir));
+        var logFile = new[] { wantedVerifyLog, shown?.Result.LogFile }.FirstOrDefault(f => f is not null && File.Exists(f))
+            ?? DiagnosticsZip.NewestVerifyLog(host.Paths.LogsDir);
+        var log = ReadTail(logFile);
         VerifyLog = log.Count > 0 ? string.Join(Environment.NewLine, log) : "No Verify run yet. Verify build for Windows is on the Profiles page.";
     }
 

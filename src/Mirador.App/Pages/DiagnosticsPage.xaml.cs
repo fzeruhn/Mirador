@@ -26,10 +26,16 @@ public sealed partial class DiagnosticsPage : Page
     {
         base.OnNavigatedTo(e);
         ViewModel.LogsChanged += OnLogsChanged;
-        ViewModel.Attach();
-        if (ShowVerifyNext)
+        var sentFor = VerifyNext;
+        VerifyNext = null;
+        if (sentFor is { } verify)
         {
-            ShowVerifyNext = false;
+            ViewModel.ShowVerify(verify.ProfileId, verify.LogFile);
+        }
+
+        ViewModel.Attach();
+        if (sentFor is not null)
+        {
             VerifyExpander.IsExpanded = true;
             LogPicker.SelectedItem = LogPicker.Items[^1];
         }
@@ -80,8 +86,11 @@ public sealed partial class DiagnosticsPage : Page
         LogsArea.Height = Math.Max(LogsMinHeight, Math.Floor(left));
     }
 
-    /// <summary>Set before navigating here from a Verify run: the page then opens on its result and log.</summary>
-    public static bool ShowVerifyNext { get; set; }
+    /// <summary>
+    /// Set before navigating here from a profile's Verify card: the page then opens on that profile's result and the log
+    /// of its last run.
+    /// </summary>
+    public static (string? ProfileId, string? LogFile)? VerifyNext { get; set; }
 
     /// <summary>Shows the log picked above the box, at its end.</summary>
     private void OnLogPicked(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)

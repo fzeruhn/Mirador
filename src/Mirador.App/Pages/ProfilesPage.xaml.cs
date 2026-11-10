@@ -34,7 +34,7 @@ public sealed partial class ProfilesPage : Page
 
     private void OnOpenDiagnostics(object sender, RoutedEventArgs e)
     {
-        DiagnosticsPage.ShowVerifyNext = true;
+        DiagnosticsPage.VerifyNext = (ViewModel.Verify.ProfileId, ViewModel.Verify.LastLogFile);
         App.Current.MainWindow.Navigate("Diagnostics");
     }
 
