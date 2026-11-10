@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace Mirador.Core.Tests;
+namespace Mirador.Tests;
 
 /// <summary>
 /// The tests share one process and run in parallel, and many of them block a pool thread on purpose for a moment: a

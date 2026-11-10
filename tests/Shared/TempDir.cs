@@ -1,4 +1,4 @@
-namespace Mirador.Pimax.Tests;
+namespace Mirador.Tests;
 
 /// <summary>A fresh empty folder under the system temp folder, deleted again on dispose.</summary>
 public sealed class TempDir : IDisposable
@@ -7,12 +7,14 @@ public sealed class TempDir : IDisposable
 
     public TempDir() => Directory.CreateDirectory(Path);
 
-    /// <summary>Creates an empty file at <paramref name="relative"/> (folders as needed) and returns its full path.</summary>
+    public string File(params string[] parts) => System.IO.Path.Combine([Path, .. parts]);
+
+    /// <summary>An empty file at <paramref name="relative"/>, with its folders.</summary>
     public string Touch(params string[] relative)
     {
-        var path = System.IO.Path.Combine([Path, .. relative]);
+        var path = File(relative);
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-        File.WriteAllBytes(path, []);
+        System.IO.File.WriteAllBytes(path, []);
         return path;
     }
 

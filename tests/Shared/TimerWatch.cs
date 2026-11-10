@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 
-namespace Mirador.Pimax.Tests;
+namespace Mirador.Tests;
 
 /// <summary>
 /// The fake clock, telling the test when a timer has been set, so that it moves the clock only once the code under

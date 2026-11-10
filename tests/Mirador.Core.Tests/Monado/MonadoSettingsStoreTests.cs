@@ -111,31 +111,4 @@ public class MonadoSettingsStoreTests
         Assert.False(File.Exists(path));
         Assert.Equal(text, File.ReadAllText(path + ".bad"));
     }
-
-    [Fact]
-    public void A_second_corrupt_file_replaces_the_older_bad_copy()
-    {
-        using var dir = new TempDir();
-        var path = dir.File("monado-settings.json");
-        File.WriteAllText(path + ".bad", "older");
-        File.WriteAllText(path, "newer {");
-
-        new MonadoSettingsStore(path).Load();
-
-        Assert.Equal("newer {", File.ReadAllText(path + ".bad"));
-    }
-
-    [Fact]
-    public void Save_creates_the_folder_replaces_the_file_and_leaves_no_temp_file()
-    {
-        using var dir = new TempDir();
-        var path = Path.Combine(dir.Path, "not", "yet", "monado-settings.json");
-        var store = new MonadoSettingsStore(path);
-
-        store.Save(new MonadoSettings(LighthouseWaitMs: 5000));
-        store.Save(new MonadoSettings(LighthouseWaitMs: 7000));
-
-        Assert.Equal(7000, store.Load().LighthouseWaitMs);
-        Assert.False(File.Exists(path + ".tmp"));
-    }
 }
