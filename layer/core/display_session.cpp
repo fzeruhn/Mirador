@@ -367,6 +367,15 @@ OpenResult DisplaySession::identify_product()
                             hex(kDreamAir.pnp_product) + "), and other headsets of a direct-mode vendor whose EDID "
                             "gives their mode");
         }
+        if (!product->tested && route == EdidRoute::Registry) {
+            // The registry keeps the EDID of every Pimax display Windows ever saw, and its route can't say which one
+            // is connected: a mode from it could be another headset's. Only the tested table's product, as before.
+            return fail(OpenStep::Product, kBadOutput,
+                        std::string("the display's own EDID could not be read through NVAPI, and the one Windows kept "
+                                    "in the registry names the ") +
+                            product->name + ", which is not tested: its mode can't be trusted to be the connected "
+                                            "headset's");
+        }
         if (!product->tested) {
             // A headset Windows drives itself (its HMD route, WDDC) is left to it (Mirador.md section 4.11 item 52).
             // Never the tested Dream Air: its own EDID has no such block, and an override that adds one doesn't hand

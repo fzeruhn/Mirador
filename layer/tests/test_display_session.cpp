@@ -684,6 +684,40 @@ TEST_CASE("direct mode is asked for the vendor whose display was found")
         }
     }
     CHECK(rig.api.count("enable_direct_mode") == 1);
+    CHECK(rig.api.count("bind_device") >= 1);
+    CHECK(rig.api.bound_vendor == nvdm::kDirectModeVendors[0].nvapi_id);
+}
+
+TEST_CASE("a headset with the Dream Air's ids but another mode runs untested, with its own mode")
+{
+    // The P2 8K Plus shares PVR 0x1019 with the Dream Air: given the Dream Air's 7104x3840, it would stay black.
+    Rig rig;
+    rig.api.edid = nvdm::edids::bytes(nvdm::edids::kPimax8kPlus);
+    nvdm::DisplaySession session(rig.deps());
+
+    REQUIRE(session.open(rig.api.luid).ok);
+    CHECK_FALSE(session.product().tested);
+    CHECK(rig.lines_containing("is not tested") == 1);
+    REQUIRE_FALSE(rig.api.modes_set.empty());
+    CHECK(rig.api.modes_set.back().width == 2880);
+    CHECK(rig.api.modes_set.back().height == 2560);
+}
+
+TEST_CASE("an untested headset's EDID from the registry alone is not trusted")
+{
+    // The registry keeps every Pimax display Windows ever saw: its EDID may be an earlier headset's.
+    Rig rig;
+    rig.api.edid = nvdm::edids::bytes(nvdm::edids::kPimax5kSuper);
+    rig.api.edid_route = nvdm::EdidRoute::Registry;
+    nvdm::DisplaySession session(rig.deps());
+
+    const nvdm::OpenResult result = session.open(rig.api.luid);
+    CHECK_FALSE(result.ok);
+    CHECK(result.step == OpenStep::Product);
+    CHECK(contains(result.message, "registry"));
+    CHECK(contains(result.message, "can't be trusted to be the connected headset's"));
+    CHECK(rig.api.count("enable_direct_mode") == 0);
+    CHECK(rig.api.modes_set.empty());
 }
 
 TEST_CASE("the EDID route that answered is logged once and kept")

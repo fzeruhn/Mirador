@@ -456,6 +456,24 @@ TEST_CASE("an unknown product is explained apart from an unreadable EDID")
     CHECK(lines[1].rfind("what to do: ", 0) == 0);
 }
 
+TEST_CASE("a headset left to Windows, and an untested EDID from the registry, are explained as such")
+{
+    const std::vector<std::string> hmd = dvl::explain_failure(
+        "Product: the Pimax headset (PVR 0x1030)'s EDID carries Microsoft's HMD block, so Windows drives it through its "
+        "own HMD route and this layer leaves it alone (code 0)");
+    REQUIRE(hmd.size() == 2);
+    CHECK(contains(hmd[0], "Windows drives this headset itself"));
+    CHECK_FALSE(contains(hmd[1], "34A4:0044"));
+
+    const std::vector<std::string> registry = dvl::explain_failure(
+        "Product: the display's own EDID could not be read through NVAPI, and the one Windows kept in the registry "
+        "names the Pimax headset (PVR 0x101b), which is not tested: its mode can't be trusted to be the connected "
+        "headset's (code -10003)");
+    REQUIRE(registry.size() == 2);
+    CHECK(contains(registry[0], "earlier connection"));
+    CHECK_FALSE(contains(registry[1], "34A4:0044"));
+}
+
 TEST_CASE("any other failing step points to the README's troubleshooting table, by its name")
 {
     const std::vector<std::string> lines =

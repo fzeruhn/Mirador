@@ -263,6 +263,19 @@ std::vector<std::string> explain_failure(const std::string& line)
         return {};
     }
     if (step == nvdm::step_name(nvdm::OpenStep::Product)) {
+        if (line.find("carries Microsoft's HMD block") != std::string::npos) {
+            return {"what it means: Windows drives this headset itself, through its own route for headsets (its EDID "
+                    "says so), so the layer leaves it alone and direct mode is not used for it",
+                    "what to do: nothing for direct mode; if the headset should run in direct mode instead, send this "
+                    "output to the maintainer"};
+        }
+        if (line.find("can't be trusted to be the connected headset's") != std::string::npos) {
+            return {"what it means: NVAPI could not read the connected display's EDID, and the one Windows kept from "
+                    "an earlier connection names a headset this layer has not been tested with, so its mode may be "
+                    "another headset's",
+                    "what to do: update the NVIDIA driver, connect the headset alone and run this tool again; if it "
+                    "still fails, send this output to the maintainer (README, 'Reporting a driver version')"};
+        }
         if (line.find("unknown display product") == std::string::npos) { // no EDID: unreadable, or skipped (a test)
             return {"what it means: the layer cannot tell which headset this is. No EDID (the display's description of "
                     "itself) could be read through NVAPI or the registry, and the line says why the Dream Air could "
@@ -271,10 +284,10 @@ std::vector<std::string> explain_failure(const std::string& line)
                     "34A4:0044) is listed in Device Manager, and run this tool again; if it still fails, send this "
                     "output to the maintainer (README, 'Reporting a driver version')"};
         }
-        return {std::string("what it means: the headset's EDID names a product this layer does not know; it drives "
+        return {std::string("what it means: the headset's EDID names a product this layer does not know: it drives "
                             "the ") +
-                    nvdm::kDreamAir.name + " only",
-                "what to do: if this headset is a Dream Air, send this output to the maintainer"};
+                    nvdm::kDreamAir.name + ", and other headsets of a direct-mode vendor whose EDID gives their mode",
+                "what to do: if this headset should run in direct mode, send this output to the maintainer"};
     }
     return {"what to do: see 'Troubleshooting' in the README, the line that starts with '" + step + ":'"};
 }

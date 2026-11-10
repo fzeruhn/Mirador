@@ -10,9 +10,9 @@ start scripts; they are gone, and this page says what Mirador does in their plac
 **Renamed (2026-11-09):** the layer is `VK_LAYER_MIRADOR_direct_mode` (was `VK_LAYER_DREAMAIR_nvapi_direct`), its files
 `mirador_direct_mode.dll`/`.json` and `mirador-display-check.exe`, its variables `MIRADOR_DIRECT_MODE*` (were
 `DREAMAIR_VK_LAYER*`), its log folder `%LOCALAPPDATA%\Mirador\direct-mode`. For one release the layer still reads each
-of its variables under its old name when the new one isn't set, the guard still lets the check tool's old name in, and
-Mirador still finds a profile's layer folder with an older build (and turns it on with `DREAMAIR_VK_LAYER`). The Vulkan
-loader reads one switch per layer: the renamed layer is switched on by `MIRADOR_DIRECT_MODE=1` only.
+of its variables under its old name when the new one isn't set, and the guard still lets the check tool's old name in.
+Mirador uses only the layer it comes with (a profile can no longer name a layer folder). The Vulkan loader reads one
+switch per layer: the renamed layer is switched on by `MIRADOR_DIRECT_MODE=1` only.
 
 Status: version 0.1.0. Developed against one machine (RTX 5070 Ti, NVIDIA driver 621.01). Other drivers and GPUs are
 untried; the check tool below tells you whether yours works.
@@ -22,10 +22,14 @@ untried; the check tool below tells you whether yours works.
 The layer looks for the direct-mode displays of each vendor in its table: Pimax (`PVR`, NVAPI id `0xd242`) for now.
 Another vendor needs a capture on its headset first.
 
-- **Tested:** the Pimax Dream Air (`PVR 0x1019`), 7104x3840 at 90 Hz.
+- **Tested:** the Pimax Dream Air (`PVR 0x1019`), 7104x3840 at 90 Hz: its ids, with an EDID that asks for that mode
+  or for none. Pimax gives other headsets the same ids (the P2 8K Plus); one whose EDID asks for another mode is
+  untested, below.
 - **Untested, from its EDID:** any other headset of a vendor in the table. Its mode is the one its EDID asks for: the
   DisplayID timing marked preferred (Type I or VII), else the base block's first detailed timing, else the first
-  DisplayID timing. The layer logs that it is untested. Tracking and distortion still need a Monado driver for it.
+  DisplayID timing; a size over 16384 or a rate outside 24 to 500 Hz is no mode. The layer logs that it is untested.
+  Only an EDID read from the display through NVAPI counts: the registry keeps every Pimax display Windows ever saw, so
+  an untested headset's EDID from there is refused. Tracking and distortion still need a Monado driver for it.
 - **Left to Windows:** an untested headset whose EDID carries Microsoft's HMD block (OUI `5C-12-CA`), which Windows' own
   HMD route drives. Never the Dream Air, even when an EDID override adds that block.
 - **No EDID:** with no EDID readable, one display of the vendor and the Dream Air's board on USB, the display is taken to

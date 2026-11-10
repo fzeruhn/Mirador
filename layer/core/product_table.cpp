@@ -43,6 +43,15 @@ const char* untested_name(const DirectModeVendor& vendor, uint16_t pnp_product)
     return names.back().second.c_str();
 }
 
+// Whether an EDID's mode is the product's: the same size, and the rate within half a hertz (an EDID's timing gives the
+// rate only to its pixel clock's precision).
+bool same_mode(const EdidMode& mode, const Product& product)
+{
+    const uint32_t diff = mode.refresh_mhz > product.refresh_mhz ? mode.refresh_mhz - product.refresh_mhz
+                                                                 : product.refresh_mhz - mode.refresh_mhz;
+    return mode.width == product.width && mode.height == product.height && diff <= 500;
+}
+
 } // namespace
 
 const DirectModeVendor* vendor_for_pnp(uint16_t pnp_vendor)
@@ -70,14 +79,18 @@ std::optional<Product> find_product(const std::vector<uint8_t>& edid)
     if (!ids) {
         return std::nullopt;
     }
+    const std::optional<EdidMode> mode = preferred_mode(edid);
     for (const Product* product : kProducts) {
-        if (product->pnp_vendor == ids->pnp_vendor && product->pnp_product == ids->pnp_product) {
+        // The ids alone don't name a product: Pimax gives other headsets the Dream Air's PVR 0x1019 (the P2 8K Plus,
+        // Linux reference 2.1). The table's entry only when the EDID asks for its mode, or for none (a base block
+        // alone, or an EDID cut short); another mode is another headset, and runs untested with its own mode below.
+        if (product->pnp_vendor == ids->pnp_vendor && product->pnp_product == ids->pnp_product &&
+            (!mode || same_mode(*mode, *product))) {
             return *product;
         }
     }
     const DirectModeVendor* vendor = vendor_for_pnp(ids->pnp_vendor);
-    const std::optional<EdidMode> mode = vendor ? preferred_mode(edid) : std::nullopt;
-    if (!mode) {
+    if (!vendor || !mode) {
         return std::nullopt;
     }
     return Product{ids->pnp_vendor, ids->pnp_product, untested_name(*vendor, ids->pnp_product), mode->width, mode->height,

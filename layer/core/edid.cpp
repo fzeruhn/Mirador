@@ -30,13 +30,24 @@ size_t block_count(const std::vector<uint8_t>& edid)
     return edid.size() / kBlock;
 }
 
+// A mode no display drives (a size past what the GPU can scan out, a rate outside 24 to 500 Hz) is a malformed EDID's,
+// and no mode: SetDisplayMode would be handed nonsense.
+constexpr uint32_t kMaxSide = 16384;
+constexpr uint64_t kMinRefreshMhz = 24'000;
+constexpr uint64_t kMaxRefreshMhz = 500'000;
+
 std::optional<EdidMode> mode_of(uint64_t clock_hz, uint32_t width, uint32_t height, uint32_t h_total, uint32_t v_total)
 {
-    if (clock_hz == 0 || width == 0 || height == 0 || h_total == 0 || v_total == 0) {
+    if (clock_hz == 0 || width == 0 || height == 0 || width > kMaxSide || height > kMaxSide || h_total == 0 ||
+        v_total == 0) {
         return std::nullopt;
     }
     const uint64_t pixels = static_cast<uint64_t>(h_total) * v_total;
-    return EdidMode{width, height, static_cast<uint32_t>((clock_hz * 1000 + pixels / 2) / pixels)};
+    const uint64_t refresh_mhz = (clock_hz * 1000 + pixels / 2) / pixels; // clock_hz * 1000 stays below 2^48
+    if (refresh_mhz < kMinRefreshMhz || refresh_mhz > kMaxRefreshMhz) {
+        return std::nullopt;
+    }
+    return EdidMode{width, height, static_cast<uint32_t>(refresh_mhz)};
 }
 
 // The base block's first detailed timing descriptor (offset 54), when it is a timing (a pixel clock other than 0).

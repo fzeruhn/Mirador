@@ -98,6 +98,7 @@ public:
     // --- What the fake was given -------------------------------------------------------------------------------
 
     IUnknown* bound_device = nullptr;  // The d3d11 of the last bind_device()
+    uint32_t bound_vendor = 0;         // The vendor of the last bind_device() that got a device
     std::vector<Mode> modes_created;   // The mode of every create_back_buffer()
     std::vector<Mode> modes_set;       // The mode of every set_display_mode()
 
@@ -282,7 +283,7 @@ public:
         return call.status;
     }
 
-    int bind_device(uint32_t display_id, IUnknown* d3d11, uint32_t /*vendor*/) override
+    int bind_device(uint32_t display_id, IUnknown* d3d11, uint32_t vendor) override
     {
         // A NULL device is refused before the driver (before the queue) and leaves an earlier bind as it is. Any other
         // bind, like the real port's, first undoes the earlier one.
@@ -291,6 +292,7 @@ public:
             return call.status;
         }
         bound_device = d3d11;
+        bound_vendor = vendor;
         bound_ = call.status == 0;
         return call.status;
     }

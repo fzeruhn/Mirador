@@ -51,12 +51,54 @@ TEST_CASE("edid: a base block without timings and no extension gives no mode")
 
 TEST_CASE("edid: a cut-off or lying DisplayID block is not read past its end")
 {
-    std::vector<uint8_t> edid = bytes(nvdm::edids::kDreamAir);
-    edid[256 + 2] = 0xff; // a section length past the block
-    edid[256 + 5 + 2] = 0xff; // a data block length past the section
-    const auto mode = nvdm::preferred_mode(edid);
-    CHECK_FALSE(mode.has_value()); // no timing it can trust, and nothing read outside the 384 bytes
-    edid.resize(300);
+    const std::vector<uint8_t> good = bytes(nvdm::edids::kDreamAir);
+
+    // A section length past the block: the data blocks are read only up to the block's checksum, where the timing
+    // still fits.
+    std::vector<uint8_t> edid = good;
+    edid[256 + 2] = 0xff;
+    const auto section = nvdm::preferred_mode(edid);
+    REQUIRE(section.has_value());
+    CHECK(section->width == 7104);
+
+    // A data block length past the section: that block and everything after it is dropped.
+    edid = good;
+    edid[256 + 5 + 2] = 0xff;
+    CHECK_FALSE(nvdm::preferred_mode(edid).has_value());
+
+    // Cut off inside the DisplayID block: the partial block is not a block, and nothing past the bytes is read.
+    edid = good;
+    edid.resize(256 + 40);
+    CHECK_FALSE(nvdm::preferred_mode(edid).has_value());
+}
+
+TEST_CASE("edid: a timing no display drives is no mode")
+{
+    // The 5K Super's base block alone, its first detailed timing rewritten (offset 54).
+    std::vector<uint8_t> edid = bytes(nvdm::edids::kPimax5kSuper);
+    edid.resize(128);
+    REQUIRE(nvdm::preferred_mode(edid).has_value());
+
+    // 655.35 MHz over 2x2 pixels: some 160 GHz.
+    edid[54] = 0xff;
+    edid[55] = 0xff;
+    edid[56] = 1; // width 1
+    edid[57] = 1; // horizontal blank 1
+    edid[58] = 0;
+    edid[59] = 1; // height 1
+    edid[60] = 1; // vertical blank 1
+    edid[61] = 0;
+    CHECK_FALSE(nvdm::preferred_mode(edid).has_value());
+
+    // 10 kHz over 8190x8190 pixels: well under a hertz.
+    edid[54] = 1;
+    edid[55] = 0;
+    edid[56] = 0xff;
+    edid[57] = 0xff;
+    edid[58] = 0xff; // width 4095, blank 4095
+    edid[59] = 0xff;
+    edid[60] = 0xff;
+    edid[61] = 0xff; // height 4095, blank 4095
     CHECK_FALSE(nvdm::preferred_mode(edid).has_value());
 }
 
@@ -90,6 +132,25 @@ TEST_CASE("product: another headset of a direct-mode vendor runs the mode of its
 
     // The name lives for the process and is the same string every time.
     CHECK(nvdm::find_product(bytes(nvdm::edids::kPimax5kSuper))->name == product->name);
+}
+
+TEST_CASE("product: the Dream Air's ids with another mode are another headset, untested")
+{
+    // The P2 8K Plus carries PVR 0x1019 too; its EDID asks for 2880x2560, not the Dream Air's 7104x3840.
+    const auto product = nvdm::find_product(bytes(nvdm::edids::kPimax8kPlus));
+    REQUIRE(product.has_value());
+    CHECK_FALSE(product->tested);
+    CHECK(product->pnp_product == 0x1019);
+    CHECK(product->width == 2880);
+    CHECK(product->height == 2560);
+    CHECK(std::string(product->name) == "Pimax headset (PVR 0x1019)");
+
+    // The Dream Air's base block alone (no mode) is still the Dream Air.
+    std::vector<uint8_t> base = bytes(nvdm::edids::kDreamAir);
+    base.resize(128);
+    const auto dream_air = nvdm::find_product(base);
+    REQUIRE(dream_air.has_value());
+    CHECK(dream_air->tested);
 }
 
 TEST_CASE("product: a vendor the layer doesn't know, or an EDID without a mode, is no product")
