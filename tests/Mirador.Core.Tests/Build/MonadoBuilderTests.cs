@@ -104,6 +104,25 @@ public class MonadoBuilderTests : IDisposable
     }
 
     [Fact]
+    public async Task Locks_a_stopped_git_left_are_removed_before_the_fetch()
+    {
+        // A cancelled build kills git mid-fetch: its shallow.lock (or index.lock) would fail every later fetch.
+        var git = dir.File("Builds", "p1", "src", ".git");
+        Directory.CreateDirectory(git);
+        File.WriteAllText(Path.Combine(git, "shallow.lock"), "");
+        File.WriteAllText(Path.Combine(git, "index.lock"), "");
+        File.WriteAllText(Path.Combine(git, "config"), "kept");
+
+        var outcome = await Build();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        Assert.False(File.Exists(Path.Combine(git, "shallow.lock")));
+        Assert.False(File.Exists(Path.Combine(git, "index.lock")));
+        Assert.True(File.Exists(Path.Combine(git, "config")));
+        Assert.Contains(Lines, l => l.Contains("shallow.lock", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_failed_build_keeps_the_last_good_install()
     {
         WriteInstall(dir.File("Builds", "p1", "install"), "old");

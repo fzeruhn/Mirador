@@ -212,6 +212,8 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
             return null;
         }
 
+        RemoveStaleLocks(Path.Combine(src, ".git"), line);
+
         // The URL is set every time: the profile's link may have changed since the last build.
         await Git("remote", "remove", "origin").ConfigureAwait(false);
         if (await Git("remote", "add", "origin", source.Url!).ConfigureAwait(false) != 0
@@ -235,6 +237,31 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
             },
             ct).ConfigureAwait(false);
         return code == 0 ? commit : null;
+    }
+
+    /// <summary>
+    /// The lock files a git that was ended mid-command left (a cancelled build kills the process tree, so git can't
+    /// remove its own): with one there, every later fetch or checkout of the profile fails. Only one build of a profile
+    /// runs at a time, so no git of Mirador's holds them now.
+    /// </summary>
+    internal static void RemoveStaleLocks(string gitDir, Action<string> line)
+    {
+        foreach (var name in new[] { "index.lock", "shallow.lock", "config.lock", "HEAD.lock", "FETCH_HEAD.lock", "packed-refs.lock" })
+        {
+            var path = Path.Combine(gitDir, name);
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                    line($"Removed {name}, left by a git that was stopped.");
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                line($"Couldn't remove {path}: {e.Message}");
+            }
+        }
     }
 
     private static void PruneLogs(string logs)
