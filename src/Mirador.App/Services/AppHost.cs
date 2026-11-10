@@ -465,6 +465,15 @@ public sealed class AppHost : IAsyncDisposable
         var host = new AppHost(appDir, paths);
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
         host.MigrateProfiles();
+
+        // A consent no profile uses (one an older installer's task recorded, or left after a failed take-back) goes.
+        _ = Task.Run(async () =>
+        {
+            if (await host.TakeBackUnneededConsentAsync() is { } problem)
+            {
+                AppLog.Write(problem);
+            }
+        });
         host.CheckStore("Monado settings", paths.MonadoSettingsFile, () => host.MonadoSettings.Load());
         host.CheckStore("settings", paths.SettingsFile, () => host.Settings.Load());
 

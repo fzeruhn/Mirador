@@ -378,9 +378,12 @@ public sealed partial class ProfilesViewModel : ObservableObject
             }
         }
 
-        if (Change(set => set.Replace(profile), profile.Id))
+        // Saved or not, a consent no profile uses goes (the prompt may have recorded one for a save that then failed).
+        var saved = Change(set => set.Replace(profile), profile.Id);
+        var takeBack = await host.TakeBackUnneededConsentAsync();
+        if (saved)
         {
-            Message = problem ?? await host.TakeBackUnneededConsentAsync();
+            Message = problem ?? takeBack;
         }
     }
 

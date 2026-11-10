@@ -80,13 +80,9 @@ Root: HKLM64; Subkey: "SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes"; ValueType: 
 ; Where the stand-in finds Mirador when no user has run it yet.
 Root: HKLM64; Subkey: "SOFTWARE\Mirador"; ValueType: string; ValueName: "AppPath"; ValueData: "{app}\Mirador.exe"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
-[Tasks]
-; Off unless chosen (Mirador.md section 4.10 item 44): Monado may then run as administrator, with realtime GPU priority.
-Name: "elevatedmonado"; Description: "Run Monado as administrator (realtime GPU priority)"; Flags: unchecked
-
 [Run]
-; The consent of the user who installs: the installer is elevated, and so is this step (it writes HKLM\SOFTWARE\Mirador\ElevatedMonado, and SteamVR's unsigned Lighthouse files in ElevatedMonadoFiles).
-Filename: "{app}\Mirador.exe"; Parameters: "--allow-elevated-monado"; StatusMsg: "Recording the consent to run Monado as administrator..."; Tasks: elevatedmonado; Flags: runhidden waituntilterminated
+; No consent for Monado as administrator here: a profile's "Run as administrator" asks for it when it is saved
+; (Mirador.md section 4.10 item 44), and it goes once no profile has it on.
 Filename: "{app}\Mirador.exe"; Description: "Start Mirador"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]

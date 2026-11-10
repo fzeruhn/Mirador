@@ -21,7 +21,7 @@ public static class ElevatedMonado
     /// <summary>
     /// Runs <c>Mirador.exe --allow-elevated-monado</c> through the UAC prompt, like <see cref="ElevatedRuntime.RunAsync"/>.
     /// The step records the consent and, with it, SteamVR's Lighthouse DLLs that Valve didn't sign as they are now
-    /// (Settings' switch, and Home's "Allow again" after a SteamVR update). Returns the elevated step's exit code (0 when
+    /// (a profile's Run as administrator at Save, and Home's "Allow" or "Allow again"). Returns the elevated step's exit code (0 when
     /// consent is recorded), <see cref="ElevatedRuntime.PromptCancelled"/> when the user said no to the prompt, or -1
     /// when it couldn't be started.
     /// </summary>

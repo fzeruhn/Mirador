@@ -144,12 +144,18 @@ public sealed class VerifyServices(AppHost host, Profile profile, Action<string>
         }
         else
         {
-            if (!profile.RunAsAdministrator || !host.ElevatedMonadoAllowed())
+            if (!profile.RunAsAdministrator)
             {
                 return new ElevatedVerify(null, "Turn on Run as administrator for this profile and save it to check it as administrator.");
             }
 
             build = "";
+        }
+
+        // The helper refuses without the user's consent: say so, rather than fail the step.
+        if (!host.ElevatedMonadoAllowed())
+        {
+            return new ElevatedVerify(null, "Windows hasn't been asked yet for Monado to run as administrator: Home's Allow asks, then verify again.");
         }
 
         var settings = host.MonadoSettings.Load();
