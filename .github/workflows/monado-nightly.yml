@@ -87,7 +87,12 @@ jobs:
           # The whole history: Monado's vcpkg.json names a baseline commit in it, and vcpkg reads old versions of its
           # ports from git with a cleaned environment, in which a partial clone can't fetch what it lacks.
           git clone -q https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git -C "$env:RUNNER_TEMP\vcpkg" checkout -q $pin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # A pin that isn't on vcpkg's history must fail the night, not build with vcpkg's newest.
+          $head = (git -C "$env:RUNNER_TEMP\vcpkg" rev-parse HEAD).Trim()
+          if ($head -ne $pin) { Write-Error "vcpkg is at $head, not the pin $pin."; exit 1 }
           & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $cache = New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\vcpkg-cache"
