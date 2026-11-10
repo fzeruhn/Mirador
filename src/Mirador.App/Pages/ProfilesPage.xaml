@@ -7,105 +7,20 @@
     xmlns:vm="using:Mirador.App.ViewModels"
     NavigationCacheMode="Required">
 
-    <Page.Resources>
-        <!-- A list command: an icon button without a frame until it is pointed at, like a toolbar's. -->
-        <Style x:Key="ListCommand" TargetType="Button">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="FontSize" Value="16" />
-        </Style>
-    </Page.Resources>
-
     <!--
-        List and details: the profiles on the left with their commands above them, the selected one's settings on the
-        right, and Save and Revert under the settings, always in view.
+        The profile picked at the top (its drop-down ends with "Add a profile…"), its settings below, and Save and
+        Revert under them, always in view.
     -->
-    <Grid Padding="36,24,36,24" ColumnSpacing="24" RowSpacing="8">
+    <Grid Padding="36,24,36,24" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
 
-        <TextBlock
-            Grid.ColumnSpan="2"
-            Style="{StaticResource PageTitle}"
-            Text="Profiles" />
+        <TextBlock Style="{StaticResource PageTitle}" Text="Profiles" />
 
-        <!--  The list  -->
-        <Grid
-            Grid.Row="1"
-            Grid.RowSpan="2"
-            RowSpacing="4">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <!-- The list's commands, as icons with their names as tooltips (a toolbar over the list). -->
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <Button
-                    AutomationProperties.Name="Add"
-                    Command="{x:Bind ViewModel.AddCommand}"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Add">
-                    <FontIcon Glyph="&#xE710;" />
-                </Button>
-                <Button
-                    AutomationProperties.Name="Duplicate"
-                    Command="{x:Bind ViewModel.DuplicateCommand}"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Duplicate">
-                    <FontIcon Glyph="&#xE8C8;" />
-                </Button>
-                <Button
-                    AutomationProperties.Name="Rename"
-                    Click="OnRename"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Rename">
-                    <FontIcon Glyph="&#xE8AC;" />
-                </Button>
-                <Button
-                    AutomationProperties.Name="Delete"
-                    Click="OnDelete"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Delete">
-                    <FontIcon Glyph="&#xE74D;" />
-                </Button>
-            </StackPanel>
-            <ListView
-                Grid.Row="1"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="8"
-                IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                ItemsSource="{x:Bind ViewModel.Profiles}"
-                SelectedItem="{x:Bind ViewModel.Selected, Mode=TwoWay, Converter={StaticResource ProfileConverter}}"
-                SelectionMode="Single" />
-            <TextBlock
-                Grid.Row="2"
-                Margin="0,4,0,0"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Save or revert your changes first."
-                TextWrapping="Wrap"
-                Visibility="{x:Bind ViewModel.IsDirty, Mode=OneWay}" />
-        </Grid>
-
-        <!--  The details  -->
-        <ScrollViewer Grid.Row="1" Grid.Column="1">
+        <ScrollViewer Grid.Row="1">
             <c:PageColumn IsCentered="False" MaxColumnWidth="700">
             <StackPanel Spacing="4">
                 <InfoBar
@@ -123,6 +38,24 @@
                     Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
 
                 <TextBlock Margin="1,4,0,6" Style="{StaticResource SectionHeader}" Text="Profile" />
+                <toolkit:SettingsCard Description="{x:Bind ViewModel.PickerDescription, Mode=OneWay}" Header="Profile">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ComboBox
+                            MinWidth="200"
+                            AutomationProperties.Name="Profile"
+                            IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
+                            ItemsSource="{x:Bind ViewModel.Profiles}"
+                            SelectedItem="{x:Bind ViewModel.Selected, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
+                        <Button
+                            Command="{x:Bind ViewModel.DuplicateCommand}"
+                            Content="Duplicate"
+                            IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}" />
+                        <Button
+                            Click="OnDelete"
+                            Content="Delete profile"
+                            IsEnabled="{x:Bind ViewModel.CanDelete, Mode=OneWay}" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
                 <toolkit:SettingsCard Header="Name">
                     <TextBox MinWidth="200" Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </toolkit:SettingsCard>
@@ -334,7 +267,6 @@
 
         <StackPanel
             Grid.Row="2"
-            Grid.Column="1"
             Orientation="Horizontal"
             Spacing="8">
             <Button

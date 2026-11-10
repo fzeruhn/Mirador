@@ -48,32 +48,9 @@ public sealed partial class ProfilesPage : Page
         }
     }
 
-    private async void OnRename(object sender, RoutedEventArgs e)
-    {
-        if (ViewModel.Selected is not { } selected)
-        {
-            return;
-        }
-
-        var box = new TextBox { Text = selected.Name, SelectionStart = 0, SelectionLength = selected.Name.Length };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Rename profile",
-            Content = box,
-            PrimaryButtonText = "Rename",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-        };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            ViewModel.Rename(box.Text);
-        }
-    }
-
     private async void OnDelete(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.Selected is not { } selected)
+        if (ViewModel.Selected is not { } selected || !ViewModel.CanDelete)
         {
             return;
         }

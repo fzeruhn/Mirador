@@ -70,7 +70,24 @@ public sealed partial class ProfilesViewModel : ObservableObject
         };
     }
 
+    /// <summary>The picker's items: the profiles, then <see cref="AddItem"/>.</summary>
     public ObservableCollection<ProfileItem> Profiles { get; } = [];
+
+    /// <summary>The picker's last item, which adds a profile instead of picking one.</summary>
+    public static readonly ProfileItem AddItem = new("", "Add a profile…");
+
+    /// <summary>The picker card's description.</summary>
+    public string PickerDescription => IsDirty ? "Save or revert your changes to pick another." : "The profile to change. Home picks the one Monado starts with.";
+
+    /// <summary>
+    /// Whether the picked profile can be deleted: not with unsaved changes, not the last one, and not the one Monado
+    /// runs with now.
+    /// </summary>
+    public bool CanDelete =>
+        !IsDirty
+        && Selected is { } selected && selected != AddItem
+        && Profiles.Count(p => p != AddItem) > 1
+        && host.Session.CurrentProfile?.Profile.Id != selected.Id;
 
     /// <summary>The build card of a branch profile.</summary>
     public BuildViewModel Build { get; }
@@ -88,6 +105,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public ObservableCollection<string> Problems { get; } = [];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDelete))]
     public partial ProfileItem? Selected { get; set; }
 
     [ObservableProperty]
@@ -163,7 +181,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public partial string MonadoFolder { get; set; } = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanSwitch))]
+    [NotifyPropertyChangedFor(nameof(CanSwitch), nameof(CanDelete), nameof(PickerDescription))]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand))]
     public partial bool IsDirty { get; set; }
 
@@ -175,6 +193,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public string ProblemsText => string.Join(Environment.NewLine, Problems);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanDelete))]
     public partial bool IsRunning { get; set; }
 
     [ObservableProperty]
@@ -247,7 +266,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>A name no profile has yet: <paramref name="wanted"/>, else with 2, 3, … after it.</summary>
     public string FreeName(string wanted)
     {
-        var names = Profiles.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var names = Profiles.Where(p => p != AddItem).Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!names.Contains(wanted))
         {
             return wanted;
@@ -263,9 +282,6 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
     }
 
-    /// <summary>Renames the selected profile; the page asked for the name.</summary>
-    public void Rename(string name) => Change(set => set.Rename(Selected!.Id, name), Selected?.Id);
-
     /// <summary>Deletes the selected profile; the page asked first. The consent goes with the last profile that needed it.</summary>
     public async Task DeleteAsync()
     {
@@ -275,8 +291,17 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private void Add()
+    /// <summary>"Add a profile…" was picked: adds one and picks it, or picks the one before again when adding failed.</summary>
+    private void AddFromPicker()
+    {
+        var before = editing?.Id;
+        if (!Add())
+        {
+            LoadList(before);
+        }
+    }
+
+    private bool Add()
     {
         // New profiles start with no headset module, unless a headset a module knows is plugged in (Mirador.md §4.11 item 53).
         string? module = null;
@@ -291,13 +316,13 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         var profile = new Profile(Profile.NewId(), FreeName("New profile"), module, BuildSource.Mirador, [], new Dictionary<string, string>());
-        Change(set => set.Add(profile), profile.Id);
+        return Change(set => set.Add(profile), profile.Id);
     }
 
     [RelayCommand]
     private void Duplicate()
     {
-        if (Selected is not { } selected)
+        if (Selected is not { } selected || selected == AddItem)
         {
             return;
         }
@@ -368,6 +393,13 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         if (loading)
         {
+            return;
+        }
+
+        if (value == AddItem)
+        {
+            // After the drop-down has closed: adding reloads the list it shows.
+            App.Current.Ui.TryEnqueue(AddFromPicker);
             return;
         }
 
@@ -501,12 +533,15 @@ public sealed partial class ProfilesViewModel : ObservableObject
                 Profiles.Add(new ProfileItem(p.Id, p.Name));
             }
 
-            Selected = Profiles.FirstOrDefault(p => p.Id == keep) ?? Profiles.FirstOrDefault(p => p.Id == set.SelectedId);
+            Profiles.Add(AddItem);
+            Selected = Profiles.FirstOrDefault(p => p != AddItem && p.Id == keep) ?? Profiles.FirstOrDefault(p => p != AddItem && p.Id == set.SelectedId);
         }
         finally
         {
             loading = false;
         }
+
+        OnPropertyChanged(nameof(CanDelete));
 
         Show(set.Profiles.FirstOrDefault(p => p.Id == Selected?.Id));
     }
