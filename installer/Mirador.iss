@@ -39,7 +39,7 @@ UninstallDisplayIcon={app}\Mirador.exe
 UninstallDisplayName=Mirador
 LicenseFile=..\LICENSE
 WizardStyle=modern
-Compression=lzma2/max
+Compression=lzma2/ultra64
 SolidCompression=yes
 MinVersion=10.0.19041
 

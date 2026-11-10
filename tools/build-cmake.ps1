@@ -57,6 +57,10 @@ if ($Configure) {
     $cmakeArgs = @(
         "-S", $source, "-B", $buildDir, "-GNinja",
         "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        # RelWithDebInfo links incrementally, which keeps unused code: a third the size without. No
+        # identical-function folding (/OPT:ICF): code that compares function pointers would see two functions as one.
+        "-DCMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO=/debug /INCREMENTAL:NO /OPT:REF /OPT:NOICF",
+        "-DCMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO=/debug /INCREMENTAL:NO /OPT:REF /OPT:NOICF",
         "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
         "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
     ) + $Extra
