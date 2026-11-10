@@ -39,10 +39,13 @@ public sealed class HelperHandlerMonadoTests : IDisposable
 
     private string Bundled => temp.File("monado", "runtime", "openxr_monado.json");
 
-    private static readonly CallerInfo Caller = new(new SecurityIdentifier("S-1-5-21-1-2-3-1001"), 1, 1234, null);
+    private string InstallDir => temp.File("Mirador");
+
+    /// <summary>The installed Mirador.exe asking.</summary>
+    private CallerInfo Caller => new(new SecurityIdentifier("S-1-5-21-1-2-3-1001"), 1, 1234, Path.Combine(InstallDir, "Mirador.exe"));
 
     private HelperHandler Handler(IMonadoInstaller? installer) =>
-        new(new FakeServiceControl(), new FakeProcessControl(), registry, Bundled, "1.0", monado: installer);
+        new(new FakeServiceControl(), new FakeProcessControl(), registry, Bundled, "1.0", installDir: InstallDir, monado: installer);
 
     [Fact]
     public async Task Install_passes_only_the_version_name_on()
@@ -58,6 +61,18 @@ public sealed class HelperHandlerMonadoTests : IDisposable
     {
         Assert.False((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "monado-2026.11.10-1a2b3c4d5e"))).Ok);
         Assert.False((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado))).Ok);
+        Assert.Empty(monado.Installed);
+        Assert.Equal(0, monado.RollBacks);
+    }
+
+    [Fact]
+    public async Task Install_and_roll_back_from_another_program_change_nothing()
+    {
+        // Any signed-in user's program reaches the pipe: it mustn't pick which Monado runs as administrator.
+        var other = Caller with { ImagePath = temp.File("Downloads", "Mirador.exe") };
+
+        Assert.False((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.InstallMonado, Version: "monado-2026.11.10-1a2b3c4d5e"), other)).Ok);
+        Assert.False((await Handler(monado).HandleAsync(new HelperRequest(HelperCommand.RollBackMonado), other)).Ok);
         Assert.Empty(monado.Installed);
         Assert.Equal(0, monado.RollBacks);
     }

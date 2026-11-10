@@ -342,6 +342,35 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
+    /// Takes back, through the helper (no prompt), the approval of every build no profile runs as administrator any more:
+    /// a profile deleted, its "Run as administrator" turned off, or its Monado no longer a branch or a build folder
+    /// (Mirador.md §4.11 item 51). The helper keeps the approvals of the profiles still asking. Returns what went wrong,
+    /// or null.
+    /// </summary>
+    public async Task<string?> ForgetUnneededApprovalsAsync()
+    {
+        try
+        {
+            var keep = Profiles.Load().Profiles
+                .Where(p => p.RunAsAdministrator && p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
+                .Select(p => p.Id)
+                .ToList();
+            var reply = await Helper.SendAsync(new HelperRequest(HelperCommand.ForgetApprovedBuilds, Keep: keep), CancellationToken.None);
+            if (!reply.Ok)
+            {
+                AppLog.Write($"Taking back the approvals no profile needs failed: {reply.Error}");
+            }
+
+            return reply.Ok ? null : $"Mirador couldn't take back an approved build no profile runs as administrator any more: {reply.Error}";
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Taking back the approvals no profile needs failed", e);
+            return null; // no helper (a copy that isn't installed): it has no approvals to take back
+        }
+    }
+
+    /// <summary>
     /// Whether this Mirador is the installed one, the only caller the helper starts Monado as administrator for: its
     /// path against the running helper's install folder (<see cref="HelperCommand.GetInstallFolder"/>), through the
     /// helper's own test (<see cref="InstalledMirador.IsInstalledCopy"/>). Until the helper has answered (it isn't

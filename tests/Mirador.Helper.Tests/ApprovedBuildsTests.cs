@@ -11,6 +11,8 @@ internal sealed class FakeApprovedBuildStore : IApprovedBuildStore
     public void Set(ApprovedBuild build) => Builds[(build.Owner, build.ProfileId)] = build;
 
     public void Remove(string owner, string profileId) => Builds.Remove((owner, profileId));
+
+    public IReadOnlyList<string> ProfilesOf(string owner) => [.. Builds.Keys.Where(k => k.Item1 == owner).Select(k => k.Item2)];
 }
 
 public sealed class ApprovedBuildsTests : IDisposable

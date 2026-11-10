@@ -80,7 +80,13 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             return new HelperReply(false, "That isn't a version of Mirador's Monado.");
         }
 
-        await installing.WaitAsync(ct).ConfigureAwait(false);
+        // One install at a time, and none waits for another: a queued request would hold one of the pipe's few
+        // serving slots for the whole download before it.
+        if (!await installing.WaitAsync(0, ct).ConfigureAwait(false))
+        {
+            return new HelperReply(false, "Mirador's Monado is being installed already: try again once that is done.");
+        }
+
         try
         {
             return await InstallOneAsync(version, ct).ConfigureAwait(false);

@@ -33,6 +33,9 @@ public interface IApprovedBuildStore
     void Set(ApprovedBuild build);
 
     void Remove(string owner, string profileId);
+
+    /// <summary>The profiles <paramref name="owner"/> has an approval recorded for.</summary>
+    IReadOnlyList<string> ProfilesOf(string owner);
 }
 
 /// <summary>
@@ -110,6 +113,21 @@ public static partial class ApprovedBuilds
         }
 
         return build;
+    }
+
+    /// <summary>
+    /// Takes an approval back: its record first (from then on nothing runs it), then its copy, as far as it can go now
+    /// (a copy still in use stays until the next approval or the uninstall).
+    /// </summary>
+    public static void Forget(string owner, string profileId, string appDir, IApprovedBuildStore store)
+    {
+        if (!IsOwner(owner) || !IsProfileId(profileId))
+        {
+            return;
+        }
+
+        store.Remove(owner, profileId);
+        TryDeleteDirectory(ProfileRoot(appDir, owner, profileId));
     }
 
     /// <summary>
@@ -212,7 +230,13 @@ public static partial class ApprovedBuilds
     private static bool IsCode(string file) =>
         Path.GetExtension(file).ToLowerInvariant() is ".exe" or ".dll" or ".json" or ".manifest" or ".ps1" or ".bat" or ".cmd";
 
-    private static void Copy(DirectoryInfo from, string to)
+    private static void Copy(DirectoryInfo from, string to) => CopyUnder(from, to, FinalPath(from.FullName, folder: true));
+
+    // The checks by path below refuse a link that is there when they look; the step runs elevated while the user's own
+    // programs can still change the build folder, so each file is also opened once and judged by where its handle
+    // really is (a folder swapped for a junction after its check leads outside the build's own folder), and its bytes
+    // are copied from that same handle.
+    private static void CopyUnder(DirectoryInfo from, string to, string root)
     {
         if (from.LinkTarget is not null)
         {
@@ -227,14 +251,66 @@ public static partial class ApprovedBuilds
                 throw new InvalidOperationException($"{file.FullName} is a link: Mirador approves only a build's own files.");
             }
 
-            file.CopyTo(Path.Combine(to, file.Name));
+            using var source = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (!IsUnder(FinalPath(source.SafeFileHandle), root))
+            {
+                throw new InvalidOperationException($"{file.FullName} leads outside the build's folder: Mirador approves only a build's own files.");
+            }
+
+            using var target = new FileStream(Path.Combine(to, file.Name), FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            source.CopyTo(target);
         }
 
         foreach (var dir in from.EnumerateDirectories())
         {
-            Copy(dir, Path.Combine(to, dir.Name));
+            CopyUnder(dir, Path.Combine(to, dir.Name), root);
         }
     }
+
+    private static bool IsUnder(string path, string root) =>
+        path.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Where a folder really is, links and junctions on its way resolved.</summary>
+    private static string FinalPath(string path, bool folder)
+    {
+        const uint ReadAttributes = 0x80, ShareAll = 0x7, OpenExisting = 3, BackupSemantics = 0x02000000;
+        using var handle = CreateFileW(path, ReadAttributes, ShareAll, IntPtr.Zero, OpenExisting, folder ? BackupSemantics : 0, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            throw new InvalidOperationException($"{path} can't be opened (error {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
+        }
+
+        return FinalPath(handle);
+    }
+
+    /// <summary>Where an open file or folder really is, as a plain path (without <c>\\?\</c>).</summary>
+    private static string FinalPath(Microsoft.Win32.SafeHandles.SafeFileHandle handle)
+    {
+        var buffer = new char[1024];
+        var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, 0);
+        if (length > buffer.Length)
+        {
+            buffer = new char[length];
+            length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, 0);
+        }
+
+        if (length == 0 || length > buffer.Length)
+        {
+            throw new InvalidOperationException($"Mirador couldn't tell where a file of the build is (error {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
+        }
+
+        var path = new string(buffer, 0, (int)length);
+        return path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + path[8..]
+            : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..]
+            : path;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(
+        string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle file, [System.Runtime.InteropServices.Out] char[] path, uint length, uint flags);
 
     private static Dictionary<string, string> Hash(string folder) =>
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
@@ -339,5 +415,17 @@ public sealed class RegistryApprovedBuildStore : IApprovedBuildStore
 
         using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
         root.DeleteSubKeyTree($@"{keyPath}\{owner}\{profileId}", throwOnMissingSubKey: false);
+    }
+
+    public IReadOnlyList<string> ProfilesOf(string owner)
+    {
+        if (!ApprovedBuilds.IsOwner(owner))
+        {
+            return [];
+        }
+
+        using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+        using var key = root.OpenSubKey($@"{keyPath}\{owner}");
+        return key is null ? [] : [.. key.GetSubKeyNames().Where(ApprovedBuilds.IsProfileId)];
     }
 }

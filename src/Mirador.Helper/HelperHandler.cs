@@ -84,6 +84,7 @@ public sealed class HelperHandler
     private const string NoMiradorsMonado = "This helper can't install Mirador's Monado.";
     private const string NotApproved = "This profile's build isn't approved. Turn on \"Run as administrator\" on the profile to approve it.";
     private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
+    private const string NotInstalledMirador = "Only the installed Mirador may change which version of Mirador's Monado is current.";
     private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
     private const string NoElevated = "Mirador's helper service can't start Monado as administrator.";
     private const string NoStart = "Mirador's helper service was asked to start Monado as administrator without any settings.";
@@ -184,10 +185,16 @@ public sealed class HelperHandler
                 return new HelperReply(false, NoMiradorsMonado);
             }
 
-            // Only a caller Windows names: it changes the Monado every user's elevated start and runtime use.
+            // Only a caller Windows names, and only the installed Mirador: it changes the Monado every user's elevated
+            // start and runtime use, so another program of any user's can't pick (an older) one.
             if (caller is null)
             {
                 return new HelperReply(false, NoCaller);
+            }
+
+            if (!InstalledMirador.IsInstalledCopy(caller.ImagePath, installDir))
+            {
+                return new HelperReply(false, NotInstalledMirador);
             }
 
             try
@@ -209,8 +216,12 @@ public sealed class HelperHandler
             HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
             HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
             HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
-            HelperCommand.RollBackMonado => caller is null ? new HelperReply(false, NoCaller) : monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
+            HelperCommand.RollBackMonado =>
+                caller is null ? new HelperReply(false, NoCaller)
+                : !InstalledMirador.IsInstalledCopy(caller.ImagePath, installDir) ? new HelperReply(false, NotInstalledMirador)
+                : monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
             HelperCommand.SetRuntimeApproved => SetRuntimeApproved(request.Build, caller),
+            HelperCommand.ForgetApprovedBuilds => ForgetApprovedBuilds(request.Keep ?? [], caller),
             _ => new HelperReply(false, UnknownCommand),
         });
     }
@@ -283,7 +294,47 @@ public sealed class HelperHandler
         }
 
         consent.Revoke(caller.Sid);
+
+        // Without the consent no build of theirs runs as administrator: its approvals go with it.
+        ForgetApprovals(caller, keep: []);
         return new HelperReply(true);
+    }
+
+    /// <summary>Takes back the caller's approvals but those of <paramref name="keep"/> (<see cref="HelperCommand.ForgetApprovedBuilds"/>).</summary>
+    private HelperReply ForgetApprovedBuilds(IReadOnlyList<string> keep, CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        ForgetApprovals(caller, keep);
+        return new HelperReply(true);
+    }
+
+    private void ForgetApprovals(CallerInfo caller, IReadOnlyList<string> keep)
+    {
+        if (approved is null)
+        {
+            return;
+        }
+
+        var owner = caller.Sid.Value;
+        foreach (var profileId in approved.ProfilesOf(owner).Where(p => !keep.Contains(p, StringComparer.Ordinal)))
+        {
+            // The machine's runtime never points at a copy that is going: Mirador's Monado takes over, when there is one.
+            if (approved.Get(owner, profileId) is { } build && registry.GetActive() is { } active
+                && string.Equals(Path.GetFullPath(active), Path.GetFullPath(build.Manifest), StringComparison.OrdinalIgnoreCase))
+            {
+                var miradors = monado?.CurrentManifest() ?? bundledManifest;
+                if (File.Exists(miradors))
+                {
+                    registry.SetActive(miradors);
+                }
+            }
+
+            ApprovedBuilds.Forget(owner, profileId, installDir, approved);
+        }
     }
 
     /// <summary>Mirador's Monado's current version when one is installed, else the bundled Monado of an older install.</summary>
@@ -316,7 +367,13 @@ public sealed class HelperHandler
             return new HelperReply(false, NoCaller);
         }
 
-        // The caller's own approval only: the record is per user.
+        // The caller's own approval only (the record is per user), and only while their consent is on: taking it back
+        // takes back what it allowed.
+        if (consent?.IsAllowed(caller.Sid) != true)
+        {
+            return new HelperReply(false, NotApproved);
+        }
+
         if (approved is null || !ApprovedBuilds.IsProfileId(profileId) || approved.Get(caller.Sid.Value, profileId!) is not { } build)
         {
             return new HelperReply(false, NotApproved);

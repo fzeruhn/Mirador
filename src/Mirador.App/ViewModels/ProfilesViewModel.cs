@@ -302,7 +302,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
         if (Change(set => set.Delete(id), keep: null))
         {
-            Message = await host.TakeBackUnneededConsentAsync();
+            Message = await host.TakeBackUnneededConsentAsync() ?? await host.ForgetUnneededApprovalsAsync();
 
             // What was the profile's alone goes with it: its branch's source, build and install (often gigabytes),
             // and its Verify result.
@@ -425,9 +425,10 @@ public sealed partial class ProfilesViewModel : ObservableObject
             }
         }
 
-        // Saved or not, a consent no profile uses goes (the prompt may have recorded one for a save that then failed).
+        // Saved or not, a consent no profile uses goes (the prompt may have recorded one for a save that then failed), and
+        // so does an approved build the profile no longer runs as administrator.
         var saved = Change(set => set.Replace(profile), profile.Id);
-        var takeBack = await host.TakeBackUnneededConsentAsync();
+        var takeBack = await host.TakeBackUnneededConsentAsync() ?? await host.ForgetUnneededApprovalsAsync();
         if (saved)
         {
             Message = problem ?? takeBack;
