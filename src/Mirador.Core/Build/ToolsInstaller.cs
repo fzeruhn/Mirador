@@ -170,6 +170,13 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
                 throw new MiradorException($"vcpkg didn't end at Mirador's pinned commit {vcpkgCommit[..7]}, so it isn't used.");
             }
 
+            if (existing)
+            {
+                // vcpkg's own program was built from the sources of the commit before: the recipe bootstraps it again
+                // from these when it is missing, so the new ports never run under an older vcpkg.
+                File.Delete(Path.Combine(work, "vcpkg.exe"));
+            }
+
             if (!existing && !TryMove(work, final))
             {
                 throw new MiradorException("Mirador couldn't put vcpkg in place (another program may be holding it): try again.");

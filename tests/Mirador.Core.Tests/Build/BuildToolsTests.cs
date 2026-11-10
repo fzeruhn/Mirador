@@ -371,6 +371,7 @@ public class BuildToolsTests
     {
         using var dir = new TempDir();
         WriteHead(dir.File("vcpkg"), "0123456789012345678901234567890123456789");
+        File.WriteAllText(dir.File("vcpkg", "vcpkg.exe"), "built from the old commit");
         var runner = new FakeCommandRunner
         {
             Effect = (spec, _) =>
@@ -390,6 +391,9 @@ public class BuildToolsTests
 
         Assert.DoesNotContain(runner.Commands, c => c.Arguments.Contains("clone"));
         Assert.Contains(runner.Commands, c => c.Arguments.Contains("fetch"));
+
+        // The program built from the old commit's sources goes: the recipe bootstraps it again from the pinned ones.
+        Assert.False(File.Exists(Path.Combine(dir.Path, "vcpkg", "vcpkg.exe")));
     }
 
     [Fact]
