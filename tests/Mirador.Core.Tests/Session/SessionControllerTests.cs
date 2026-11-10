@@ -44,6 +44,47 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task A_direct_mode_headset_gets_the_layer_turned_on_by_the_session()
+    {
+        await using var h = new Harness();
+        h.Module.UsesNvidiaDirectMode = true;
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        var env = h.Launcher.Spec.Environment;
+        Assert.Equal("1", env["DREAMAIR_VK_LAYER"]);
+        Assert.Equal("VK_LAYER_DREAMAIR_nvapi_direct", env["VK_LOADER_LAYERS_ALLOW"]);
+        Assert.Equal("1", env["FAKE_HEADSET"]);
+        Assert.False(env.ContainsKey("VK_ADD_IMPLICIT_LAYER_PATH"));
+    }
+
+    [Fact]
+    public async Task A_headset_without_direct_mode_gets_no_layer()
+    {
+        await using var h = new Harness();
+
+        await h.StartRunningAsync();
+
+        Assert.False(h.Launcher.Spec.Environment.ContainsKey("DREAMAIR_VK_LAYER"));
+    }
+
+    [Fact]
+    public async Task A_missing_layer_fails_the_start_before_monado_launches()
+    {
+        await using var h = new Harness();
+        h.Module.UsesNvidiaDirectMode = true;
+        Directory.Delete(h.BundledLayer, recursive: true);
+
+        var outcome = await Start(h).WaitAsync(Harness.Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.Contains("direct-mode layer", outcome.Message);
+        Assert.Equal(0, h.Launcher.Starts);
+        Assert.Equal(SessionState.Stopped, h.Controller.State);
+    }
+
+    [Fact]
     public async Task Start_runs_the_steps_in_order()
     {
         await using var h = new Harness();

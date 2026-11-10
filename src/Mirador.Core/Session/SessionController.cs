@@ -1,3 +1,4 @@
+using Mirador.Core.DirectMode;
 using System.Globalization;
 using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
@@ -665,7 +666,7 @@ public sealed class SessionController(SessionDeps deps)
         }
 
         // A game that only asks whether a headset is there starts Monado (OpenComposite does, Mirador.md §4.6 item 25):
-        // with the headset unplugged, refuse before any step, so Pimax is never touched and the game goes on without VR.
+        // with the headset unplugged, refuse before any step, so the headset's own software is never touched and the game goes on without VR.
         if (run.ForGame && module is not null && !module.IsPresent(deps.Context.Usb.Present()))
         {
             return Fail($"Monado wasn't started: the {module.DisplayName} isn't connected.");
@@ -726,6 +727,13 @@ public sealed class SessionController(SessionDeps deps)
         run.WroteSessionFile = true;
 
         var moduleEnvironment = run.Session?.Environment ?? [];
+        if (module?.UsesNvidiaDirectMode == true)
+        {
+            // The layer, turned on by the core for a headset that uses NVIDIA direct mode (Mirador.md §4.11 item 52);
+            // the module's own variables come after it.
+            moduleEnvironment = [.. DirectModeLayer.Environment(profile, deps.BundledLayerDir ?? ""), .. moduleEnvironment];
+        }
+
         var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
         var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
         var standIn = install.IsBundled

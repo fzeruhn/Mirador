@@ -37,4 +37,5 @@ public sealed record SessionDeps(
     Func<bool>? ElevatedConsented = null,
     Func<ElevatedStart, IProcessLauncher>? ElevatedLauncher = null,
     Func<bool>? ElevatedInstalledCopy = null,
-    Func<Profile, bool>? ApprovedBuildCurrent = null);
+    Func<Profile, bool>? ApprovedBuildCurrent = null,
+    string? BundledLayerDir = null);

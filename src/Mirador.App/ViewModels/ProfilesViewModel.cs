@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Mirador.App.Services;
 using Mirador.Core;
+using Mirador.Core.DirectMode;
 using Mirador.Core.Profiles;
 using Mirador.Core.Session;
 using Mirador.DreamAir;
@@ -11,7 +12,7 @@ using Mirador.DreamAir;
 namespace Mirador.App.ViewModels;
 
 /// <summary>A headset choice in the profile editor; a null id is "None".</summary>
-public sealed record HeadsetItem(string? Id, string Name)
+public sealed record HeadsetItem(string? Id, string Name, bool UsesNvidiaDirectMode = false)
 {
     public override string ToString() => Name;
 }
@@ -49,7 +50,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         Headsets.Add(new HeadsetItem(null, "None"));
         foreach (var module in host.Modules.Values)
         {
-            Headsets.Insert(Headsets.Count - 1, new HeadsetItem(module.Id, module.DisplayName));
+            Headsets.Insert(Headsets.Count - 1, new HeadsetItem(module.Id, module.DisplayName, module.UsesNvidiaDirectMode));
         }
 
         Extra.CollectionChanged += (_, e) =>
@@ -92,7 +93,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public partial string Name { get; set; } = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDreamAir))]
+    [NotifyPropertyChangedFor(nameof(UsesDirectMode))]
     public partial HeadsetItem? Headset { get; set; }
 
     /// <summary>
@@ -156,7 +157,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasMessage))]
     public partial string? Message { get; set; }
 
-    public bool IsDreamAir => Headset?.Id == DreamAirModule.ModuleId;
+    /// <summary>Whether the profile's headset uses NVIDIA direct mode: the layer's cards show.</summary>
+    public bool UsesDirectMode => Headset?.UsesNvidiaDirectMode == true;
 
     public bool MonadoFromFolder => MonadoSource == FolderSource;
 
@@ -485,7 +487,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
             MonadoLink = p?.Monado.Kind == SourceKind.Branch && !p.Monado.IsUpstreamMain ? p.Monado.Url ?? "" : "";
             MonadoBranch = MonadoLink.Length > 0 ? p!.Monado.Ref ?? "" : "";
             MonadoOptions = MonadoLink.Length > 0 ? string.Join(Environment.NewLine, p!.Monado.Options) : "";
-            var layer = p is null ? null : DreamAirModule.LayerFolder(p);
+            var layer = p is null ? null : DirectModeLayer.FolderOf(p);
             LayerFromFolder = layer is not null;
             LayerFolder = layer ?? "";
             Extra.Clear();
@@ -514,13 +516,13 @@ public sealed partial class ProfilesViewModel : ObservableObject
     private Profile Edited()
     {
         var options = new Dictionary<string, string>(editing?.ModuleOptions ?? new Dictionary<string, string>());
-        if (IsDreamAir && LayerFromFolder)
+        if (UsesDirectMode && LayerFromFolder)
         {
-            options[DreamAirLayer.OptionKey] = LayerFolder.Trim();
+            options[DirectModeLayer.OptionKey] = LayerFolder.Trim();
         }
         else
         {
-            options.Remove(DreamAirLayer.OptionKey);
+            options.Remove(DirectModeLayer.OptionKey);
         }
 
         return new Profile(
@@ -608,7 +610,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
             problems.Insert(0, linkProblem);
         }
 
-        if (IsDreamAir && LayerFromFolder && string.IsNullOrWhiteSpace(LayerFolder))
+        if (UsesDirectMode && LayerFromFolder && string.IsNullOrWhiteSpace(LayerFolder))
         {
             problems.Add("Pick the layer folder, or choose the layer that comes with Mirador.");
         }
@@ -627,14 +629,14 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>The Dream Air layer folder's problem; the layer that comes with Mirador is checked when Monado starts.</summary>
     private string? LayerProblem(Profile p)
     {
-        if (p.ModuleId != DreamAirModule.ModuleId || DreamAirModule.LayerFolder(p) is not { } folder)
+        if (p.ModuleId != DreamAirModule.ModuleId || DirectModeLayer.FolderOf(p) is not { } folder)
         {
             return null;
         }
 
         try
         {
-            DreamAirLayer.Locate(folder, Path.Combine(host.AppDir, "layer"));
+            DirectModeLayer.Locate(folder, Path.Combine(host.AppDir, "layer"));
             return null;
         }
         catch (MiradorException e)

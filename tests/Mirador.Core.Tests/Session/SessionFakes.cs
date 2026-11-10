@@ -1,3 +1,4 @@
+using Mirador.Core.DirectMode;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Time.Testing;
 using Mirador.Core.Modules;
@@ -397,6 +398,8 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
 
     public bool UsesSteamVrLighthouse { get; set; }
 
+    public bool UsesNvidiaDirectMode { get; set; }
+
     /// <summary>When set, BeforeStart throws it (after waiting at <see cref="Gate"/>).</summary>
     public Exception? Refusal { get; set; }
 
@@ -584,6 +587,11 @@ internal sealed class Harness : IAsyncDisposable
         File.WriteAllText(BundledManifest, TestManifest.Json(dll));
         BundledServer = Touch(bundledRoot, "server", "monado-service.exe");
 
+        BundledLayer = Path.Combine(Root, "Mirador App", "layer");
+        Touch(BundledLayer, DirectModeLayer.ManifestName);
+        Touch(BundledLayer, DirectModeLayer.DllName);
+        Touch(BundledLayer, DirectModeLayer.CheckExeName);
+
         StandInExe = Path.Combine(Root, "Mirador App", "standin", "monado-service.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(StandInExe)!);
         File.WriteAllBytes(StandInExe, [0x4D, 0x5A, 1, 2, 3]);
@@ -618,7 +626,8 @@ internal sealed class Harness : IAsyncDisposable
                     ElevatedStarts.Enqueue(start);
                     return Launcher;
                 },
-                ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null),
+                ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null,
+                BundledLayerDir: BundledLayer),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);
@@ -655,6 +664,9 @@ internal sealed class Harness : IAsyncDisposable
     public string BundledServer { get; }
 
     public string StandInExe { get; }
+
+    /// <summary>The direct-mode layer that "comes with Mirador" here.</summary>
+    public string BundledLayer { get; }
 
     public Steps Steps { get; } = new();
 

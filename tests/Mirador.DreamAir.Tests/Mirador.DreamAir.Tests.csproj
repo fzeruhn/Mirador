@@ -14,5 +14,11 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Mirador.Core.DirectMode" />
+    <Using Include="Mirador.Core.Tests.DirectMode" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The fake console programs, shared with the core's tests (the display check moved there with direct mode). -->
+    <Compile Include="..\Mirador.Core.Tests\DirectMode\FakeConsole.cs" Link="FakeConsole.cs" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 using System.Text;
 using Mirador.Core;
+using Mirador.Core.DirectMode;
 using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
@@ -38,12 +39,14 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
     public const string ModuleId = "dreamair";
 
     /// <summary>
-    /// The variables the Dream Air needs (Mirador.md §4.3): the launcher's, and the Dream Air drivers' log at info, whose
-    /// lines the board and eye tracker status come from (their default, warn, leaves those out). The one table lives in
-    /// <see cref="DreamAirEnvironment"/>, so the elevated path (the helper) writes the same one.
+    /// The Dream Air's own variables (Mirador.md §4.3): SteamVR's Lighthouse driver, the pacing for its panels, and the
+    /// Dream Air drivers' log at info, whose lines the board and eye tracker status come from (their default, warn,
+    /// leaves those out). The layer's variables the session adds, since the module uses direct mode
+    /// (<see cref="DirectModeLayer.Environment"/>). The one table lives in <see cref="DreamAirEnvironment"/>, so the
+    /// elevated path (the helper) writes the same one.
     /// </summary>
     public static IReadOnlyList<EnvVar> FixedEnvironment { get; } =
-        [.. DreamAirEnvironment.FixedEnvironment.Select(v => new EnvVar(v.Key, v.Value))];
+        [.. DreamAirEnvironment.ModuleVariables.Select(v => new EnvVar(v.Key, v.Value))];
 
     public string Id => ModuleId;
 
@@ -51,8 +54,11 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 
     public bool UsesSteamVrLighthouse => true;
 
+    /// <summary>The Dream Air's display goes through NVIDIA direct mode: the session turns the layer on.</summary>
+    public bool UsesNvidiaDirectMode => true;
+
     /// <summary>A profile with a layer folder keeps Monado running as the user: the elevated environment has no layer path.</summary>
-    public bool UsesExtraFolder(Profile profile) => LayerFolder(profile) is not null;
+    public bool UsesExtraFolder(Profile profile) => DirectModeLayer.FolderOf(profile) is not null;
 
     public bool IsPresent(IReadOnlySet<UsbId> devices) =>
         devices.Contains(DreamAirIds.Board) || devices.Contains(DreamAirIds.EyeTracker);
@@ -96,8 +102,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             throw new MiradorException(failed.Fix is null ? failed.Text : $"{failed.Text} {failed.Fix}");
         }
 
-        var layerFolder = LayerFolder(profile);
-        var layer = DreamAirLayer.Locate(layerFolder, deps.BundledLayerDir);
+        var layer = DirectModeLayer.Locate(DirectModeLayer.FolderOf(profile), deps.BundledLayerDir);
         var pimax = PimaxInstall.Locate(deps.Registry)
             ?? throw new MiradorException("Pimax Play isn't installed. Install Pimax Play: Mirador uses its eye tracking runtime.");
 
@@ -133,28 +138,9 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
             saveRecovery(DreamAirSession.Recovery(wasRunning));
             ct.ThrowIfCancellationRequested();
 
-            var driver = NvidiaDriverNow();
-            if (driver != state.LastGoodDriver)
-            {
-                progress.Report("Checking direct mode with the new NVIDIA driver…");
-                var check = await DisplayCheck.RunAsync(layer.CheckExe, deps.StartConsole, ct).ConfigureAwait(false);
-                SaveCheckOutput(ctx, check);
-                if (!check.Pass)
-                {
-                    throw new MiradorException(check.Finished
-                        ? $"Direct mode doesn't work with NVIDIA driver {driver}: {Sentence(check.Message)}{(check.WhatToDo is null ? "" : " " + Sentence(Capitalized(check.WhatToDo)))}"
-                        : $"Mirador couldn't check direct mode with the new NVIDIA driver {driver}: {Sentence(check.Message)} Try again.");
-                }
-
-                try
-                {
-                    deps.State.Update(s => s with { LastGoodDriver = driver });
-                }
-                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-                {
-                    // Only costs a display check at the next Start.
-                }
-            }
+            // Pimax's software is stopped: the headset is free for the core's re-check after a driver update.
+            await new DirectModeCheck(NvidiaDriverNow, deps.StartConsole).EnsureAsync(
+                layer, state.LastGoodDriver, RememberDriver, check => SaveCheckOutput(ctx, check), progress, ct).ConfigureAwait(false);
 
             progress.Report("Uploading the eye geometry…");
             var upload = await deps.Geometry.UploadAsync(pimax, variant, ct).ConfigureAwait(false);
@@ -169,10 +155,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
                 warnings.Add(new SessionWarning("geometry", DifferentHeadset));
             }
 
-            var environment = layerFolder is null
-                ? FixedEnvironment
-                : [.. FixedEnvironment, new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", layer.ManifestDir)];
-            return new DreamAirSession(ctx, environment, wasRunning, upload, () => SnapshotCalibrations(deps.Calibration), warnings);
+            return new DreamAirSession(ctx, FixedEnvironment, wasRunning, upload, () => SnapshotCalibrations(deps.Calibration), warnings);
         }
         catch
         {
@@ -225,7 +208,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         LayerFiles layer;
         try
         {
-            layer = DreamAirLayer.Locate(LayerFolder(profile), deps.BundledLayerDir);
+            layer = DirectModeLayer.Locate(LayerFolder(profile), deps.BundledLayerDir);
         }
         catch (MiradorException e)
         {
@@ -276,13 +259,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
 
         if (check.Pass && Safe(NvidiaDriverNow) is { } driver)
         {
-            try
-            {
-                deps.State.Update(s => s with { LastGoodDriver = driver });
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-            }
+            RememberDriver(driver);
         }
 
         return (check, startProblem);
@@ -389,11 +366,20 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
     /// <summary>Where the last display check's output is kept, for the diagnostics.</summary>
     public static string DisplayCheckFile(AppPaths paths) => Path.Combine(paths.LogsDir, "display-check.txt");
 
-    /// <summary>The profile's layer folder; null for the layer that comes with Mirador.</summary>
-    public static string? LayerFolder(Profile profile) =>
-        profile.ModuleOptions.GetValueOrDefault(DreamAirLayer.OptionKey) is { } folder && !string.IsNullOrWhiteSpace(folder)
-            ? folder
-            : null;
+    /// <summary>The profile's layer folder; null for the layer that comes with Mirador (<see cref="DirectModeLayer.FolderOf"/>).</summary>
+    public static string? LayerFolder(Profile profile) => DirectModeLayer.FolderOf(profile);
+
+    /// <summary>Keeps the driver direct mode last passed with; a failure to save only costs a display check next time.</summary>
+    private void RememberDriver(string? driver)
+    {
+        try
+        {
+            deps.State.Update(s => s with { LastGoodDriver = driver });
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
 
     private DreamAirChecks Checks(ModuleContext ctx) =>
         new(deps.Registry, ctx.Usb, File.Exists, deps.NvidiaWindowsVersion, deps.SteamVrDir);
@@ -404,7 +390,7 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
         var folder = LayerFolder(profile);
         try
         {
-            DreamAirLayer.Locate(folder, deps.BundledLayerDir);
+            DirectModeLayer.Locate(folder, deps.BundledLayerDir);
             return new CheckResult(Label, StatusLevel.Ok, folder is null ? "Comes with Mirador" : $"From {folder}");
         }
         catch (MiradorException e)
@@ -470,10 +456,6 @@ public sealed class DreamAirModule(DreamAirDeps deps) : IHeadsetModule
     }
 
     /// <summary><paramref name="s"/> ending in a full stop, so that two of them read as two sentences.</summary>
-    private static string Sentence(string s) => s.EndsWith('.') || s.EndsWith('!') || s.EndsWith('?') ? s : s + ".";
-
-    private static string Capitalized(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
-
     private static T? Safe<T>(Func<T?> read)
     {
         try

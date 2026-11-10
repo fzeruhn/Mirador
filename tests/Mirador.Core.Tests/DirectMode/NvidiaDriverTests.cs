@@ -1,4 +1,5 @@
-namespace Mirador.DreamAir.Tests;
+using Mirador.Core.DirectMode;
+namespace Mirador.Core.Tests.DirectMode;
 
 public class NvidiaDriverTests
 {

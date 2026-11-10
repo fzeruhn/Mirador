@@ -1,7 +1,7 @@
 using System.Text;
 using Mirador.Core.Monado;
 
-namespace Mirador.DreamAir;
+namespace Mirador.Core.DirectMode;
 
 /// <summary>What the layer's display check found.</summary>
 /// <param name="Pass">Whether direct mode works (the check ended with exit code 0).</param>
@@ -15,9 +15,10 @@ public sealed record DisplayCheckResult(bool Pass, string Message, string? WhatT
 }
 
 /// <summary>
-/// Runs <c>dreamair-display-check.exe</c>, which drives the Dream Air's panels through NVIDIA's private interface for
-/// about 20 s without Monado. NVIDIA may move that interface with any driver, so Mirador runs it when the driver
-/// changed. Pimax's software and Monado must not run: the check refuses while they hold the display.
+/// Runs the layer's display check (<c>dreamair-display-check.exe</c>), which drives the headset's panels through
+/// NVIDIA's private direct-mode interface for about 20 s without Monado. NVIDIA may move that interface with any driver,
+/// so Mirador runs it when the driver changed. The headset's own software and Monado must not run: the check refuses
+/// while they hold the display (the headset's module frees it first).
 /// </summary>
 public static class DisplayCheck
 {

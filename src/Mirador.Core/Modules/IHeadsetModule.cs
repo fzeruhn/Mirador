@@ -25,6 +25,12 @@ public interface IHeadsetModule
     /// </summary>
     bool UsesExtraFolder(Profile profile) => false;
 
+    /// <summary>
+    /// Whether this headset's display goes through NVIDIA direct mode (Mirador.md §4.11 item 52): the session then turns
+    /// the direct-mode layer on for Monado, and the display check is offered.
+    /// </summary>
+    bool UsesNvidiaDirectMode => false;
+
     /// <summary>Whether this headset is among the plugged-in <paramref name="devices"/>.</summary>
     bool IsPresent(IReadOnlySet<UsbId> devices);
 

@@ -1,8 +1,9 @@
+using Mirador.Core.DirectMode;
 using Mirador.Core;
 
-namespace Mirador.DreamAir.Tests;
+namespace Mirador.Core.Tests.DirectMode;
 
-public class DreamAirLayerTests
+public class DirectModeLayerTests
 {
     private const string Json = "dreamair_vk_layer.json";
     private const string Dll = "dreamair_vk_layer.dll";
@@ -17,7 +18,7 @@ public class DreamAirLayerTests
         dir.Touch("layer", Dll);
         dir.Touch("check", Check);
 
-        var files = DreamAirLayer.Locate(dir.Path, bundledDir: "unused");
+        var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
 
         Assert.Equal(new LayerFiles(Path.Combine(dir.Path, "layer"), Path.Combine(dir.Path, "check", Check)), files);
     }
@@ -30,7 +31,7 @@ public class DreamAirLayerTests
         dir.Touch(Dll);
         dir.Touch(Check);
 
-        var files = DreamAirLayer.Locate(dir.Path, bundledDir: "unused");
+        var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
 
         Assert.Equal(new LayerFiles(dir.Path, Path.Combine(dir.Path, Check)), files);
     }
@@ -48,7 +49,7 @@ public class DreamAirLayerTests
         dir.Touch("layer", Dll);
         dir.Touch("check", Check);
 
-        Assert.Equal(new LayerFiles(dir.Path, Path.Combine(dir.Path, Check)), DreamAirLayer.Locate(dir.Path, "unused"));
+        Assert.Equal(new LayerFiles(dir.Path, Path.Combine(dir.Path, Check)), DirectModeLayer.Locate(dir.Path, "unused"));
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public class DreamAirLayerTests
         dir.Touch(Dll);
         dir.Touch(Check);
 
-        var files = DreamAirLayer.Locate(dir.Path + Path.DirectorySeparatorChar, "unused");
+        var files = DirectModeLayer.Locate(dir.Path + Path.DirectorySeparatorChar, "unused");
 
         Assert.Equal(dir.Path, files.ManifestDir);
     }
@@ -75,7 +76,7 @@ public class DreamAirLayerTests
         bundled.Touch(Dll);
         bundled.Touch(Check);
 
-        var files = DreamAirLayer.Locate(folder, bundled.Path);
+        var files = DirectModeLayer.Locate(folder, bundled.Path);
 
         Assert.Equal(new LayerFiles(bundled.Path, Path.Combine(bundled.Path, Check)), files);
     }
@@ -93,10 +94,10 @@ public class DreamAirLayerTests
 
         dir.Touch("check", Check);
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(dir.Path, "unused"));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
 
         Assert.Equal(
-            $"The folder {dir.Path} has no {named}, in it or in its layer folder: is it the Dream Air layer's build or release folder? Pick another folder in the profile.",
+            $"The folder {dir.Path} has no {named}, in it or in its layer folder: is it the direct-mode layer's build or release folder? Pick another folder in the profile.",
             e.Message);
     }
 
@@ -105,7 +106,7 @@ public class DreamAirLayerTests
     {
         using var dir = new TempDir();
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(dir.Path, "unused"));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
 
         Assert.Contains($"has no {Json} or {Dll}, in it or in its layer folder", e.Message);
     }
@@ -118,7 +119,7 @@ public class DreamAirLayerTests
         dir.Touch("layer", Dll);
         dir.Touch(Check);
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(dir.Path, "unused"));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
 
         Assert.Contains($"has no {Json} and {Dll} side by side", e.Message);
     }
@@ -130,10 +131,10 @@ public class DreamAirLayerTests
         dir.Touch("layer", Json);
         dir.Touch("layer", Dll);
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(dir.Path, "unused"));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
 
         Assert.Equal(
-            $"The folder {dir.Path} has no {Check}, in it or in its check folder: is it the Dream Air layer's build or release folder? Pick another folder in the profile.",
+            $"The folder {dir.Path} has no {Check}, in it or in its check folder: is it the direct-mode layer's build or release folder? Pick another folder in the profile.",
             e.Message);
     }
 
@@ -143,19 +144,19 @@ public class DreamAirLayerTests
         using var dir = new TempDir();
         var gone = Path.Combine(dir.Path, "gone");
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(gone, "unused"));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(gone, "unused"));
 
         Assert.Equal(
-            $"The Dream Air layer folder {gone} doesn't exist. Pick another folder in the profile, or clear it to use the layer that comes with Mirador.",
+            $"The direct-mode layer folder {gone} doesn't exist. Pick another folder in the profile, or clear it to use the layer that comes with Mirador.",
             e.Message);
     }
 
     [Fact]
     public void A_folder_that_isnt_a_full_path_is_refused()
     {
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate("build", "unused"));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate("build", "unused"));
 
-        Assert.Equal("The Dream Air layer folder \"build\" isn't a full path. Pick the folder again in the profile.", e.Message);
+        Assert.Equal("The direct-mode layer folder \"build\" isn't a full path. Pick the folder again in the profile.", e.Message);
     }
 
     [Fact]
@@ -165,10 +166,10 @@ public class DreamAirLayerTests
         bundled.Touch(Json);
         bundled.Touch(Check);
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(null, bundled.Path));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, bundled.Path));
 
         Assert.Equal(
-            $"The Dream Air layer that comes with Mirador is incomplete: {Dll} is missing from {bundled.Path}. Reinstall Mirador, or pick a layer folder in the profile.",
+            $"The direct-mode layer that comes with Mirador is incomplete: {Dll} is missing from {bundled.Path}. Reinstall Mirador, or pick a layer folder in the profile.",
             e.Message);
     }
 
@@ -179,10 +180,10 @@ public class DreamAirLayerTests
         bundled.Touch(Json);
         bundled.Touch(Dll);
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(null, bundled.Path));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, bundled.Path));
 
         Assert.Equal(
-            $"The Dream Air layer that comes with Mirador is incomplete: {Check} is missing from {bundled.Path}. Reinstall Mirador, or pick a layer folder in the profile.",
+            $"The direct-mode layer that comes with Mirador is incomplete: {Check} is missing from {bundled.Path}. Reinstall Mirador, or pick a layer folder in the profile.",
             e.Message);
     }
 
@@ -192,10 +193,10 @@ public class DreamAirLayerTests
         using var dir = new TempDir();
         var gone = Path.Combine(dir.Path, "layer");
 
-        var e = Assert.Throws<MiradorException>(() => DreamAirLayer.Locate(null, gone));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, gone));
 
         Assert.Equal(
-            $"The Dream Air layer that comes with Mirador is missing ({gone}). Reinstall Mirador, or pick a layer folder in the profile.",
+            $"The direct-mode layer that comes with Mirador is missing ({gone}). Reinstall Mirador, or pick a layer folder in the profile.",
             e.Message);
     }
 }

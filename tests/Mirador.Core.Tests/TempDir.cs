@@ -9,6 +9,15 @@ public sealed class TempDir : IDisposable
 
     public string File(params string[] parts) => System.IO.Path.Combine([Path, .. parts]);
 
+    /// <summary>An empty file at <paramref name="relative"/>, with its folders.</summary>
+    public string Touch(params string[] relative)
+    {
+        var path = File(relative);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+        System.IO.File.WriteAllBytes(path, []);
+        return path;
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(Path, recursive: true); }

@@ -266,9 +266,9 @@
                 </toolkit:SettingsExpander>
 
                 <toolkit:SettingsCard
-                    Description="The Dream Air's direct-mode layer: the one that comes with Mirador, or its build or release folder."
+                    Description="The direct-mode layer: the one that comes with Mirador, or its build folder."
                     Header="Vulkan layer"
-                    Visibility="{x:Bind ViewModel.IsDreamAir, Mode=OneWay}">
+                    Visibility="{x:Bind ViewModel.UsesDirectMode, Mode=OneWay}">
                     <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.LayerSource, Mode=TwoWay}">
                         <ComboBoxItem Content="Comes with Mirador" />
                         <ComboBoxItem Content="A layer folder" />
@@ -278,13 +278,13 @@
                     ContentAlignment="Vertical"
                     Header="Layer folder"
                     HorizontalContentAlignment="Stretch"
-                    Visibility="{x:Bind ShowLayerFolder(ViewModel.IsDreamAir, ViewModel.LayerFromFolder), Mode=OneWay}">
+                    Visibility="{x:Bind ShowLayerFolder(ViewModel.UsesDirectMode, ViewModel.LayerFromFolder), Mode=OneWay}">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBox PlaceholderText="C:\Users\you\Projects\dreamair-vk-layer\build" Text="{x:Bind ViewModel.LayerFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox PlaceholderText="C:\Users\you\Projects\mirador\artifacts\layer-build" Text="{x:Bind ViewModel.LayerFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <Button
                             Grid.Column="1"
                             Click="OnBrowseLayer"

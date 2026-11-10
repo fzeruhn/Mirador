@@ -4,11 +4,11 @@ using Mirador.Core;
 using Mirador.Core.Monado;
 using Mirador.Core.Native;
 
-namespace Mirador.DreamAir;
+namespace Mirador.Core.DirectMode;
 
 /// <summary>
-/// A console program Mirador runs for a moment and talks to through its standard input: Tobii's eye tracking runtime
-/// for the geometry upload, the layer's display check. The seam that lets those be tested without the programs.
+/// A console program Mirador runs for a moment and talks to through its standard input: a headset module's own tools
+/// (an eye tracker's geometry upload), the layer's display check. The seam that lets those be tested without the programs.
 /// </summary>
 public interface IConsoleProcess : IDisposable
 {

@@ -1,8 +1,9 @@
+using Mirador.Core.DirectMode;
 using System.Diagnostics;
 using Mirador.Core;
 using Mirador.Core.Monado;
 
-namespace Mirador.DreamAir.Tests;
+namespace Mirador.Core.Tests.DirectMode;
 
 public class ConsoleProcessTests
 {

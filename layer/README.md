@@ -2,6 +2,10 @@
 
 Run the Pimax Dream Air on Windows with [Monado](https://monado.freedesktop.org/), through a Vulkan layer.
 
+The layer ships inside Mirador (since 2026-11-09): Mirador's installer registers it, and Mirador's Start turns it on for
+a headset that uses NVIDIA direct mode. Until then it was released on its own, with install and start scripts; they are
+gone, and this page says what Mirador does in their place.
+
 Status: version 0.1.0. Developed against one machine (RTX 5070 Ti, NVIDIA driver 621.01). Other drivers and GPUs are
 untried; the check tool below tells you whether yours works.
 
@@ -13,16 +17,15 @@ a set of private NVIDIA driver calls, the ones Pimax and SteamVR use. This proje
 sends Monado's frames to it through those calls. Monado needs no Dream Air display code of its own for this: it uses its
 generic `vk_display` output.
 
-What is in the release:
+What Mirador installs, in `{app}\layer` (`C:\Program Files\Mirador\layer`):
 
 | File | What |
 |---|---|
 | `dreamair_vk_layer.dll`, `dreamair_vk_layer.json` | The layer and its manifest |
 | `dreamair-display-check.exe` | Checks your driver and the headset without Monado |
-| `install.ps1`, `uninstall.ps1` | Register and unregister the layer (administrator) |
-| `start-monado.ps1` | Starts Monado with the layer on (normal user) |
 
-What it does not do: build or ship Monado, stop Pimax, switch your OpenXR runtime, or upload the eye tracker's geometry.
+What the layer itself does not do: build or ship Monado, stop Pimax, switch your OpenXR runtime, or upload the eye
+tracker's geometry. Mirador and its headset module do those.
 It works in Monado and the check tool; it is not loaded by any other program (see "Never set `DREAMAIR_VK_LAYER`
 machine-wide").
 
@@ -36,90 +39,54 @@ machine-wide").
   Finn's `windows` branch of `monado-dreamair`; this project does not ship Monado.
 - **Pimax stopped**: Pimax Play quit (tray icon > Exit) and its service stopped, and SteamVR and OVR Lighthouse Manager
   closed. They hold the display, the headset's board and eye tracker, and the Lighthouse receiver, and only one program
-  can hold them. `start-monado.ps1` checks and names what is still running. Pimax's service, `PiServiceLauncher`, starts
+  can hold them. Mirador's headset module stops Pimax's software for the session and checks the rest. Pimax's service, `PiServiceLauncher`, starts
   again every time Windows starts: after a restart, stop it again from an elevated PowerShell with
   `Stop-Service PiServiceLauncher`.
 - Administrator rights once, for the install. Running Monado needs none.
 
 ## Install
 
-Open an **elevated** PowerShell (right-click > Run as administrator), go to the folder with the release files and run:
+Mirador's installer copies the three files to `{app}\layer` and sets the value `{app}\layer\dreamair_vk_layer.json` = 0
+(`REG_DWORD`) under `HKLM\SOFTWARE\Khronos\Vulkan\ImplicitLayers`, which is how the Vulkan loader finds an implicit
+layer. HKLM is needed because Vulkan ignores per-user layers in elevated programs. An older registration of this layer
+under another path (the standalone release's `C:\Program Files\DreamAir Vulkan Layer\`, a moved folder) is removed, so
+the loader finds one copy only. A profile can name a layer build folder instead; Mirador then adds it to Monado's
+`VK_ADD_IMPLICIT_LAYER_PATH`, and that profile's Monado runs as you.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-(`-ExecutionPolicy Bypass` is there because Windows blocks PowerShell scripts by default; it applies to this one run only.
-Add `-DryRun` to see what the script would do and change nothing.)
-
-It does two things and nothing else:
-
-1. copies `dreamair_vk_layer.dll`, `dreamair_vk_layer.json` and `dreamair-display-check.exe` to
-   `C:\Program Files\DreamAir Vulkan Layer\`;
-2. sets the value `C:\Program Files\DreamAir Vulkan Layer\dreamair_vk_layer.json` = 0 (`REG_DWORD`) under
-   `HKLM\SOFTWARE\Khronos\Vulkan\ImplicitLayers`, which is how the Vulkan loader finds an implicit layer. HKLM is needed
-   because Vulkan ignores per-user layers in elevated programs. An older registration of this layer under another path
-   (an earlier install, a moved folder) is removed there, so the loader finds one copy only.
-
-If you built the layer from source, run `scripts\install.ps1`: it takes the files from `build\layer` and `build\check`.
+To build it from source: `layer\build.ps1 -Configure -Build -Test` in Mirador's repo (Mirador's `tools\build.ps1` does
+it too), into `artifacts\layer-build`.
 
 ## Start
 
-In a **normal, not elevated** PowerShell:
+Mirador's Start, for a headset that uses NVIDIA direct mode, sets the environment Monado needs, in Monado's process only:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start-monado.ps1
-```
+| Variable | Value |
+|---|---|
+| `DREAMAIR_VK_LAYER` | `1` |
+| `DISABLE_RTSS_LAYER` | `1` |
+| `VK_LOADER_LAYERS_ALLOW` | `VK_LAYER_DREAMAIR_nvapi_direct` |
+| `XRT_COMPOSITOR_FORCE_VK_DISPLAY` | `0` |
+| `XRT_COMPOSITOR_USE_PRESENT_WAIT` | `1` |
 
-Then start your OpenXR app. Start Monado first and leave it running: apps connect to the running service. (A service that
-an app starts would not get the variables below.)
-
-The script:
-
-- refuses to run elevated. An elevated Monado service turns unelevated apps away unless
-  `IPC_RELAXED_CONNECTION_SECURITY` is set, which lets any signed-in user's processes reach it; this script never sets
-  that, and keeps it from Monado if your shell has it set;
-- checks that nothing holds the headset (the processes of the Pimax and SteamVR list above), names what it finds and
-  stops; it also stops if Monado is already running (use that one, or quit it first);
-- sets the environment Monado needs, in its own process only:
-
-  | Variable | Value |
-  |---|---|
-  | `DREAMAIR_VK_LAYER` | `1` |
-  | `DISABLE_RTSS_LAYER` | `1` |
-  | `VK_LOADER_LAYERS_ALLOW` | `VK_LAYER_DREAMAIR_nvapi_direct` |
-  | `XRT_COMPOSITOR_FORCE_VK_DISPLAY` | `0` |
-  | `XRT_COMPOSITOR_USE_PRESENT_WAIT` | `1` |
-  | `U_PACING_COMP_MIN_TIME_MS` | `6` |
-  | `U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS` | `8.9` |
-  | `STEAMVR_LH_ENABLE` | `1` |
-
-  and removes, from Monado's environment only, variables your shell may have left set that would change this:
-  `DISABLE_DREAMAIR_VK_LAYER`, `IPC_RELAXED_CONNECTION_SECURITY`, `XRT_COMPOSITOR_FORCE_NVAPI_DIRECT`,
-  `DREAMAIR_VK_LAYER_TEST_NO_EDID`, and `DREAMAIR_VK_LAYER_IGNORE_HOLDERS` (unless you give
-  `-LayerIgnoreHolders`). It names any it removed;
-- finds `monado-service.exe` next to the runtime DLL of the active OpenXR runtime
-  (`HKLM\SOFTWARE\Khronos\OpenXR\1\ActiveRuntime`), unless you give it with `-Service <path>`;
-- runs it in that console. `-Log <file>` sends its output to a file instead. `-DryRun` prints all of this and starts
-  nothing. (`-SkipHolderChecks` and `-LayerIgnoreHolders` switch the holder checks off; they are for testing, not for
-  running beside Pimax.)
+and takes out of what Monado inherits variables your user environment may have left set that would change this:
+`DISABLE_DREAMAIR_VK_LAYER`, `IPC_RELAXED_CONNECTION_SECURITY`, `XRT_COMPOSITOR_FORCE_NVAPI_DIRECT`,
+`DREAMAIR_VK_LAYER_TEST_NO_EDID` and `DREAMAIR_VK_LAYER_IGNORE_HOLDERS`. The headset's module adds its own (for the Dream
+Air: `STEAMVR_LH_ENABLE=1`, `U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS=8.9`, `DREAMAIR_LOG=info`). When the NVIDIA
+driver changed since direct mode last passed, Start runs the display check first.
 
 `VK_LOADER_LAYERS_ALLOW` is there because of SteamVR's tracking driver. Monado loads it for the Lighthouse trackers, and
 it switches off the Vulkan layers of the process it runs in, this one included; Monado would then find no Vulkan
-display. Naming the layer in this variable exempts it. The setting is for Monado only, and it replaces a
-`VK_LOADER_LAYERS_ALLOW` your shell may have set. Other layers, such as RTSS's, stay off in Monado, which does no harm.
+display. Naming the layer in this variable exempts it. Other layers, such as RTSS's, stay off in Monado, which does no
+harm.
 
-**Quit Monado with a key press in its console, not Ctrl+C.** A key press lets it shut down cleanly; Ctrl+C or closing the
-window ends it on the spot.
+The layer writes one line to Monado's log and to `%LOCALAPPDATA%\DreamAirVkLayer\layer.log` for each problem it meets
+and says which it is: a Pimax or SteamVR program holding the display, the board asleep, an NVIDIA driver that moved a
+call. Such a line starts `[dvl] error:` and the step's name; "Troubleshooting" below says what to do about each. It also
+prints a statistics line (presents, flips, missed vblanks) after the first 90 presents of an app session and then every
+2700.
 
-The layer writes one line to Monado's console and to `%LOCALAPPDATA%\DreamAirVkLayer\layer.log` for each problem it
-meets and says which it is: a Pimax or SteamVR program holding the display, the board asleep, an NVIDIA driver that moved
-a call. Such a line starts `[dvl] error:` and the step's name; "Troubleshooting" below says what to do about each. It
-also prints a statistics line (presents, flips, missed vblanks) after the first 90 presents of an app session and then
-every 2700.
-
-If the headset was switched off and on, or unplugged and plugged in again, while Monado ran and it stays black, quit
-Monado (key press) and start it again: the layer sets up the display once per Monado run.
+If the headset was switched off and on, or unplugged and plugged in again, while Monado ran and it stays black, stop
+Monado in Mirador and start it again: the layer sets up the display once per Monado run.
 
 ### If you run RivaTuner Statistics Server (RTSS)
 
@@ -173,8 +140,7 @@ in the left column.
 | `EnableDirectMode:` or `BindDevice:` | Another program holds the display (Pimax, SteamVR, or a second Monado). Stop it and start Monado again; if it persists, restart Windows (and stop `PiServiceLauncher` again) |
 | `D3D11:` | No Direct3D 11 device on the NVIDIA GPU: reinstall or update the NVIDIA driver |
 | `CreateBackBuffers:` or `SetDisplayMode:` | The driver refused the Dream Air's mode. Report it with your driver version |
-| `error: Monado is already running` (`start-monado.ps1`) | Use the Monado that runs, or quit it with a key press in its window first |
-| Monado says "No Vulkan displays found" and the layer printed nothing | The layer was not loaded: is it installed, and was Monado started with `start-monado.ps1`? Run the check tool with `--vulkan` |
+| Monado says "No Vulkan displays found" and the layer printed nothing | The layer was not loaded: is Mirador installed, and does the profile's headset module use direct mode? Run the check tool with `--vulkan` |
 | The headset stays black after it was switched off and on or replugged | Quit Monado (key press) and start it again |
 
 Lines start `[dvl] error:` in Monado's console; `DREAMAIR_VK_LAYER_LOG=warn` keeps the errors and warnings and leaves
@@ -182,8 +148,8 @@ out the information lines.
 
 ## Never set `DREAMAIR_VK_LAYER` machine-wide
 
-The layer is switched on by the environment variable `DREAMAIR_VK_LAYER=1`, and by nothing else. `start-monado.ps1` and
-the check tool set it for their own process. **Do not set it in your user or system environment.** A machine-wide
+The layer is switched on by the environment variable `DREAMAIR_VK_LAYER=1`, and by nothing else. Mirador's Start (for
+Monado's process) and the check tool set it for their own process. **Do not set it in your user or system environment.** A machine-wide
 setting would load the layer into every Vulkan program you run, games and anti-cheat included.
 
 Without the variable the layer's DLL is never loaded and the program sees nothing extra. The only trace is the layer's
@@ -205,15 +171,8 @@ helps for problems in Monado.
 
 ## Uninstall
 
-Quit Monado, open an **elevated** PowerShell and run:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
-```
-
-It removes the registry value (and an older registration of this layer under another path, if there is one), deletes the
-three files from `C:\Program Files\DreamAir Vulkan Layer\` and the folder if it is then empty. `-DryRun` shows what it
-would remove. The layer's per-user log folder `%LOCALAPPDATA%\DreamAirVkLayer` stays; delete it by hand if you like.
+Mirador's uninstaller removes the registry value and `{app}\layer`. The layer's per-user log folder
+`%LOCALAPPDATA%\DreamAirVkLayer` stays; delete it by hand if you like.
 
 ## Legal note
 

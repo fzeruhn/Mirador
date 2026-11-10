@@ -3,6 +3,7 @@ using Microsoft.Win32;
 using Mirador.Core;
 using Mirador.Core.BaseStations;
 using Mirador.Core.Build;
+using Mirador.Core.DirectMode;
 using Mirador.Core.Elevation;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
@@ -112,7 +113,8 @@ public sealed class AppHost : IAsyncDisposable
             {
                 SteamVrChecked = OnSteamVrChecked,
             },
-            ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true)));
+            ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true),
+            BundledLayerDir: Path.Combine(appDir, "layer")));
     }
 
     /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>

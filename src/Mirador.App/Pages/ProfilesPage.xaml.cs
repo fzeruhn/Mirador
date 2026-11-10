@@ -17,8 +17,8 @@ public sealed partial class ProfilesPage : Page
     public ProfilesViewModel ViewModel { get; }
 
     // An instance method: x:Bind calls functions on the page instance.
-    public Visibility ShowLayerFolder(bool isDreamAir, bool fromFolder) =>
-        isDreamAir && fromFolder ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ShowLayerFolder(bool usesDirectMode, bool fromFolder) =>
+        usesDirectMode && fromFolder ? Visibility.Visible : Visibility.Collapsed;
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {

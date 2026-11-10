@@ -1,5 +1,6 @@
 using System.Globalization;
 using Mirador.Core;
+using Mirador.Core.DirectMode;
 using Mirador.Core.Monado;
 using Mirador.Core.Session;
 

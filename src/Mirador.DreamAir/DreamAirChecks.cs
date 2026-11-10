@@ -1,4 +1,5 @@
 using Mirador.Core;
+using Mirador.Core.DirectMode;
 using Mirador.Core.Modules;
 using Mirador.Ipc;
 

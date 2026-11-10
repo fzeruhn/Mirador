@@ -2,10 +2,10 @@ using System.Management;
 using System.Runtime.InteropServices;
 using Mirador.Core;
 
-namespace Mirador.DreamAir;
+namespace Mirador.Core.DirectMode;
 
 /// <summary>
-/// The NVIDIA driver's version. Direct mode on the Dream Air goes through NVIDIA's private interface, whose ids can
+/// The NVIDIA driver's version. Direct mode goes through NVIDIA's private interface, whose ids can
 /// move with any driver, so Mirador checks direct mode again when the driver changes.
 /// </summary>
 public static class NvidiaDriver

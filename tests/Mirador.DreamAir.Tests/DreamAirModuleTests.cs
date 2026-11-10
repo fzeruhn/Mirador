@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using Mirador.Core;
 using Mirador.Core.Lighthouse;
+using Mirador.Core.Monado;
 using Mirador.Core.Modules;
 using Mirador.Core.Profiles;
 using Mirador.Ipc;
@@ -48,13 +49,13 @@ public sealed class DreamAirModuleTests : IDisposable
 
         dir.Touch("SteamVR", "drivers", "lighthouse", "bin", "win64", "driver_lighthouse.dll");
         bundledLayer = Path.Combine(dir.Path, "app", "layer");
-        dir.Touch("app", "layer", DreamAirLayer.ManifestName);
-        dir.Touch("app", "layer", DreamAirLayer.DllName);
-        dir.Touch("app", "layer", DreamAirLayer.CheckExeName);
+        dir.Touch("app", "layer", DirectModeLayer.ManifestName);
+        dir.Touch("app", "layer", DirectModeLayer.DllName);
+        dir.Touch("app", "layer", DirectModeLayer.CheckExeName);
 
         consoles = new FakeConsoleStarter(spec =>
         {
-            if (spec.FileName.EndsWith(DreamAirLayer.CheckExeName, StringComparison.Ordinal))
+            if (spec.FileName.EndsWith(DirectModeLayer.CheckExeName, StringComparison.Ordinal))
             {
                 steps.Add("display check");
                 var display = new FakeConsole(check.Lines);
@@ -90,7 +91,7 @@ public sealed class DreamAirModuleTests : IDisposable
 
     private static Profile DreamAirProfile(string? layerFolder = null) => new(
         "p1", "Dream Air", DreamAirModule.ModuleId, BuildSource.Bundled, [],
-        layerFolder is null ? new Dictionary<string, string>() : new Dictionary<string, string> { [DreamAirLayer.OptionKey] = layerFolder });
+        layerFolder is null ? new Dictionary<string, string>() : new Dictionary<string, string> { [DirectModeLayer.OptionKey] = layerFolder });
 
     private Task<ModuleSession> BeforeStart(Profile? profile = null, CancellationToken ct = default) =>
         Module().BeforeStartAsync(Context, profile ?? DreamAirProfile(), new Progress(steps), Save, ct).WaitAsync(Limit);
@@ -102,21 +103,18 @@ public sealed class DreamAirModuleTests : IDisposable
     }
 
     [Fact]
-    public async Task BeforeStart_stops_pimax_and_returns_the_fixed_environment()
+    public async Task BeforeStart_stops_pimax_and_returns_the_dream_airs_own_environment()
     {
         helper.Replies[HelperCommand.StopPimax] = new HelperReply(true, WasRunning: true);
 
         using var session = (DreamAirSession)await BeforeStart();
 
+        // The layer's variables are the session's (the module uses NVIDIA direct mode); the helper's table has both.
+        Assert.True(Module().UsesNvidiaDirectMode);
         Assert.Equal(
             new EnvVar[]
             {
                 new("STEAMVR_LH_ENABLE", "1"),
-                new("DREAMAIR_VK_LAYER", "1"),
-                new("DISABLE_RTSS_LAYER", "1"),
-                new("VK_LOADER_LAYERS_ALLOW", "VK_LAYER_DREAMAIR_nvapi_direct"),
-                new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
-                new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
                 new("U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS", "8.9"),
                 new("DREAMAIR_LOG", "info"),
             },
@@ -170,17 +168,50 @@ public sealed class DreamAirModuleTests : IDisposable
     }
 
     [Fact]
-    public async Task Layer_folder_adds_the_implicit_layer_path()
+    public async Task A_dream_air_monado_gets_its_eight_variables_as_before_from_the_module_and_the_session()
     {
-        dir.Touch("vk-layer", "build", "layer", DreamAirLayer.ManifestName);
-        dir.Touch("vk-layer", "build", "layer", DreamAirLayer.DllName);
-        dir.Touch("vk-layer", "build", "check", DreamAirLayer.CheckExeName);
+        using var session = (DreamAirSession)await BeforeStart();
+        var profile = DreamAirProfile(null);
+
+        // As the session composes them (SessionController: the layer's first, then the module's).
+        var env = MonadoEnvironment.Build(
+            new Dictionary<string, string> { ["IPC_RELAXED_CONNECTION_SECURITY"] = "1" },
+            new MonadoSettings(),
+            profile,
+            [.. DirectModeLayer.Environment(profile, bundledLayer), .. session.Environment]);
+
+        var expected = new Dictionary<string, string>
+        {
+            ["STEAMVR_LH_ENABLE"] = "1",
+            ["DREAMAIR_VK_LAYER"] = "1",
+            ["DISABLE_RTSS_LAYER"] = "1",
+            ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_DREAMAIR_nvapi_direct",
+            ["XRT_COMPOSITOR_FORCE_VK_DISPLAY"] = "0",
+            ["XRT_COMPOSITOR_USE_PRESENT_WAIT"] = "1",
+            ["U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS"] = "8.9",
+            ["DREAMAIR_LOG"] = "info",
+        };
+        foreach (var (name, value) in expected)
+        {
+            Assert.Equal(value, env[name]);
+        }
+
+        Assert.False(env.ContainsKey("IPC_RELAXED_CONNECTION_SECURITY"));
+        Assert.False(env.ContainsKey("VK_ADD_IMPLICIT_LAYER_PATH"));
+    }
+
+    [Fact]
+    public async Task A_layer_folder_is_checked_but_its_path_is_left_to_the_session()
+    {
+        dir.Touch("vk-layer", "build", "layer", DirectModeLayer.ManifestName);
+        dir.Touch("vk-layer", "build", "layer", DirectModeLayer.DllName);
+        dir.Touch("vk-layer", "build", "check", DirectModeLayer.CheckExeName);
         var build = Path.Combine(dir.Path, "vk-layer", "build");
 
         using var session = (DreamAirSession)await BeforeStart(DreamAirProfile(build));
 
-        Assert.Equal(new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", Path.Combine(build, "layer")), session.Environment[^1]);
-        Assert.Equal(DreamAirModule.FixedEnvironment.Count + 1, session.Environment.Count);
+        Assert.Equal(DreamAirModule.FixedEnvironment, session.Environment);
+        Assert.True(Module().UsesExtraFolder(DreamAirProfile(build)));
     }
 
     [Fact]
@@ -198,11 +229,11 @@ public sealed class DreamAirModuleTests : IDisposable
     [Fact]
     public async Task A_missing_layer_refuses_without_touching_pimax()
     {
-        File.Delete(Path.Combine(bundledLayer, DreamAirLayer.DllName));
+        File.Delete(Path.Combine(bundledLayer, DirectModeLayer.DllName));
 
         var e = await Assert.ThrowsAsync<MiradorException>(() => BeforeStart());
 
-        Assert.StartsWith("The Dream Air layer that comes with Mirador is incomplete", e.Message);
+        Assert.StartsWith("The direct-mode layer that comes with Mirador is incomplete", e.Message);
         Assert.Empty(helper.Sent);
     }
 
