@@ -9,8 +9,8 @@
   #define AppVersion "0.1.0"
 #endif
 #define Bundle "..\artifacts\bundle"
-; Monado and the layer are optional in the bundle (tools\build-bundle.ps1; Mirador.md section 4.11 items 48 and 54):
-; what isn't there is not registered.
+; Monado is optional in the bundle (tools\build-bundle.ps1; Mirador.md section 4.11 items 48 and 54): what isn't there
+; is not registered. The layer is always in a bundle that tools\build-bundle.ps1 made (item 52).
 #define BundleHasMonado FileExists(AddBackslash(SourcePath) + Bundle + "\monado\runtime\openxr_monado.json")
 #define BundleHasLayer FileExists(AddBackslash(SourcePath) + Bundle + "\layer\dreamair_vk_layer.json")
 #define ServiceName "MiradorHelper"

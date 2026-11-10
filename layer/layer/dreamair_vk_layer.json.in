@@ -1,0 +1,35 @@
+{
+    "file_format_version": "1.2.0",
+    "layer": {
+        "name": "VK_LAYER_DREAMAIR_nvapi_direct",
+        "type": "GLOBAL",
+        "library_path": ".\\dreamair_vk_layer.dll",
+        "api_version": "1.4.309",
+        "implementation_version": "1",
+        "description": "Dream Air direct mode through NVAPI as a VK_KHR_display display (version @PROJECT_VERSION@). Enabled by DREAMAIR_VK_LAYER=1.",
+        "functions": {
+            "vkNegotiateLoaderLayerInterfaceVersion": "vkNegotiateLoaderLayerInterfaceVersion"
+        },
+        "instance_extensions": [
+            { "name": "VK_EXT_display_surface_counter", "spec_version": "1" }
+        ],
+        "device_extensions": [
+            {
+                "name": "VK_EXT_display_control",
+                "spec_version": "1",
+                "entrypoints": [
+                    "vkDisplayPowerControlEXT",
+                    "vkRegisterDeviceEventEXT",
+                    "vkRegisterDisplayEventEXT",
+                    "vkGetSwapchainCounterEXT"
+                ]
+            }
+        ],
+        "enable_environment": {
+            "DREAMAIR_VK_LAYER": "1"
+        },
+        "disable_environment": {
+            "DISABLE_DREAMAIR_VK_LAYER": "1"
+        }
+    }
+}

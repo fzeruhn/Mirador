@@ -25,6 +25,11 @@ The stand-in (`standin\`, C) needs Visual Studio's C++ x64 tools; `tools\build.p
 not a failure, when they're missing) into `artifacts\standin\monado-service.exe`, and `standin\build.ps1` builds it
 alone.
 
+The direct-mode Vulkan layer (`layer\`, C++) needs the same tools, CMake and Ninja (Visual Studio's) and vcpkg (its
+`vcpkg.json`); `tools\build.ps1` builds it into `artifacts\layer-build` after the stand-in and, with `-Test`, runs its
+Catch2 tests (skipped with a warning when the C++ tools are missing, except on CI). `layer\build.ps1 -Configure -Build
+-Test` builds it alone.
+
 OpenComposite, which runs OpenVR games on Monado: `tools\get-opencomposite.ps1` downloads the 64-bit build from the
 release of Mirador's fork (github.com/fzeruhn/OpenComposite), checks its pinned SHA-256 and unpacks it to
 `artifacts\opencomposite`. The default pin, v2026.11.06, has no `OpenComposite-windows.zip` asset of its own: take that
@@ -32,9 +37,9 @@ file out of the release's `OpenComposite.zip` and give it as `-Zip <file>`.
 
 The installer: `tools\build-bundle.ps1` puts the install layout in `artifacts\bundle`, then
 `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
-`artifacts\Mirador-<version>-setup.exe` from it. Without arguments the bundle has no Monado, no layer, no OpenComposite
-and no gaze_world, as CI builds it; `-Monado <build> -Layer <layer build> -GazeWorld <dir> -OpenComposite
-artifacts\opencomposite` add them.
+`artifacts\Mirador-<version>-setup.exe` from it. The bundle always has the layer, which it builds from `layer\`; without
+arguments it has no Monado, no OpenComposite and no gaze_world, as CI builds it; `-Monado <build> -GazeWorld <dir>
+-OpenComposite artifacts\opencomposite` add them.
 
 CI (`.github/workflows/`): `build.yml` builds and tests every push and pull request on a Windows runner, leaving out
 tests marked `Category=Hardware` (`tools\build.ps1 -Test -SkipHardware`); `release.yml` turns a `v*` tag into a draft

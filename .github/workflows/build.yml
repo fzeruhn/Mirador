@@ -1,6 +1,7 @@
 name: Build
 
-# Builds and tests Mirador on every push and pull request: the stand-in (MSVC), the app, the helper and the tests.
+# Builds and tests Mirador on every push and pull request: the stand-in and the direct-mode layer (MSVC, the layer's
+# Catch2 tests too), the app, the helper and the tests.
 # Tests that need the headset, Bluetooth or this machine set up skip themselves (their Fact attributes), and those
 # marked Category=Hardware are left out here.
 
@@ -40,6 +41,9 @@ jobs:
             src/Mirador.App/bin/x64/Release/
             src/Mirador.Helper/bin/x64/Release/
             artifacts/standin/monado-service.exe
+            artifacts/layer-build/layer/dreamair_vk_layer.json
+            artifacts/layer-build/layer/dreamair_vk_layer.dll
+            artifacts/layer-build/check/dreamair-display-check.exe
 
       - name: Upload the test results
         if: failure()

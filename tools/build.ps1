@@ -24,6 +24,24 @@ try {
         Write-Warning "The stand-in wasn't built: $_"
     }
 
+    # The direct-mode layer (layer\, into artifacts\layer-build) and, with -Test, its tests. Without Visual Studio's
+    # C++ tools it is skipped as the stand-in is; with them, a failed build or test fails this script. A child
+    # process, so its developer shell stays out of this one.
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    $cppTools = (Test-Path -LiteralPath $vswhere) -and
+        [bool](& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+    if ($cppTools) {
+        $layerArgs = @('-Configure', '-Build') + $(if ($Test) { @('-Test') } else { @() })
+        & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'layer\build.ps1') @layerArgs
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    elseif ($env:CI) {
+        throw "The layer can't be built on CI: Visual Studio's C++ x64 tools are missing."
+    }
+    else {
+        Write-Warning "The layer wasn't built: Visual Studio's C++ x64 tools are missing."
+    }
+
     dotnet build Mirador.slnx -c Release -p:Platform=x64
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

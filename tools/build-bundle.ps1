@@ -1,7 +1,7 @@
 #Requires -Version 7.3
 <#
 .SYNOPSIS
-    Builds Mirador's install bundle (artifacts\bundle): the app, the helper and the stand-in, and, when given, a Monado build, the layer, gaze_world and the fork's OpenComposite release.
+    Builds Mirador's install bundle (artifacts\bundle): the app, the helper, the stand-in and the direct-mode layer, and, when given, a Monado build, gaze_world and the fork's OpenComposite release.
 .DESCRIPTION
     The bundle is the install layout of the plan's Global Constraints, which the installer (installer\Mirador.iss)
     copies to {app}:
@@ -13,14 +13,15 @@
       monado\server\                 the real monado-service.exe and its DLLs
       monado\VERSION.txt             git describe of the Monado source
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
-      layer\                         dreamair_vk_layer.json, .dll, dreamair-display-check.exe
+      layer\                         dreamair_vk_layer.json, .dll, dreamair-display-check.exe (built from layer\)
       tools\                         build-monado.ps1 and vcpkg-commit.txt; gaze_world.exe, openxr_loader.dll when given
       opencomposite\bin\             vrclient_x64.dll and version.txt (empty; Mirador copies them per user)
       opencomposite\                 SOURCE.txt (line 1: version and commit), OpenComposite's licences and notes
 
-    Monado, the layer, gaze_world and OpenComposite are each optional (Mirador.md §4.11 items 48, 54 and 56): CI
-    builds the installer with none of them, so it registers no OpenXR runtime and no layer, and hides "Check my
-    calibration". Finn's local builds can still pass them.
+    Monado, gaze_world and OpenComposite are each optional (Mirador.md §4.11 items 48, 54 and 56): CI builds the
+    installer with none of them, so it registers no OpenXR runtime and hides "Check my calibration". Finn's local
+    builds can still pass them. The layer is part of Mirador (item 52): built here from layer\, as the stand-in is,
+    into artifacts\layer-build, and always in the bundle.
 
     A Monado build that isn't Release or RelWithDebInfo is refused. Debug copies of a DLL (a name ending in "d" next
     to the same name without it, such as SDL2d.dll beside SDL2.dll) are left out.
@@ -31,12 +32,11 @@
 .EXAMPLE
     tools\build-bundle.ps1
 .EXAMPLE
-    tools\build-bundle.ps1 -Monado ..\monado-dreamair\build -Layer ..\dreamair-vk-layer\build -GazeWorld ..\DreamAirWin\tools\gaze_world -OpenComposite artifacts\opencomposite
+    tools\build-bundle.ps1 -Monado ..\monado-dreamair\build -GazeWorld ..\DreamAirWin\tools\gaze_world -OpenComposite artifacts\opencomposite
 #>
 [CmdletBinding()]
 param(
     [string]$Monado,
-    [string]$Layer,
     [string]$GazeWorld,
     [string]$OpenComposite,
     [string]$Out = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\bundle')
@@ -71,7 +71,6 @@ function Resolve-Given([string]$path) {
     if ($path) { (Resolve-Path -LiteralPath $path).Path } else { '' }
 }
 $Monado = Resolve-Given $Monado
-$Layer = Resolve-Given $Layer
 $GazeWorld = Resolve-Given $GazeWorld
 $OpenComposite = Resolve-Given $OpenComposite
 
@@ -100,26 +99,6 @@ if ($Monado) {
     Need (Join-Path $serviceBuild 'monado-service.exe') 'Monado''s service'
 }
 
-# 2. The layer, found as its install.ps1 -Source does.
-$layerFiles = @{}
-if ($Layer) {
-    foreach ($dir in $Layer, (Join-Path $Layer 'layer')) {
-        if ((Test-Path -LiteralPath (Join-Path $dir 'dreamair_vk_layer.json')) -and (Test-Path -LiteralPath (Join-Path $dir 'dreamair_vk_layer.dll'))) {
-            $layerFiles.Manifest = Join-Path $dir 'dreamair_vk_layer.json'
-            $layerFiles.Dll = Join-Path $dir 'dreamair_vk_layer.dll'
-            break
-        }
-    }
-    foreach ($dir in $Layer, (Join-Path $Layer 'check')) {
-        if (Test-Path -LiteralPath (Join-Path $dir 'dreamair-display-check.exe')) {
-            $layerFiles.Check = Join-Path $dir 'dreamair-display-check.exe'
-            break
-        }
-    }
-    if ($layerFiles.Count -ne 3) {
-        throw "The layer folder $Layer has no dreamair_vk_layer.json and .dll (in it or its layer folder) and dreamair-display-check.exe (in it or its check folder)."
-    }
-}
 if ($GazeWorld) {
     Need (Join-Path $GazeWorld 'gaze_world.exe') 'gaze_world.exe'
     Need (Join-Path $GazeWorld 'openxr_loader.dll') 'gaze_world''s openxr_loader.dll'
@@ -153,6 +132,15 @@ $standinOut = Join-Path $repo 'artifacts\standin'
 & (Join-Path $repo 'standin\build.ps1') -Out $standinOut
 $standin = Join-Path $standinOut 'monado-service.exe'
 Need $standin 'The stand-in'
+
+# The direct-mode layer, from layer\ (a child process, so its developer shell stays out of this one).
+$layerBuild = Join-Path $repo 'artifacts\layer-build'
+Invoke-Checked { & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'layer\build.ps1') -Configure -Build -BuildDir $layerBuild } 'Building the layer'
+$layerFiles = (Join-Path $layerBuild 'layer\dreamair_vk_layer.json'), (Join-Path $layerBuild 'layer\dreamair_vk_layer.dll'),
+    (Join-Path $layerBuild 'check\dreamair-display-check.exe')
+foreach ($file in $layerFiles) {
+    Need $file 'The layer''s build'
+}
 
 # 5. The app (with the stand-in copied in by its project) and the helper. Without -GazeWorld the app's project must
 #    not pick up a gaze_world of its own (its GazeWorldDir default), or the check would show.
@@ -201,10 +189,8 @@ if ($Monado) {
 
 # 7. The layer and gaze_world (the app's publish already put gaze_world in tools\ when given; copied again here so
 #    the bundle has it whatever the project does).
-if ($Layer) {
-        $layerOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'layer')
-        Copy-Item -LiteralPath $layerFiles.Manifest, $layerFiles.Dll, $layerFiles.Check -Destination $layerOut.FullName
-}
+$layerOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'layer')
+Copy-Item -LiteralPath $layerFiles -Destination $layerOut.FullName
 if ($GazeWorld) {
     $toolsOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'tools')
     Copy-Item -LiteralPath (Join-Path $GazeWorld 'gaze_world.exe'), (Join-Path $GazeWorld 'openxr_loader.dll') -Destination $toolsOut.FullName
@@ -225,6 +211,6 @@ $standinSize = (Get-Item -LiteralPath $standin).Length
 Write-Host "Bundle: $Out"
 Write-Host "  stand-in $([math]::Round($standinSize / 1KB)) KB"
 Write-Host $(if ($Monado) { "  Monado $version ($buildType)" } else { '  no Monado' })
-Write-Host $(if ($Layer) { '  the layer' } else { '  no layer' })
+Write-Host '  the layer'
 Write-Host $(if ($GazeWorld) { '  gaze_world' } else { '  no gaze_world: "Check my calibration" is hidden' })
 Write-Host $(if ($OpenComposite) { "  $ocFirstLine" } else { '  no OpenComposite' })
