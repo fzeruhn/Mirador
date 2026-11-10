@@ -242,6 +242,7 @@ public sealed class BuildChecks(ICommandRunner runner, string systemDir, TimePro
         }
 
         var failures = new List<string>();
+        var noTests = false;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TestTimeout);
         int code;
@@ -252,6 +253,10 @@ public sealed class BuildChecks(ICommandRunner runner, string systemDir, TimePro
                 line =>
                 {
                     log(line);
+
+                    // ctest exits 0 when the build has no tests at all (a fork without them, BUILD_TESTING off).
+                    noTests |= line.Contains("No tests were found", StringComparison.Ordinal);
+
                     // ctest's summary: "  3 - tests_foo (Failed)".
                     if (line.TrimStart().Length > 0 && char.IsDigit(line.TrimStart()[0]) && line.Contains(" - ", StringComparison.Ordinal)
                         && (line.EndsWith("(Failed)", StringComparison.Ordinal) || line.EndsWith("(Timeout)", StringComparison.Ordinal)
@@ -269,6 +274,11 @@ public sealed class BuildChecks(ICommandRunner runner, string systemDir, TimePro
         catch (MiradorException e)
         {
             return new BuildCheck(name, CheckOutcome.Failed, e.Message);
+        }
+
+        if (code == 0 && noTests)
+        {
+            return new BuildCheck(name, CheckOutcome.Skipped, "This build has no unit tests (ctest found none).");
         }
 
         return code == 0

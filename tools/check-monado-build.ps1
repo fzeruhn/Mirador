@@ -105,7 +105,9 @@ else {
     $code = $LASTEXITCODE
     $output | Write-Host
     $failed = $output | Where-Object { "$_" -match '^\s*\d+ - (.+\((Failed|Timeout|SEGFAULT|Exception)\).*)$' } | ForEach-Object { ("$_" -split ' - ', 2)[1].Trim() }
-    if ($code -eq 0) { Add-Check 'Unit tests' 'Passed' 'ctest passed.' }
+    # ctest exits 0 with no tests at all: for the nightly that is a build nothing tested, so it isn't published.
+    if ($code -eq 0 -and ($output | Where-Object { "$_" -match 'No tests were found' })) { Add-Check 'Unit tests' 'Failed' 'ctest found no tests in this build.' }
+    elseif ($code -eq 0) { Add-Check 'Unit tests' 'Passed' 'ctest passed.' }
     elseif ($failed) { Add-Check 'Unit tests' 'Failed' "Failed: $($failed -join ', ')." }
     else { Add-Check 'Unit tests' 'Failed' "ctest failed (exit code $code)." }
 }

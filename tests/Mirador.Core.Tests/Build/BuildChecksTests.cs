@@ -126,6 +126,21 @@ public class BuildChecksTests
     }
 
     [Fact]
+    public async Task A_build_without_unit_tests_is_not_said_to_pass_them()
+    {
+        // ctest exits 0 when it finds none (a fork without tests, BUILD_TESTING off).
+        using var dir = new TempDir();
+        WriteInstall(dir);
+        WriteCache(dir);
+        runner.Answer = _ => (["Test project C:/build", "No tests were found!!!"], 0);
+
+        var check = (await Run(dir)).Checks.Single(c => c.Name == "Unit tests");
+
+        Assert.Equal(CheckOutcome.Skipped, check.Outcome);
+        Assert.Contains("no unit tests", check.Detail);
+    }
+
+    [Fact]
     public async Task Without_a_build_folder_or_ctest_those_checks_are_skipped_not_failed()
     {
         using var dir = new TempDir();
