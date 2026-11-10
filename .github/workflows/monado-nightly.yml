@@ -21,6 +21,8 @@ on:
     paths:
       - tools/build-monado.ps1
       - tools/check-monado-build.ps1
+      - tools/check-monado-session.ps1
+      - tools/xr-check/**
       - tools/vcpkg-commit.txt
       - .github/workflows/monado-nightly.yml
 
@@ -120,6 +122,17 @@ jobs:
         shell: pwsh
         run: tools\check-monado-build.ps1 -Install "$env:RUNNER_TEMP\monado-install" -Build "$env:RUNNER_TEMP\monado-build"
 
+      # The last check: the build starts and serves an OpenXR session on Windows, headless (no GPU here).
+      - name: xr-check
+        if: steps.upstream.outputs.skip != 'true'
+        shell: pwsh
+        run: tools\build-cmake.ps1 -Source tools\xr-check -BuildDir "$env:RUNNER_TEMP\xr-check-build" -Configure -Build
+
+      - name: A session
+        if: steps.upstream.outputs.skip != 'true'
+        shell: pwsh
+        run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check-build\xr-check.exe"
+
       - name: The zip
         if: steps.upstream.outputs.skip != 'true'
         shell: pwsh
@@ -147,6 +160,7 @@ jobs:
             ${{ runner.temp }}/monado-build/CMakeFiles/CMakeConfigureLog.yaml
             ${{ runner.temp }}/monado-build/Testing/Temporary/
             ${{ runner.temp }}/monado-build/vcpkg-manifest-install.log
+            ${{ runner.temp }}/monado-session/
 
   # Only a scheduled or started night publishes, and only this job may write.
   publish:
