@@ -332,7 +332,11 @@ public sealed class VerifyBuildTests : IDisposable
         Assert.True(report.Ok);
         Assert.Equal(300, report.Frames);
         Assert.Equal("Monado: Simulated HMD", report.System);
+        Assert.Equal(-1, report.Submitted); // an older xr-check didn't say how many rendered
         Assert.Null(XrCheckReport.Parse(["XR-CHECK not json"]));
+
+        var counted = XrCheckReport.Parse(["""XR-CHECK {"api":"d3d11","ok":true,"frames":300,"submitted":297,"runtime":"Monado","system":"Sim","error":""}"""]);
+        Assert.Equal(297, counted!.Submitted);
     }
 
     private sealed class FakeServices : IVerifyServices

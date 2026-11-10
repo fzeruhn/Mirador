@@ -87,7 +87,8 @@ public sealed record VerifyResult(string Key, DateTimeOffset At, IReadOnlyList<V
 }
 
 /// <summary>The result line of <c>xr-check</c> (<c>tools\xr-check</c>): <c>XR-CHECK {json}</c>.</summary>
-public sealed record XrCheckReport(string Api, bool Ok, int Frames, string Runtime, string System, string Error)
+/// <param name="Submitted">How many of the frames rendered a layer; -1 from an older xr-check that didn't say.</param>
+public sealed record XrCheckReport(string Api, bool Ok, int Frames, string Runtime, string System, string Error, int Submitted = -1)
 {
     public const string Prefix = "XR-CHECK ";
 
@@ -373,7 +374,8 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
         }
 
         return report.Ok && code == 0
-            ? new VerifyStep(name, VerifyOutcome.Passed, $"{report.Frames} frames with {report.System} ({report.Runtime}).")
+            ? new VerifyStep(name, VerifyOutcome.Passed,
+                $"{report.Frames} frames{(report.Submitted >= 0 ? $" ({report.Submitted} rendered)" : "")} with {report.System} ({report.Runtime}).")
             : new VerifyStep(name, VerifyOutcome.Failed, $"{report.Error} (after {report.Frames} frames).");
     }
 

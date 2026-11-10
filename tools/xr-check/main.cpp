@@ -8,9 +8,12 @@
 // Makes an instance, a session and one swapchain per view with the graphics API asked for, runs the frames (each image
 // acquired, waited for and released, a projection layer submitted), ends the session, and prints one result line:
 //
-//   XR-CHECK {"api":"d3d11","ok":true,"frames":300,"runtime":"...","system":"...","error":""}
+//   XR-CHECK {"api":"d3d11","ok":true,"frames":300,"submitted":300,"runtime":"...","system":"...","error":""}
 //
-// Exit code 0 when every frame was submitted, 1 when a step failed, 2 for a bad command line, 3 on the timeout.
+// A frame the runtime says not to render, or whose views have no valid pose, ends without a layer; "submitted" counts
+// the frames that rendered one, and fewer than half of them fails the check.
+// Exit code 0 when every frame was ended and enough rendered, 1 when a step failed, 2 for a bad command line, 3 on the
+// timeout.
 // The runtime is the one the OpenXR loader finds (XR_RUNTIME_JSON, else the machine's active runtime).
 
 #include <windows.h>
@@ -42,6 +45,7 @@ struct Result
 	std::string api;
 	bool ok = false;
 	int frames = 0;
+	int submitted = 0; // frames that submitted a projection layer (rendered), of `frames`
 	std::string runtime;
 	std::string system;
 	std::string error;
@@ -74,8 +78,8 @@ json_escape(const std::string &text)
 void
 print(const Result &r)
 {
-	std::printf("XR-CHECK {\"api\":\"%s\",\"ok\":%s,\"frames\":%d,\"runtime\":\"%s\",\"system\":\"%s\",\"error\":\"%s\"}\n",
-	            json_escape(r.api).c_str(), r.ok ? "true" : "false", r.frames, json_escape(r.runtime).c_str(),
+	std::printf("XR-CHECK {\"api\":\"%s\",\"ok\":%s,\"frames\":%d,\"submitted\":%d,\"runtime\":\"%s\",\"system\":\"%s\",\"error\":\"%s\"}\n",
+	            json_escape(r.api).c_str(), r.ok ? "true" : "false", r.frames, r.submitted, json_escape(r.runtime).c_str(),
 	            json_escape(r.system).c_str(), json_escape(r.error).c_str());
 	std::fflush(stdout);
 }
@@ -470,7 +474,15 @@ run(Result &result, bool vulkan, int frames)
 			end.layers = layers;
 			check(xrEndFrame(session, &end), "xrEndFrame");
 			result.frames = frame + 1;
+			result.submitted += static_cast<int>(layer_count);
 			g_frames = frame + 1;
+		}
+
+		// A frame that never rendered (the session never visible, no valid pose) proves nothing about the graphics
+		// path: at least half the frames must have submitted their layer.
+		if (result.submitted * 2 < result.frames) {
+			throw Failure("only " + std::to_string(result.submitted) + " of " + std::to_string(result.frames) +
+			              " frames rendered a layer (the session wasn't visible, or the views had no valid pose)");
 		}
 
 		// Monado moves the session to STOPPING through its frames: keep ending empty frames until it does (5 s at most).
