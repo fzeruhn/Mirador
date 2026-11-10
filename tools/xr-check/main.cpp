@@ -3,7 +3,9 @@
 //
 // xr-check: Mirador's small OpenXR test client (Mirador.md §4.11 item 49, "Verify build for Windows").
 //
-//   xr-check --api d3d11|vulkan [--frames 300] [--timeout 60]
+//   xr-check --api d3d11|vulkan|none [--frames 300] [--timeout 60]
+//
+// --api none only creates an instance (the runtime loads and its service takes the app): no graphics, no session.
 //
 // Makes an instance, a session and one swapchain per view with the graphics API asked for, runs the frames (each image
 // acquired, waited for and released, a projection layer submitted), ends the session, and prints one result line:
@@ -327,6 +329,26 @@ wait_for(XrSessionState state, XrSessionState wanted, const char *what)
 	return state;
 }
 
+// --api none: the runtime loads and its service takes the app (xrCreateInstance), with no graphics API and no session.
+// The nightly's check on CI, whose machines have no GPU for Monado's compositor (Mirador_Plan.md).
+void
+run_instance_only(Result &result)
+{
+	XrInstanceCreateInfo create{XR_TYPE_INSTANCE_CREATE_INFO};
+	strcpy_s(create.applicationInfo.applicationName, "xr-check");
+	create.applicationInfo.applicationVersion = 1;
+	strcpy_s(create.applicationInfo.engineName, "Mirador");
+	create.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
+	check(xrCreateInstance(&create, &g_instance), "xrCreateInstance");
+
+	XrInstanceProperties instance_props{XR_TYPE_INSTANCE_PROPERTIES};
+	check(xrGetInstanceProperties(g_instance, &instance_props), "xrGetInstanceProperties");
+	result.runtime = std::string(instance_props.runtimeName) + " " + std::to_string(XR_VERSION_MAJOR(instance_props.runtimeVersion)) + "." +
+	                 std::to_string(XR_VERSION_MINOR(instance_props.runtimeVersion)) + "." +
+	                 std::to_string(XR_VERSION_PATCH(instance_props.runtimeVersion));
+	result.ok = true;
+}
+
 void
 run(Result &result, bool vulkan, int frames)
 {
@@ -530,7 +552,7 @@ run(Result &result, bool vulkan, int frames)
 int
 usage(const char *why)
 {
-	std::fprintf(stderr, "xr-check: %s\nusage: xr-check --api d3d11|vulkan [--frames N] [--timeout S]\n", why);
+	std::fprintf(stderr, "xr-check: %s\nusage: xr-check --api d3d11|vulkan|none [--frames N] [--timeout S]\n", why);
 	return 2;
 }
 
@@ -558,8 +580,8 @@ main(int argc, char **argv)
 			return usage(("unknown option " + arg).c_str());
 		}
 	}
-	if (api != "d3d11" && api != "vulkan") {
-		return usage("--api must be d3d11 or vulkan");
+	if (api != "d3d11" && api != "vulkan" && api != "none") {
+		return usage("--api must be d3d11, vulkan or none");
 	}
 	if (frames < 1 || frames > 100000 || timeout < 1 || timeout > 3600) {
 		return usage("--frames must be 1 to 100000 and --timeout 1 to 3600");
@@ -586,7 +608,11 @@ main(int argc, char **argv)
 
 	int code = 0;
 	try {
-		run(result, api == "vulkan", frames);
+		if (api == "none") {
+			run_instance_only(result);
+		} else {
+			run(result, api == "vulkan", frames);
+		}
 	} catch (const std::exception &e) {
 		result.ok = false;
 		result.error = e.what();

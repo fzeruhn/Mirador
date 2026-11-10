@@ -1,12 +1,18 @@
 #Requires -Version 7.3
 <#
 .SYNOPSIS
-  Runs an OpenXR session against a Monado build, headless: the last check of the nightly (Mirador.md §4.11 item 55).
+  Starts a Monado build headless and connects an OpenXR app to it: the last check of the nightly (Mirador.md §4.11
+  item 55).
 .DESCRIPTION
   Starts the build's monado-service.exe with its null compositor and simulated headset (XRT_COMPOSITOR_NULL=1,
-  SIMULATED_ENABLE=1: no display, no headset), waits for its pipe, then runs xr-check (tools\xr-check) against it
-  through the build's own runtime manifest, once per graphics API. It shows that the build starts and serves a session
-  on Windows; it is not "Verify build for Windows", which runs on a PC with a GPU.
+  SIMULATED_ENABLE=1: no display, no headset), waits for its pipe, then runs xr-check (tools\xr-check) against it,
+  once per -Api. The default, none, creates an OpenXR instance only: the runtime DLL loads with everything it needs,
+  and the service takes the app over its pipe. That is all a GitHub runner can show: it has no GPU, and Monado's
+  compositor (the null one too) needs a Vulkan device with Windows' sharing extensions, which no software driver tried
+  there gave (lavapipe lacks them; Mesa's Dozen didn't load; Mirador_Plan.md). d3d11 and vulkan run a whole session, as
+  "Verify build for Windows" does on a PC with a GPU.
+  The build must be the OpenXR runtime the loader finds: XR_RUNTIME_JSON is set, but an elevated process's loader
+  ignores it (GitHub's runners are elevated), so there the build is made the machine's active runtime first.
   Exit code 0 when every API asked for passed, 1 otherwise.
 .EXAMPLE
   tools\check-monado-session.ps1 -Install $env:RUNNER_TEMP\monado-install -XrCheck $env:RUNNER_TEMP\xr-check-build\xr-check.exe
@@ -14,7 +20,7 @@
 param(
     [Parameter(Mandatory)][string]$Install,
     [Parameter(Mandatory)][string]$XrCheck,
-    [string[]]$Api = @('d3d11', 'vulkan'),
+    [string[]]$Api = @('none'),
     [int]$Frames = 60,
     [int]$PipeWaitSeconds = 30,
     [string]$LogDir = $(if ($env:RUNNER_TEMP) { Join-Path $env:RUNNER_TEMP 'monado-session' } else { 'monado-session' })
@@ -72,7 +78,8 @@ try {
         $report = if ($line) { $line.Substring(9) | ConvertFrom-Json } else { $null }
         $results[$a] = [ordered]@{
             ok = ($code -eq 0 -and $report -and $report.ok)
-            detail = if ($report -and $report.ok) { "$($report.frames) frames, $($report.submitted) rendered, with $($report.system)" }
+            detail = if ($report -and $report.ok -and $a -eq 'none') { "an instance of $($report.runtime), through the service's pipe" }
+                     elseif ($report -and $report.ok) { "$($report.frames) frames, $($report.submitted) rendered, with $($report.system)" }
                      elseif ($report) { "$($report.error) (after $($report.frames) frames)" }
                      else { "xr-check gave no result (exit code $code)" }
         }
@@ -96,4 +103,4 @@ foreach ($name in $results.Keys) {
     Write-Host ("{0}: {1}. {2}" -f $name, $(if ($results[$name].ok) { 'Passed' } else { 'Failed' }), $results[$name].detail)
 }
 if (@($results.Values | Where-Object { -not $_.ok }).Count -gt 0) { exit 1 }
-Write-Host 'Every session passed.'
+Write-Host 'Every check passed.'

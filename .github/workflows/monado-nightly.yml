@@ -164,17 +164,16 @@ jobs:
             ${{ runner.temp }}/monado-build/Testing/Temporary/
             ${{ runner.temp }}/monado-build/vcpkg-manifest-install.log
 
-  # The last check: the zip just built starts and serves an OpenXR session on Windows, headless. The runner has no GPU,
-  # so Mesa's Dozen (Vulkan on Direct3D 12) on Windows' software renderer, WARP, stands in: it has the Win32 sharing
-  # extensions Monado needs (lavapipe doesn't), and D3D11 clients find WARP's adapter. It runs on a machine of its own,
-  # never beside the zip that gets published, and this job can't write anything.
+  # The last check: the zip just built starts headless and an OpenXR app connects to it (tools\check-monado-session.ps1).
+  # GitHub's runners have no GPU, and Monado's compositor needs a Vulkan device with Windows' sharing extensions, so no
+  # session runs here: rendering is checked by "Verify build for Windows" on a PC (Mirador_Plan.md). It tests the zip as
+  # uploaded, on a machine of its own, and can't write anything.
   session:
     needs: build
     if: needs.build.outputs.skip != 'true'
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.build.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
@@ -191,28 +190,11 @@ jobs:
 
       - name: The build, unpacked
         shell: pwsh
-        run: Expand-Archive -LiteralPath "$env:RUNNER_TEMP\monado-zip\$env:TAG.zip" -DestinationPath "$env:RUNNER_TEMP\monado-install"
-
-      - name: A software Vulkan driver
-        shell: pwsh
         run: |
-          $release = gh release view --repo pal1000/mesa-dist-win --json tagName,assets | ConvertFrom-Json
-          $asset = $release.assets | Where-Object { $_.name -like 'mesa3d-*-release-msvc.7z' } | Select-Object -First 1
-          if (-not $asset) { throw "mesa-dist-win $($release.tagName) has no release-msvc archive." }
-          gh release download $release.tagName --repo pal1000/mesa-dist-win --pattern $asset.name --dir "$env:RUNNER_TEMP"
-          $file = Join-Path $env:RUNNER_TEMP $asset.name
-          Write-Host "mesa-dist-win $($release.tagName): $($asset.name), SHA-256 $((Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()) (GitHub's digest: $($asset.digest))"
-          7z x -y -bso0 "-o$env:RUNNER_TEMP\mesa" $file
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Write-Host "Driver manifests: $((Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\mesa\x64" -Filter '*_icd*.json').Name -join ', ')"
-          $icd = Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\mesa\x64" -Filter 'dzn_icd*.json' | Select-Object -First 1
-          if (-not $icd) { throw 'No Dozen driver manifest in the archive.' }
-          New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null
-          New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name $icd.FullName -Value 0 -PropertyType DWord -Force | Out-Null
-          Write-Host "Registered $($icd.FullName)"
-          Write-Host "Beside it: $((Get-ChildItem -LiteralPath $icd.DirectoryName -Filter '*.dll').Name -join ', ')"
-          # Dozen loads dxil.dll (and its other DLLs) by name: Windows looks on PATH, not in the driver's own folder.
-          $icd.DirectoryName >> $env:GITHUB_PATH
+          $zip = "$env:RUNNER_TEMP\monado-zip\$env:TAG.zip"
+          $hash = (Get-Content -LiteralPath "$zip.sha256" -Raw).Trim()
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant() -ne $hash) { throw 'The zip changed on its way.' }
+          Expand-Archive -LiteralPath $zip -DestinationPath "$env:RUNNER_TEMP\monado-install"
 
       # The runner runs elevated, where the OpenXR loader ignores XR_RUNTIME_JSON: the build is made the machine's runtime.
       - name: The build as the OpenXR runtime
@@ -221,11 +203,8 @@ jobs:
           New-Item -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' -Force | Out-Null
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\OpenXR\1' -Name ActiveRuntime -Value "$env:RUNNER_TEMP\monado-install\openxr_monado.json"
 
-      - name: A session
+      - name: Monado starts and takes an app
         shell: pwsh
-        env:
-          DZN_DEBUG: warp # Dozen on WARP, the only D3D12 device here
-          VK_LOADER_DEBUG: all # why a driver isn't loaded
         run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe"
 
       - name: The session's logs
