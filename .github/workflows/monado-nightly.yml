@@ -222,6 +222,7 @@ jobs:
         shell: pwsh
         env:
           DZN_DEBUG: warp # Dozen on WARP, the only D3D12 device here
+          VK_LOADER_DEBUG: error,warn,driver # why a driver isn't loaded
         run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe"
 
       - name: The session's logs
