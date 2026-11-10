@@ -1,6 +1,6 @@
 name: Monado weekly
 
-# Mirador's Monado (Mirador.md §4.11 item 55): upstream main, built once a week (Finn, 2026-11-10; it was nightly) with
+# Mirador's Monado (Mirador.md §4.11 item 55): upstream main, built once a week (it was nightly) with
 # Mirador's recipe (tools\build-monado.ps1) and checked (tools\check-monado-build.ps1, then a headless start on a machine
 # of its own: tools\check-monado-session.ps1), published as a prerelease monado-<yyyy.mm.dd>-<short sha> when its checks
 # pass. Skipped when upstream has no new commit since the last published build; a failed week publishes nothing and

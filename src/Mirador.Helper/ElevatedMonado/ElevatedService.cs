@@ -8,7 +8,7 @@ namespace Mirador.Helper.ElevatedMonado;
 /// <summary>
 /// One elevated <c>monado-service</c> the helper started: inside a kill-on-close job, its output pumped to the log
 /// file, ended when the caller process exits, on <see cref="Stop"/>, or when the helper stops. The SteamVR driver hold
-/// is released once Monado's pipe is up or after 60 s. Its Win32 path is verified on the PC in Task 51.
+/// is released once Monado's pipe is up or after 60 s. Its Win32 path runs only on a PC.
 /// </summary>
 internal sealed class ElevatedService : IDisposable
 {

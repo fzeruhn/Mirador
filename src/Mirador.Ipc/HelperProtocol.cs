@@ -59,8 +59,8 @@ public enum HelperCommand
     WaitMonadoElevated,
 
     /// <summary>
-    /// Answers with the folder the helper starts Monado as administrator for: its own install folder, one above its
-    /// program's, where the installed <c>Mirador.exe</c> is (<see cref="HelperReply.Value"/>). Mirador compares its own
+    /// Answers with the folder the helper starts Monado as administrator for: its own install folder, where the
+    /// installed <c>Mirador.exe</c> is beside it (<see cref="HelperReply.Value"/>). Mirador compares its own
     /// path with it through <see cref="InstalledMirador.IsInstalledCopy"/>, the test the helper applies to the caller,
     /// so a copy the helper would refuse runs Monado as the user instead (Mirador.md section 4.10 item 46).
     /// </summary>

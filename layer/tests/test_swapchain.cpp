@@ -450,7 +450,7 @@ TEST_CASE("monado_frame_loop_against_the_fake")
 
 TEST_CASE("driving_the_headset_keeps_monados_timer_resolution_when_its_console_is_hidden")
 {
-    // Design 6.7, Monado's timers (2026-11-02): with Monado's console minimized, Windows 11 ignored its
+    // Design 6.7, Monado's timers: with Monado's console minimized, Windows 11 ignored its
     // timeBeginPeriod(1), its compositor slept to the 15.6 ms tick and missed a third of the refreshes. Once the layer
     // drives the headset (the first swapchain), the process is out of timer-resolution throttling. ctest runs each test
     // case in a process of its own, so this is the layer's doing.
@@ -983,7 +983,7 @@ TEST_CASE("misc_commands_on_our_handles")
 TEST_CASE("a_display_event_wait_leaves_pending_lines_for_later")
 {
     // Monado's vblank thread stamps the vblank when vkWaitForFences returns, so the wait must not write the log's
-    // pending lines (file, console, debugger) on its way out (Task 11 review). They are written later: by the next
+    // pending lines (file, console, debugger) on its way out. They are written later: by the next
     // intercept that is not a wait, or by the display thread before one of its own waits.
     Monado m;
     LogCapture log(m.rig);
@@ -1035,7 +1035,7 @@ TEST_CASE("the_fence_fallback_line_is_written_at_most_once_a_second")
 {
     // With every frame fence left over and unsignalled (the fake GPU holds them), a present waits a frame period on
     // the oldest, then falls back to vkQueueWaitIdle (design 6.5 invariant 2). Monado presents at 90 Hz holding its
-    // queue lock, so that line comes at most once a second (Task 11 review); the warnings' once-per-app-session line
+    // queue lock, so that line comes at most once a second; the warnings' once-per-app-session line
     // stays.
     Monado m;
     LogCapture log(m.rig);

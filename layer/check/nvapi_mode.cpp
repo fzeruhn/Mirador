@@ -337,7 +337,7 @@ ModeResult run_nvapi_check(const NvapiEnv& env, const Options& options, Output& 
                                                    r->stats, config);
     });
     // Closing the console ends the process once the console handler returns: the handler stops the thread first,
-    // waiting up to 100 ms for it to leave NVAPI (Task 12 review). The hook is replaced before the rig can go (it is
+    // waiting up to 100 ms for it to leave NVAPI. The hook is replaced before the rig can go (it is
     // declared after `rig`, so it is destroyed first), and replacing it waits for a run in progress.
     set_interrupt_stop_hook([r] { r->thread.stop_and_join(kCloseStopWaitNs); });
     struct ClearStopHook {

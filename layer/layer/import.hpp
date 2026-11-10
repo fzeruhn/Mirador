@@ -49,7 +49,7 @@ void release_imported(DeviceData& device, ImportedImage& image);
 // display session is not open, the device lacks an import extension, or any import fails (it stops there).
 bool trial_import(DeviceData& device);
 
-// For vkCreateSwapchainKHR on our surface (Task 11). A device that did not exist when its physical device was asked
+// For vkCreateSwapchainKHR on our surface. A device that did not exist when its physical device was asked
 // for displays had no trial import there: it has it now, with one log line (design 6.3; when it fails, the swapchain
 // is refused, one of design 6.10's exceptions). Any other device gets the answer it had. Meant for devices of the
 // physical device that lists the display.

@@ -9,7 +9,7 @@
     copies to {app}:
 
       Mirador.exe and the app        dotnet publish, self-contained, win-x64
-      helper\                        the helper service, self-contained
+      Mirador.Helper.exe             the helper service, beside the app on the same .NET runtime
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
       layer\                         mirador_direct_mode.json, .dll, mirador-display-check.exe (built from layer\)
       tools\                         build-monado.ps1, vcpkg-commit.txt, xr-check.exe
@@ -66,7 +66,18 @@ Need $xrCheck 'xr-check''s build'
 
 # 3. The app (with the stand-in copied in by its project) and the helper.
 Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.App\Mirador.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -o $Out } 'Publishing the app'
-Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.Helper\Mirador.Helper.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -o (Join-Path $Out 'helper') } 'Publishing the helper'
+# The helper shares the app's folder and .NET runtime: published apart, it may only add files or bring the same bytes,
+# so neither program ever runs on a DLL built for the other.
+$helperOut = "$Out.helper"
+if (Test-Path -LiteralPath $helperOut) { Remove-Item -LiteralPath $helperOut -Recurse -Force }
+Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.Helper\Mirador.Helper.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -o $helperOut } 'Publishing the helper'
+$clash = Get-ChildItem -LiteralPath $helperOut -Recurse -File | Where-Object {
+    $app = Join-Path $Out ([IO.Path]::GetRelativePath($helperOut, $_.FullName))
+    (Test-Path -LiteralPath $app) -and (Get-FileHash -LiteralPath $app).Hash -ne (Get-FileHash -LiteralPath $_.FullName).Hash
+}
+if ($clash) { throw "The helper and the app ship different copies of: $(($clash | ForEach-Object Name) -join ', ')." }
+Copy-Item -Path (Join-Path $helperOut '*') -Destination $Out -Recurse -Force
+Remove-Item -LiteralPath $helperOut -Recurse -Force
 Copy-Item -LiteralPath $standin -Destination (New-Item -ItemType Directory -Force -Path (Join-Path $Out 'standin')).FullName -Force
 # The bundled Monado's build recipe and its vcpkg pin, which the app runs to build a profile's branch (Mirador.md §4.11
 # item 49).

@@ -904,7 +904,7 @@ TEST_CASE("display loop: no line is written between a frame's fence being seen a
 
 TEST_CASE("display loop: a refresh time in the future is taken as at most a period from now, said once a second")
 {
-    // A bogus GetPresentStats time (final review, Task 6 minor): the model, the display events and the stats never see
+    // A bogus GetPresentStats time: the model, the display events and the stats never see
     // a refresh more than a period ahead, and a good read is taken as it is again.
     Rig r;
     r.at(kT0 + 10 * kP, [&r] { r.api.qpc_offset_ns = 10'000 * kMs; }); // the reads' refresh time 10 s ahead

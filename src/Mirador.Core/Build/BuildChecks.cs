@@ -20,7 +20,7 @@ public enum CheckOutcome
 public sealed record BuildCheck(string Name, CheckOutcome Outcome, string Detail);
 
 /// <summary>
-/// The checks of one build (Mirador_Plan.md Task 59), kept as <c>checks.json</c> in the install folder by commit. CI's
+/// The checks of one build, kept as <c>checks.json</c> in the install folder by commit. CI's
 /// <c>tools\check-monado-build.ps1</c> writes the same file into the weekly build's zip.
 /// </summary>
 /// <param name="Format">1.</param>

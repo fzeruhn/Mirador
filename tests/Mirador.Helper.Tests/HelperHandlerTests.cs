@@ -55,7 +55,7 @@ public sealed class HelperHandlerTests : IDisposable
         // By default the folder above the helper's own, the folder the elevated start checks the caller against.
         var own = await Handler().HandleAsync(Request(HelperCommand.GetInstallFolder));
         Assert.Equal(HelperHandler.DefaultInstallDir, own.Value);
-        Assert.Equal(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..")), own.Value);
+        Assert.Equal(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory), own.Value); // the app is beside it
     }
 
     [Fact]

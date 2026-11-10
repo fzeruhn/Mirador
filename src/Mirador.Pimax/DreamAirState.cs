@@ -5,7 +5,7 @@ namespace Mirador.Pimax;
 
 /// <summary>What Mirador remembers about the Dream Air between runs, in <c>dreamair.json</c>.</summary>
 /// <param name="LastGoodDriver">The NVIDIA driver (such as <c>621.01</c>) direct mode last worked with; a different one is checked first.</param>
-/// <param name="BlobVariant">The eye geometry variant this headset needs, once known (Task 21).</param>
+/// <param name="BlobVariant">The eye geometry variant this headset needs, once known.</param>
 /// <param name="BlobSource">Where <paramref name="BlobVariant"/> came from: <c>pimax</c> or <c>owner</c>.</param>
 /// <param name="BlobTrackerSerial">The eye tracker the variant belongs to.</param>
 public sealed record DreamAirState(

@@ -12,7 +12,7 @@
 #include "layer/swapchain.hpp"
 
 // Every session put in place (or taken out, with null) gets a presentation state of its own: the display thread of the
-// one before is stopped first, so it never runs on a fake NVAPI a test has destroyed (Task 11).
+// one before is stopped first, so it never runs on a fake NVAPI a test has destroyed.
 extern "C" __declspec(dllexport) void dvl_test_set_display_session(nvdm::DisplaySession* session)
 {
     dvl::reset_presenter_for_tests();

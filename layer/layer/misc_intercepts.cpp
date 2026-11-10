@@ -80,7 +80,7 @@ bool creates_for_our_swapchain(const VkDeviceImageMemoryRequirements* info)
 
 void refuse_image(const char* command)
 {
-    // One of design 6.10's exceptions (Task 8): the images of the layer's swapchain are the imported back-buffers.
+    // One of design 6.10's exceptions: the images of the layer's swapchain are the imported back-buffers.
     log(Level::Error, "%s: the pNext chain names the layer's swapchain; images of it come from "
                       "vkGetSwapchainImagesKHR only. Refused",
         command);

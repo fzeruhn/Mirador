@@ -197,7 +197,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasOpenCompositeUpdate))]
     public partial string? OpenCompositeUpdateText { get; set; }
 
-    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenComposite (Task 48) and the release has a zip to check.</summary>
+    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenComposite and the release has a zip to check.</summary>
     [ObservableProperty]
     public partial bool CanUpdateOpenComposite { get; set; }
 
@@ -602,7 +602,7 @@ public sealed partial class HomeViewModel : ObservableObject
             }
         }
 
-        // A profile with no Monado yet can't Start, and says why (Mirador_Plan.md Task 60).
+        // A profile with no Monado yet can't Start, and says why.
         if (State == SessionState.Stopped)
         {
             CanStartStop = noMonado is null;

@@ -95,7 +95,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>The build card of a branch profile.</summary>
     public BuildViewModel Build { get; }
 
-    /// <summary>"Verify build for Windows" (Mirador_Plan.md Task 63).</summary>
+    /// <summary>"Verify build for Windows".</summary>
     public VerifyViewModel Verify { get; }
 
     /// <summary>The card of Mirador's Monado: installed, newest, Update, Roll back.</summary>

@@ -45,7 +45,7 @@ public interface IApprovedBuildStore
 }
 
 /// <summary>
-/// Approving a build and checking an approved one (Mirador_Plan.md Task 65). <see cref="Approve"/> runs elevated, in
+/// Approving a build and checking an approved one. <see cref="Approve"/> runs elevated, in
 /// Mirador's <c>--approve-build</c> step after one UAC prompt; the helper only reads and checks (<see cref="Verify"/>)
 /// before every elevated Start and before making the copy the OpenXR runtime.
 /// </summary>

@@ -110,7 +110,7 @@ const char* present_mode_name(VkPresentModeKHR mode)
 // minimized, fully covered or otherwise invisible, and monado-service's only window is its console. Monado's compositor
 // sleeps to its wake-up time on an ordinary waitable timer with timeBeginPeriod(1) (os_precise_sleeper), so with the
 // console hidden every sleep ends on the 15.6 ms system tick: the compositor then runs at about 64 Hz and misses about
-// a third of the refreshes (2026-11-02, Monado's console minimized mid-run). The layer opts the process out of that
+// a third of the refreshes (Monado's console minimized mid-run). The layer opts the process out of that
 // throttling once, when it starts driving the headset. Before Windows 11 there is nothing to opt out of: the call fails
 // and that is all.
 void keep_timer_resolution()
@@ -165,7 +165,7 @@ void start_display_thread(Presenter& p, DeviceData& device)
                                                    *fences, pp->stats, config);
     });
     // Ctrl+C or closing Monado's console: the thread leaves NVAPI before the default handler ends the process
-    // (design 6.10, ruling R5), and the newest trace records are written, if tracing.
+    // (design 6.10), and the newest trace records are written, if tracing.
     set_console_stop_hook([pp] {
         pp->thread->stop_and_join(static_cast<int64_t>(kConsoleHookWaitMs) * 1'000'000);
         pp->write_trace(kConsoleHookTraceRecords);
@@ -596,7 +596,7 @@ Presenter::Presenter(nvdm::DisplaySession& s)
                 to_utf8(trace_path).c_str());
         }
     }
-    // Task 6 review: once.
+    // Once.
     if (waiter.high_resolution()) {
         log(Level::Info, "display thread: high-resolution waitable timer; refresh period %lld ns",
             static_cast<long long>(refresh_ns));
@@ -760,7 +760,7 @@ void device_destroyed(DeviceData& device)
         Locked lk(*p);
         if (p->device == &device) {
             // Its frames end (destroyed, no ids completed); back-buffers they held become free, NVAPI states stay. The
-            // model lets go of the pool before its fences are destroyed (Task 5 review).
+            // model lets go of the pool before its fences are destroyed.
             p->model.device_destroyed();
             p->device = nullptr;
             p->changed.notify_all();

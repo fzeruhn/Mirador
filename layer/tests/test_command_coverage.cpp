@@ -146,8 +146,8 @@ TEST_CASE("classification_is_consistent")
 TEST_CASE("commands_a_windows_driver_can_receive_our_handles_in_are_handled")
 {
     // NVIDIA's Windows driver offers VK_NV_acquire_winrt_display, so an application could pass the layer's display:
-    // handled (Task 9). The Linux-only acquire commands are not applicable. Image commands whose pNext can name our
-    // swapchain, and private data, are handled (Task 11); a message that only forwards a handle as a number is not.
+    // handled. The Linux-only acquire commands are not applicable. Image commands whose pNext can name our
+    // swapchain, and private data, are handled; a message that only forwards a handle as a number is not.
     // "Handled" is planned or intercepted: the task that adds an intercept moves the name, and this test stays green.
     for (const char* name :
          {"vkAcquireWinrtDisplayNV", "vkGetWinrtDisplayNV", "vkReleaseDisplayEXT",

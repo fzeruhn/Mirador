@@ -191,7 +191,7 @@ TEST_CASE("fence pool: attach needs a slot from take(), and kNoFence is ignored"
 TEST_CASE("give_back_returns_a_fence_whose_submit_failed")
 {
     // A fence taken for a present whose submit then failed was never submitted: it goes back to the pool, so a slot of
-    // the 16 is not lost (Task 5 review). The caller resets every fence it takes that is not new, so it is fit to use.
+    // the 16 is not lost. The caller resets every fence it takes that is not new, so it is fit to use.
     Signals sig;
     FencePool pool(2, sig.fn());
     const FenceSlot a = must_take(pool);

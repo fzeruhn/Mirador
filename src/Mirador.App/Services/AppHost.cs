@@ -164,13 +164,13 @@ public sealed class AppHost : IAsyncDisposable
 
     public MonadoLocator Locator { get; }
 
-    /// <summary>The branch builds (Mirador_Plan.md Task 61).</summary>
+    /// <summary>The branch builds.</summary>
     public Builds Builds { get; }
 
-    /// <summary>The build tools' check and "Install what's missing" (Mirador_Plan.md Task 58).</summary>
+    /// <summary>The build tools' check and "Install what's missing".</summary>
     public BuildToolsSetup BuildToolsSetup { get; }
 
-    /// <summary>"Verify build for Windows" (Mirador_Plan.md Task 63).</summary>
+    /// <summary>"Verify build for Windows".</summary>
     public VerifyBuild Verify { get; }
 
     /// <summary>Where the helper writes an elevated Monado's output for this user (the session and Verify follow it).</summary>

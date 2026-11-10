@@ -28,9 +28,9 @@ namespace {
 const std::initializer_list<std::string_view> kIntercepted = {
     "vkGetInstanceProcAddr", "vkGetDeviceProcAddr", "vkCreateInstance", "vkDestroyInstance", "vkCreateDevice",
     "vkDestroyDevice",
-    // Task 9: the private queue's mutex (design 6.2).
+    // The private queue's mutex (design 6.2).
     "vkDeviceWaitIdle",
-    // Task 9: the display, plane and mode queries (display_intercepts.cpp). The layer lists its own display first and
+    // The display, plane and mode queries (display_intercepts.cpp). The layer lists its own display first and
     // answers for it; a call on a display, mode or plane that is not its goes down (design 6.3).
     "vkGetPhysicalDeviceDisplayPropertiesKHR", "vkGetPhysicalDeviceDisplayProperties2KHR",
     "vkGetPhysicalDeviceDisplayPlanePropertiesKHR", "vkGetPhysicalDeviceDisplayPlaneProperties2KHR",
@@ -42,7 +42,7 @@ const std::initializer_list<std::string_view> kIntercepted = {
     // VK_NV_acquire_winrt_display, which NVIDIA's Windows driver offers: refused for the layer's display, any other
     // goes down. vkGetWinrtDisplayNV only ever returns the driver's display, so it always goes down.
     "vkAcquireWinrtDisplayNV", "vkGetWinrtDisplayNV",
-    // Task 9: the surface (surface_intercepts.cpp), and every surface query (design 6.4). None fails on the layer's
+    // The surface (surface_intercepts.cpp), and every surface query (design 6.4). None fails on the layer's
     // surface; a surface that is not its goes down (vkGetPhysicalDeviceSurfaceCapabilities2EXT included: the loader
     // emulates it).
     "vkCreateDisplayPlaneSurfaceKHR", "vkDestroySurfaceKHR", "vkGetPhysicalDeviceSurfaceSupportKHR",
@@ -53,16 +53,16 @@ const std::initializer_list<std::string_view> kIntercepted = {
     // VK_EXT_full_screen_exclusive's two queries are surface queries too (present modes with a
     // VkPhysicalDeviceSurfaceInfo2KHR, as ...Formats2KHR has); acquire and release are Task 11's.
     "vkGetPhysicalDeviceSurfacePresentModes2EXT", "vkGetDeviceGroupSurfacePresentModes2EXT",
-    // Task 11: the swapchain (swapchain.cpp), acquire, present and present-wait (present.cpp). A swapchain of the
+    // The swapchain (swapchain.cpp), acquire, present and present-wait (present.cpp). A swapchain of the
     // layer's is never shared presentable (vkGetSwapchainStatusKHR: VK_SUCCESS).
     "vkCreateSwapchainKHR", "vkDestroySwapchainKHR", "vkGetSwapchainImagesKHR", "vkGetSwapchainStatusKHR",
     "vkAcquireNextImageKHR", "vkAcquireNextImage2KHR", "vkQueuePresentKHR", "vkWaitForPresentKHR",
-    // Task 11: VK_EXT_display_control (events.cpp), the layer's own extension, and the fence commands that answer for
+    // VK_EXT_display_control (events.cpp), the layer's own extension, and the fence commands that answer for
     // its display events (vkRegisterDeviceEventEXT and the fence commands take none of our objects: not in the
     // generated list).
     "vkRegisterDisplayEventEXT", "vkDisplayPowerControlEXT", "vkGetSwapchainCounterEXT", "vkRegisterDeviceEventEXT",
     "vkWaitForFences", "vkGetFenceStatus", "vkResetFences", "vkDestroyFence",
-    // Task 11: the rest of design 6.3's list (misc_intercepts.cpp): accepted and answered, or refused with a log line
+    // The rest of design 6.3's list (misc_intercepts.cpp): accepted and answered, or refused with a log line
     // (vkCreateSharedSwapchainsKHR), for the layer's own handles; anything else goes down.
     "vkSetHdrMetadataEXT", "vkCreateSharedSwapchainsKHR", "vkAcquireFullScreenExclusiveModeEXT",
     "vkReleaseFullScreenExclusiveModeEXT", "vkReleaseSwapchainImagesEXT", "vkGetRefreshCycleDurationGOOGLE",

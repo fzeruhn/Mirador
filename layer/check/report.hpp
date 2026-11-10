@@ -72,14 +72,14 @@ inline constexpr double kRefreshHz = 90.0; // The Dream Air's mode, 90.000 Hz: t
 
 // What a run counted. Presents and flips are over the same window of `seconds`.
 struct RunCounts {
-    uint64_t presents = 0;   // Frames presented (NVAPI Presents in the NVAPI mode, vkQueuePresentKHR in --vulkan).
+    uint64_t presents = 0;   // Frames presented (NVAPI Presents).
     uint64_t flips = 0;      // The display's flip counter, as it moved over the window.
     uint64_t failures = 0;   // Presents that failed, frames never confirmed, present-waits that timed out.
     uint64_t link_drops = 0; // Information only: the counter went backwards and recovered.
     double seconds = 0;      // The window, measured.
     double refresh_hz = kRefreshHz; // The rate of the mode that was opened (an untested headset's is its EDID's).
     double requested_seconds = 0;
-    bool have_events = false; // --vulkan: one display event per frame.
+    bool have_events = false; // Display events counted (none in the NVAPI mode).
     uint64_t events_ok = 0;
     uint64_t events_timeout = 0;
 };

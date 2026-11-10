@@ -241,7 +241,7 @@ TEST_CASE("nvapi_mode_gives_a_failing_verdict_instead_of_hanging_when_the_displa
     CHECK(result.counts.presents <= 2); // NVAPI is given one Present while flips are stopped, no more
 }
 
-// --- Closing the console (Task 12 review) ----------------------------------------------------------------------------
+// --- Closing the console ----------------------------------------------------------------------------
 
 TEST_CASE("closing_the_console_runs_the_stop_hook_and_waits_at_most_100_ms")
 {

@@ -126,10 +126,10 @@ public sealed class HelperHandler
     }
 
     /// <summary>
-    /// The helper's install folder, one above its own: where the installed <c>Mirador.exe</c> is, the only caller the
-    /// elevated Monado is started for (<see cref="ElevatedMonado.ElevatedRequestCheck"/>).
+    /// The helper's install folder, its own: the installed <c>Mirador.exe</c> is beside it (they share one .NET runtime),
+    /// the only caller the elevated Monado is started for (<see cref="ElevatedMonado.ElevatedRequestCheck"/>).
     /// </summary>
-    public static string DefaultInstallDir { get; } = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
+    public static string DefaultInstallDir { get; } = Path.TrimEndingDirectorySeparator(Path.GetFullPath(AppContext.BaseDirectory));
 
     /// <summary>
     /// Carries out one request. Any failure comes back as an error reply, never as an exception.

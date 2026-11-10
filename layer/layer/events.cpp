@@ -92,7 +92,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layer_RegisterDisplayEventEXT(VkDevice device, Vk
             p.warnings.on_event_registered(handle_key(made), now);
             p.warnings.check(now);
         }
-        // The display thread watches the next refresh closely while an event waits (Task 6 review).
+        // The display thread watches the next refresh closely while an event waits.
         p.waiter.signal_frame_queued();
         *fence = made;
         return VK_SUCCESS;

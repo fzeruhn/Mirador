@@ -42,9 +42,7 @@ SolidCompression=yes
 MinVersion=10.0.19041
 
 [InstallDelete]
-; What an older version (or the dev install's helper.new) left there goes, so no stale file is loaded.
-Type: filesandordirs; Name: "{app}\helper"
-Type: filesandordirs; Name: "{app}\helper.new"
+; What an older version left there goes, so no stale file is loaded.
 Type: filesandordirs; Name: "{app}\layer"
 Type: filesandordirs; Name: "{app}\standin"
 Type: filesandordirs; Name: "{app}\tools"
@@ -188,7 +186,7 @@ procedure InstallHelper;
 var
   BinPath: String;
 begin
-  BinPath := '"\"' + ExpandConstant('{app}\helper\Mirador.Helper.exe') + '\""';
+  BinPath := '"\"' + ExpandConstant('{app}\Mirador.Helper.exe') + '\""';
   if ServiceExists then
     HelperStep('set up', Sc('config {#ServiceName} binPath= ' + BinPath + ' start= auto DisplayName= "Mirador helper"'))
   else
@@ -262,7 +260,7 @@ begin
       StopHelper;
       if not RegQueryStringValue(HKLM64, MiradorKey, 'PreviousActiveRuntime', Recorded) then
         Recorded := '';
-      if not Exec(ExpandConstant('{app}\helper\Mirador.Helper.exe'), '--restore-runtime', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+      if not Exec(ExpandConstant('{app}\Mirador.Helper.exe'), '--restore-runtime', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         Code := -1;
       { However that went: put back what was recorded, if Mirador's runtime is still the active one. }
       if (Recorded <> '') and RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then

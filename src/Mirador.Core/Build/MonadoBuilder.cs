@@ -14,7 +14,7 @@ namespace Mirador.Core.Build;
 public sealed record BuildOutcome(bool Ok, string Message, string? Commit, BuildCheckResult? Checks, string Log);
 
 /// <summary>
-/// Builds a branch profile's Monado (Mirador.md §4.11 item 49, Mirador_Plan.md Task 61): clones or pulls the branch into
+/// Builds a branch profile's Monado (Mirador.md §4.11 item 49): clones or pulls the branch into
 /// <c>Builds\&lt;profile&gt;\src</c>, builds it in <c>…\build</c> with Mirador's recipe and installs it in
 /// <c>…\install</c>, then runs the checks. The last good install stays until a new build passes; the checks only warn
 /// (a build cancelled during them stays: it built).

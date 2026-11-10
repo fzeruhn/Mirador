@@ -77,7 +77,7 @@ SwapchainCheck check_swapchain_parameters(const VkSwapchainCreateInfoKHR& ci, co
 // A surface of the layer's, made by vkCreateDisplayPlaneSurfaceKHR on our mode. Its handle is its address, and it
 // starts as the loader and drivers lay out a display surface (VkIcdSurfaceDisplay, vk_icd.h), filled from the create
 // info: design 5's first fallback, so that a layer above ours that looks inside a surface handle finds a display
-// surface, not what it would take for another platform's (final review m7).
+// surface, not what it would take for another platform's.
 struct SurfaceRecord {
     VkIcdSurfaceDisplay icd{}; // first: the handle points at it
     VkInstance instance = VK_NULL_HANDLE;

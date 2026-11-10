@@ -4,7 +4,7 @@
 // The layer DLL's entry points: negotiation with the loader, the proc-address functions it hands over, vkCreateInstance
 // and vkDestroyInstance, and DllMain. The other intercepts live in their own files and come in through the lists of
 // intercepts.hpp (device.cpp, display_intercepts.cpp, surface_intercepts.cpp; Tasks 10-11 add theirs); each is also in
-// the intercepted list of handled_commands.cpp (Task 8), and a test checks that the two agree.
+// the intercepted list of handled_commands.cpp, and a test checks that the two agree.
 
 #include <windows.h>
 

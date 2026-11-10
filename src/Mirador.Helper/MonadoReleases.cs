@@ -22,7 +22,7 @@ public interface IMonadoInstaller
 }
 
 /// <summary>
-/// Mirador's Monado in the helper (Mirador.md §4.11 item 55, Mirador_Plan.md Task 62): the weekly builds of upstream
+/// Mirador's Monado in the helper (Mirador.md §4.11 item 55): the weekly builds of upstream
 /// <c>main</c> from Mirador's own releases, installed in <c>{app}\monado\&lt;version&gt;\</c>, which only administrators
 /// can change, so that this Monado may run elevated and be the machine's runtime without any further approval.
 /// The request names only a version. The list, the download address and the SHA-256 all come from GitHub, read here;
@@ -51,11 +51,11 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
     // One install at a time: two would share the download's file names (the launch's and the Profiles page's, say).
     private readonly SemaphoreSlim installing = new(1, 1);
 
-    /// <summary>The installer of a normal install: <c>{app}\monado</c> and <c>{app}\standin</c>, one above the helper.</summary>
+    /// <summary>The installer of a normal install: <c>{app}\monado</c> and <c>{app}\standin</c>, beside the helper.</summary>
     public static MonadoInstaller ForInstall(HttpClient http, IRuntimeRegistry registry, string userAgentVersion) => new(
         http,
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "monado")),
-        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "standin", "monado-service.exe")),
+        Path.Combine(HelperHandler.DefaultInstallDir, "monado"),
+        Path.Combine(HelperHandler.DefaultInstallDir, "standin", "monado-service.exe"),
         registry,
         userAgentVersion);
 
@@ -199,8 +199,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
 
     /// <summary>
     /// Mirador's runtime stays the active one across an update or a roll back, when it was; and so does the bundled
-    /// Monado of an older install (<c>{app}\monado\runtime</c>), whose files that install's update removed
-    /// (Mirador_Plan.md Task 69).
+    /// Monado of an older install (<c>{app}\monado\runtime</c>), whose files that install's update removed.
     /// </summary>
     private void FollowActive(string? from, string to)
     {

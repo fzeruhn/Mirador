@@ -33,7 +33,7 @@ unsigned long long ull(uint64_t value)
     return static_cast<unsigned long long>(value);
 }
 
-// The fence fallback's line is written at most this often (Task 11 review): Monado presents at 90 Hz, holding its queue
+// The fence fallback's line is written at most this often: Monado presents at 90 Hz, holding its queue
 // lock. The warnings' line, once per app session, says it too.
 constexpr int64_t kFallbackLineEveryNs = 1'000'000'000;
 
@@ -56,7 +56,7 @@ void note_fence_fallback(Presenter& p)
 
 // A present that returns an error: its image's acquired frame is released (dropped), as a failed acquire's is, so a
 // later acquire gets the image back. Monado acquires again after a failed present and never presents that image, and
-// an image left acquired would hold its back-buffer for good (final review m2). Takes the lock.
+// an image left acquired would hold its back-buffer for good. Takes the lock.
 void release_acquired(Presenter& p, SwapchainRecord& record, uint32_t index)
 {
     Locked lk(p);
@@ -106,7 +106,7 @@ VkResult acquire_ours(const std::shared_ptr<SwapchainRecord>& record, uint64_t t
             }
             // No free back-buffer: wait for one, but no longer than the bound, after which the model always finds one
             // for an infinite timeout (design 6.6). Past the bound with nothing to take (a removed generation, more
-            // images held than Vulkan allows): wait a refresh period for a change instead of spinning (Task 5 review).
+            // images held than Vulkan allows): wait a refresh period for a change instead of spinning.
             int64_t until = std::min(deadline, p.model.acquire_bound_ns());
             if (until <= now) {
                 until = std::min(deadline, now + p.refresh_ns);
@@ -198,7 +198,7 @@ nvdm::FenceSlot take_frame_fence(Presenter& p, DeviceData& d)
         return nvdm::kNoFence;
     }
     // A slot without a VkFence yet is new (or given back before it had one): make it. Any other has been seen
-    // signalled: reset it before it is submitted again (Task 5 review).
+    // signalled: reset it before it is submitted again.
     VkFence& fence = d.fences[*slot];
     VkResult r = VK_SUCCESS;
     if (fence == VK_NULL_HANDLE) {

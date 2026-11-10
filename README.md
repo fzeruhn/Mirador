@@ -66,7 +66,7 @@ Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`. Uninstalling leaves it ther
 
 The helper service is not part of a plain build. To try it on a development machine, run
 `tools\dev-install-helper.ps1` from an administrator PowerShell (it installs the service `MiradorHelper` from
-`%ProgramFiles%\Mirador\helper\`) and `tools\dev-uninstall-helper.ps1` to take it out again.
+`%ProgramFiles%\Mirador\`, beside the app, as the installer does) and `tools\dev-uninstall-helper.ps1` to take it out again.
 
 ## Dependencies
 

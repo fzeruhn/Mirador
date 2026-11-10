@@ -14,7 +14,7 @@ namespace Mirador.Helper.ElevatedMonado;
 /// SID. It runs only the bundled <c>monado\server\monado-service.exe</c> found from the helper's own install folder,
 /// with the environment the helper builds (<see cref="ElevatedEnvironment"/>), in the caller's session with the
 /// caller's linked (elevated) token, inside a kill-on-close job that also ends when the caller process exits. Its
-/// Win32 path is exercised on the PC in Task 51; the decision logic it leans on is unit-tested.
+/// Win32 path runs only on a PC; the decision logic it leans on is unit-tested.
 /// </summary>
 public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 {

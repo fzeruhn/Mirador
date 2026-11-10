@@ -268,7 +268,7 @@ TEST_CASE("surface_registry_knows_only_its_own")
 
 TEST_CASE("our_surface_handle_reads_as_a_vk_icd_surface_display")
 {
-    // Design 5's first fallback (final review m7): a layer above ours that looks inside a surface handle, as ICD WSI
+    // Design 5's first fallback: a layer above ours that looks inside a surface handle, as ICD WSI
     // code does, finds a display surface (VkIcdSurfaceDisplay of vk_icd.h) with what the application asked for, not a
     // pointer it would take for another platform's surface.
     ChainRig rig;

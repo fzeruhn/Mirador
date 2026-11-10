@@ -37,8 +37,8 @@ public static class ElevatedChoice
             return NotInstalledCopy;
         }
 
-        // Mirador's Monado lives in the admin-only install folder, as the bundled one did (Mirador.md §4.11 item 55); a
-        // branch built here or a build folder is where the user can write (approving one is Task 65).
+        // The bundled Monado lives in the admin-only install folder (Mirador.md §4.11 item 55); a branch built here or
+        // a build folder is where the user can write, until it is approved.
         if (profile.Monado.Kind != SourceKind.Mirador && !(profile.RunAsAdministrator && approvedBuild))
         {
             return profile.RunAsAdministrator ? NotApproved : BuildFolder;

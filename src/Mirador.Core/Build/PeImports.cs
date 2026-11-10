@@ -4,8 +4,8 @@ using System.Text;
 namespace Mirador.Core.Build;
 
 /// <summary>
-/// Reads which DLLs a Windows program or DLL imports, from its PE import table, without loading it (Mirador_Plan.md Task
-/// 59: "every DLL each needs found"). Delay-loaded imports are left out: a missing one fails only when it is used.
+/// Reads which DLLs a Windows program or DLL imports, from its PE import table, without loading it, so that
+/// every DLL each needs is found. Delay-loaded imports are left out: a missing one fails only when it is used.
 /// </summary>
 public static class PeImports
 {

@@ -4,7 +4,8 @@
     Removes the Mirador helper service that tools\dev-install-helper.ps1 installed. Run it as administrator.
 .DESCRIPTION
     Puts back the OpenXR runtime Mirador replaced (the helper's --restore-runtime, which does nothing when Mirador
-    replaced none), stops and deletes the MiradorHelper service, and deletes %ProgramFiles%\Mirador\helper\.
+    replaced none), stops and deletes the MiradorHelper service, and deletes the helper's own files from
+    %ProgramFiles%\Mirador\ (the .NET runtime's files it shares with the app stay).
 #>
 [CmdletBinding()]
 param()
@@ -20,8 +21,7 @@ if (-not $isAdministrator) {
 
 $serviceName = 'MiradorHelper'
 $appDir = Join-Path $env:ProgramFiles 'Mirador'
-$helperDir = Join-Path $appDir 'helper'
-$helperExe = Join-Path $helperDir 'Mirador.Helper.exe'
+$helperExe = Join-Path $appDir 'Mirador.Helper.exe'
 
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($service -and $service.Status -ne 'Stopped') {
@@ -43,15 +43,12 @@ if ($service) {
     }
 }
 
-foreach ($folder in $helperDir, (Join-Path $appDir 'helper.new')) {
-    if (Test-Path -LiteralPath $folder) {
-        Remove-Item -LiteralPath $folder -Recurse -Force
-    }
+if (Test-Path -LiteralPath $appDir) {
+    Get-ChildItem -LiteralPath $appDir -Filter 'Mirador.Helper.*' -File | Remove-Item -Force
 }
-
-# The Mirador folder itself is left alone when anything else (a real install) is in it.
-if ((Test-Path -LiteralPath $appDir) -and -not (Get-ChildItem -LiteralPath $appDir -Force)) {
-    Remove-Item -LiteralPath $appDir
+$staging = Join-Path $appDir 'helper.new'
+if (Test-Path -LiteralPath $staging) {
+    Remove-Item -LiteralPath $staging -Recurse -Force
 }
 
 Write-Host 'The Mirador helper service is removed.'

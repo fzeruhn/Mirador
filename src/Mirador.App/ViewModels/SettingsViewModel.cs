@@ -72,7 +72,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public bool HasMiradorRelease => MiradorReleaseUrl is not null;
 
-    /// <summary>Whether "Update OpenComposite" shows: a newer OpenComposite is out and Mirador can update it (Task 48).</summary>
+    /// <summary>Whether "Update OpenComposite" shows: a newer OpenComposite is out and Mirador can update it.</summary>
     [ObservableProperty]
     public partial bool CanUpdateOpenComposite { get; set; }
 

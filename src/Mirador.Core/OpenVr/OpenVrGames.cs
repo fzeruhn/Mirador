@@ -12,7 +12,7 @@ public sealed record OpenVrView(string Runtime, bool OffersOpenComposite, string
 /// <summary>
 /// Home's "OpenVR runtime" row (Mirador.md §4.6 items 20–22): OpenComposite, Mirador's copy, or whatever the paths file
 /// names. One way, like the OpenXR runtime: "Set OpenComposite" puts the copy first, and nothing in Mirador switches it
-/// back or forth by itself (Finn, 2026-11-06). SteamVR puts itself first again whenever it starts.
+/// back or forth by itself. SteamVR puts itself first again whenever it starts.
 /// </summary>
 public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeCopy copy)
 {

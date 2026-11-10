@@ -214,7 +214,7 @@ void reset_presenter_for_tests();
 // frame model's, written once it is let go (Flush::Now). The waits whose return is a measurement (Monado's vblank
 // thread stamps the refresh when its display-event wait returns; its pacer reads the present-wait's return) take
 // Flush::Later: they leave every pending line to the next intercept that writes them, or to the display thread before
-// one of its waits, so no file, console or debugger write delays their return (Task 11 review).
+// one of its waits, so no file, console or debugger write delays their return.
 class Locked {
 public:
     enum class Flush { Now, Later };

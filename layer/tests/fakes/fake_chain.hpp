@@ -167,7 +167,7 @@ struct FakeDriver {
     VkResult set_loader_data_result = VK_SUCCESS;
     std::function<void()> on_device_wait_idle; // runs inside vkDeviceWaitIdle
 
-    // The import (Task 10). What the format query answers for a format with the back-buffers' handle type (features
+    // The import. What the format query answers for a format with the back-buffers' handle type (features
     // not in the map: IMPORTABLE); the memory types; the image's memoryTypeBits; the handle's memoryTypeBits.
     std::map<VkFormat, VkExternalMemoryFeatureFlags> import_features;
     VkPhysicalDeviceMemoryProperties memory = fake_memory_properties();
@@ -288,7 +288,7 @@ struct FakeDriver {
     std::deque<Dispatchable> queue_objects; // what vkGetDeviceQueue handed out
     std::vector<void*> loader_data_set;     // the objects vkSetDeviceLoaderData was called on
 
-    // --- Fences, submits and the driver's own swapchains (Task 11) ------------------------------------------------
+    // --- Fences, submits and the driver's own swapchains ------------------------------------------------
     // Fences live in `fences` (by handle value) from vkCreateFence to vkDestroyFence. A submit's fence signals at once
     // (the GPU is done), unless hold_fences: then it signals at the next vkQueueWaitIdle or signal_held(). Every call
     // that names a fence is in the call log with the fence's handle.
@@ -1029,7 +1029,7 @@ inline VkResult VKAPI_CALL BindImageMemory(VkDevice, VkImage image, VkDeviceMemo
     return g_driver.scripted("vkBindImageMemory");
 }
 
-// --- Fences, submits, queues (Task 11) ---------------------------------------------------------------------------------
+// --- Fences, submits, queues ---------------------------------------------------------------------------------
 
 inline VkFence driver_fence(size_t n)
 {
@@ -1495,7 +1495,7 @@ inline PFN_vkVoidFunction VKAPI_CALL GetInstanceProcAddr(VkInstance, const char*
 } // namespace fake
 
 // See the file comment. With `running_clock`, the display session's clock (and so the FakeApi's flip counter) runs at
-// the real rate: for tests that run the layer's real display thread (Task 11).
+// the real rate: for tests that run the layer's real display thread.
 class ChainRig {
 public:
     explicit ChainRig(std::vector<FakeGpu> gpus = default_gpus(), bool running_clock = false)

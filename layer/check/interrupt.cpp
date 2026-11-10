@@ -68,8 +68,7 @@ BOOL on_interrupt_event(DWORD event)
     if (event == CTRL_CLOSE_EVENT) {
         // Closing the console: the default handler ends the process once this returns (Windows gives it a few
         // seconds at most). Like Ctrl+C the loops see the flag, but there is no time to wind down: the NVAPI mode's
-        // display thread is stopped here, so it is not killed inside NVAPI (Task 12 review). In --vulkan mode the
-        // layer's own handler does the same for its display thread.
+        // display thread is stopped here, so it is not killed inside NVAPI.
         g_interrupted = true;
         stop_before_exit();
         return FALSE;

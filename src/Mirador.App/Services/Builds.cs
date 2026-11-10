@@ -43,7 +43,7 @@ public sealed class BuildRun
 }
 
 /// <summary>
-/// The branch builds of this Mirador (Mirador_Plan.md Task 61), kept here rather than in the Profiles page so that a
+/// The branch builds of this Mirador, kept here rather than in the Profiles page so that a
 /// build goes on while the owner looks at another page. <see cref="Changed"/> is raised on a background thread.
 /// </summary>
 public sealed class Builds(MonadoBuilder builder)
