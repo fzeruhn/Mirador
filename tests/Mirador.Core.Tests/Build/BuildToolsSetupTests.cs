@@ -8,7 +8,7 @@ namespace Mirador.Core.Tests.Build;
 
 public sealed class BuildToolsSetupTests : IDisposable
 {
-    private const string Pin = "5d4a3dc90c0b3773f3bac81bf41297b54328f471";
+    private const string Pin = "9eec002df1cd109f8f104cd966a763daf9751489";
     private const string VsWhereJsonWithoutSdk = """
         [{"installationPath":"C:\\VS","installationVersion":"17.14.1","displayName":"Visual Studio Professional 2022","isComplete":true,
           "packages":[{"id":"Microsoft.VisualStudio.Component.VC.Tools.x86.x64"}]}]

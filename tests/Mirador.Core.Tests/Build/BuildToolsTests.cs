@@ -10,7 +10,7 @@ public class BuildToolsTests
 {
     private const string VcTools = "Microsoft.VisualStudio.Component.VC.Tools.x86.x64";
     private const string Sdk = "Microsoft.VisualStudio.Component.Windows11SDK.26100";
-    private const string Pin = "5d4a3dc90c0b3773f3bac81bf41297b54328f471";
+    private const string Pin = "9eec002df1cd109f8f104cd966a763daf9751489";
 
     private static VsInstance Vs(string name, string version, params string[] packages) =>
         new(@"C:\VS\" + name, name, Version.Parse(version), true, new HashSet<string>(packages, StringComparer.OrdinalIgnoreCase));
