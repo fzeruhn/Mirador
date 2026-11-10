@@ -8,8 +8,8 @@ public static class ProfileValidation
     /// <summary>
     /// The profile's problems, empty when it can be saved: a name, a Monado build that can be found (a folder build is
     /// checked through <paramref name="locator"/>; a branch's link, ref and CMake options must be ones Mirador builds), extra variables with names that are set, have no <c>=</c> and appear
-    /// once (ignoring case, as Windows does); then whatever <paramref name="moduleProblem"/> finds (the Dream Air's
-    /// layer folder).
+    /// once (ignoring case, as Windows does); then whatever <paramref name="moduleProblem"/> finds (none of Mirador's
+    /// modules has one now).
     /// </summary>
     public static IReadOnlyList<string> Problems(Profile p, MonadoLocator locator, Func<Profile, string?> moduleProblem)
     {

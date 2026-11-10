@@ -34,12 +34,12 @@ public sealed partial class HomePage : Page
         ViewModel.Refresh();
     }
 
-    /// <summary>Windows' graphics settings, where hardware-accelerated GPU scheduling is turned on.</summary>
+    /// <summary>Windows' default graphics settings, where hardware-accelerated GPU scheduling is turned on.</summary>
     private async void OnGraphicsSettings(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (!await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:display-advancedgraphics")))
+            if (!await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:display-advancedgraphics-default")))
             {
                 Services.AppLog.Write("Windows didn't open its graphics settings");
             }

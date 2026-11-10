@@ -23,7 +23,6 @@ public enum StartReason
     Button,
     Tray,
     Game,
-    Check,
 }
 
 /// <summary>How a Start ended.</summary>
