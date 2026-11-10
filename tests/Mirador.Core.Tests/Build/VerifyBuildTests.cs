@@ -312,6 +312,17 @@ public sealed class VerifyBuildTests : IDisposable
     }
 
     [Fact]
+    public void A_rebuild_of_the_same_commit_is_another_key()
+    {
+        File.WriteAllText(dir.File("install", BuildInfo.FileName), """{"commit":"4f5025c0123456789abcdef0123456789abcdef0","builtAt":"2026-11-10T10:00:00Z"}""");
+        var first = VerifyBuild.KeyFor(install);
+        File.WriteAllText(dir.File("install", BuildInfo.FileName), """{"commit":"4f5025c0123456789abcdef0123456789abcdef0","builtAt":"2026-11-10T11:00:00Z"}""");
+
+        Assert.StartsWith("4f5025c0123456789abcdef0123456789abcdef0", first, StringComparison.Ordinal);
+        Assert.NotEqual(first, VerifyBuild.KeyFor(install));
+    }
+
+    [Fact]
     public void Without_a_commit_the_key_is_the_services_hash()
     {
         File.WriteAllText(install.ServiceExe, "service");

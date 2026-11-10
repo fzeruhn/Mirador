@@ -380,15 +380,16 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
     }
 
     /// <summary>
-    /// The key a build's results are kept under: its commit (<c>build-info.json</c>, else <c>checks.json</c> beside the
-    /// runtime manifest), else the SHA-256 of its service.
+    /// The key a build's results are kept under: its commit and when it was built (<c>build-info.json</c>), else its
+    /// commit (<c>checks.json</c> beside the runtime manifest), else the SHA-256 of its service.
     /// </summary>
     public static string KeyFor(MonadoInstall install)
     {
         var dir = Path.GetDirectoryName(install.Manifest) ?? "";
-        if (BuildInfo.Load(dir)?.Commit is { Length: > 0 } commit)
+        if (BuildInfo.Load(dir) is { Commit: { Length: > 0 } commit } info)
         {
-            return commit;
+            // A rebuild of the same commit (other options, other tools) is another build: its own result.
+            return info.BuiltAt is { Length: > 0 } builtAt ? $"{commit}@{builtAt}" : commit;
         }
 
         if (BuildCheckResult.Load(dir)?.Commit is { Length: > 0 } checkedCommit)
