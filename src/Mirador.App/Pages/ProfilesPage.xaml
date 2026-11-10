@@ -170,7 +170,8 @@
                             Content="Browse…" />
                     </Grid>
                 </toolkit:SettingsCard>
-                <toolkit:SettingsExpander
+                <!-- Passed or failed with the date; each step and the run's log are on Diagnostics. -->
+                <toolkit:SettingsCard
                     Description="{x:Bind ViewModel.Verify.Status, Mode=OneWay}"
                     Header="Verify build for Windows"
                     Visibility="{x:Bind ViewModel.Verify.IsVisible, Mode=OneWay}">
@@ -179,18 +180,17 @@
                             Width="20"
                             Height="20"
                             IsActive="{x:Bind ViewModel.Verify.IsBusy, Mode=OneWay}" />
-                        <Button Command="{x:Bind ViewModel.Verify.CancelCommand}" Content="Cancel" />
+                        <Button
+                            Click="OnOpenDiagnostics"
+                            Content="Diagnostics"
+                            Visibility="{x:Bind ViewModel.Verify.PointsToDiagnostics, Mode=OneWay}" />
+                        <Button
+                            Command="{x:Bind ViewModel.Verify.CancelCommand}"
+                            Content="Cancel"
+                            Visibility="{x:Bind ViewModel.Verify.IsBusy, Mode=OneWay}" />
                         <Button Command="{x:Bind ViewModel.Verify.VerifyCommand}" Content="Verify" />
                     </StackPanel>
-                    <toolkit:SettingsExpander.Items>
-                        <toolkit:SettingsCard ContentAlignment="Left">
-                            <TextBlock
-                                IsTextSelectionEnabled="True"
-                                Text="{x:Bind ViewModel.Verify.Details, Mode=OneWay}"
-                                TextWrapping="Wrap" />
-                        </toolkit:SettingsCard>
-                    </toolkit:SettingsExpander.Items>
-                </toolkit:SettingsExpander>
+                </toolkit:SettingsCard>
 
                 <!-- What Mirador does on Windows for the headset: one choice turns all of it on, the layer included. -->
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Windows tools" />

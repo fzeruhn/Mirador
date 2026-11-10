@@ -53,6 +53,21 @@ public class DiagnosticsZipTests
     }
 
     [Fact]
+    public async Task The_newest_verify_runs_log_goes_in_as_verify_log()
+    {
+        await using var h = new Harness();
+        Directory.CreateDirectory(h.Paths.LogsDir);
+        File.WriteAllText(Path.Combine(h.Paths.LogsDir, "verify-run-20261109-212204.log"), "older run\n");
+        File.WriteAllText(Path.Combine(h.Paths.LogsDir, "verify-run-20261109-213000.log"), "newest run\n");
+        File.WriteAllText(Path.Combine(h.Paths.LogsDir, "verify-monado-20261109-213001.log"), "Monado's own log of a run\n");
+
+        var entries = Read(Collect(h, Context(h)));
+
+        Assert.Equal("newest run\n", entries["verify.log"]);
+        Assert.Equal(Path.Combine(h.Paths.LogsDir, "verify-run-20261109-213000.log"), DiagnosticsZip.NewestVerifyLog(h.Paths.LogsDir));
+    }
+
+    [Fact]
     public async Task Without_a_monado_log_it_is_named_as_missing()
     {
         await using var h = new Harness();

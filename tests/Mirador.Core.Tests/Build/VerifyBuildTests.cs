@@ -214,6 +214,31 @@ public sealed class VerifyBuildTests : IDisposable
     }
 
     [Fact]
+    public void The_profiles_card_says_passed_or_failed_and_when()
+    {
+        const string When = "11/9/2026 9:22 PM";
+        var passed = new VerifyResult("k", DateTimeOffset.UnixEpoch, [new VerifyStep("A", VerifyOutcome.Passed, "")]);
+        var skipped = passed with { Steps = [.. passed.Steps, new VerifyStep("B", VerifyOutcome.Skipped, "why")] };
+        var failed = skipped with { Steps = [.. skipped.Steps, new VerifyStep("C", VerifyOutcome.Failed, "what")] };
+
+        Assert.Equal("Passed on 11/9/2026 9:22 PM.", passed.Verdict(When));
+        Assert.Equal("Passed on 11/9/2026 9:22 PM, with 1 check skipped: Diagnostics says why.", skipped.Verdict(When));
+        Assert.Equal("Failed on 11/9/2026 9:22 PM: Diagnostics has what went wrong.", failed.Verdict(When));
+        Assert.False(skipped.HasFailure());
+        Assert.True(failed.HasFailure());
+    }
+
+    [Fact]
+    public void A_result_keeps_where_its_runs_log_is()
+    {
+        var result = new VerifyResult("k", DateTimeOffset.UnixEpoch, [], LogFile: @"C:\logs\verify-20261109-212204.log");
+
+        result.Save(dir.File("verify-p.json"));
+
+        Assert.Equal(@"C:\logs\verify-20261109-212204.log", VerifyResult.Load(dir.File("verify-p.json"))!.LogFile);
+    }
+
+    [Fact]
     public async Task A_game_that_cant_connect_to_an_elevated_monado_means_no_elevation_fix()
     {
         var calls = 0;

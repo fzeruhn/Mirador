@@ -1,23 +1,28 @@
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Mirador.App.Services;
 using Mirador.Core;
 using Mirador.Core.Build;
+using Mirador.Core.Diagnostics;
 using Mirador.Core.Monado;
 using Mirador.Core.Profiles;
 
 namespace Mirador.App.ViewModels;
 
 /// <summary>
-/// The profile's "Verify build for Windows" card (Mirador.md §4.11 item 49): the last result for the profile's build
-/// as it is now (kept by its commit), Verify and Cancel. Its elevation result shows by "Run as administrator" too.
+/// The profile's "Verify build for Windows" card (Mirador.md §4.11 item 49): Verify, then passed or failed with the
+/// date, for the profile's build as it is now (kept by its commit). Each step and the run's log are on Diagnostics,
+/// which a failure points to. Its elevation result shows by "Run as administrator" too.
 /// </summary>
 public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatching.DispatcherQueue ui) : ObservableObject
 {
+    private readonly object logGate = new();
     private Profile? profile;
     private MonadoInstall? install;
     private string? key;
     private CancellationTokenSource? running;
+    private TextLog? log;
 
     /// <summary>A verify run ended (Run as administrator's note may change).</summary>
     public event Action? Changed;
@@ -37,13 +42,13 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
     [NotifyCanExecuteChangedFor(nameof(VerifyCommand))]
     public partial bool Unsaved { get; set; }
 
-    /// <summary>The last result in one line, or that there is none for this build.</summary>
+    /// <summary>Passed or failed and when, or that this build isn't verified yet, or how far a run is.</summary>
     [ObservableProperty]
     public partial string Status { get; set; } = "";
 
-    /// <summary>Each step of the last result, or the running one's lines.</summary>
+    /// <summary>Whether the card offers Diagnostics: a check failed or was skipped, or the run stopped.</summary>
     [ObservableProperty]
-    public partial string Details { get; set; } = "";
+    public partial bool PointsToDiagnostics { get; set; }
 
     /// <summary>What the last result says of the elevation fix, for Run as administrator; null when it didn't check.</summary>
     public string? ElevationNote { get; private set; }
@@ -107,38 +112,55 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
         }
 
         var (target, targetKey, targetProfile) = (install, key, profile);
+        var logFile = Path.Combine(host.Paths.LogsDir, $"{DiagnosticsZip.VerifyLogPrefix}{DateTime.Now:yyyyMMdd-HHmmss}.log");
         IsBusy = true;
         host.Verifying = true;
-        Details = "";
+        PointsToDiagnostics = false;
         Status = "Verifying (about a minute)…";
         running = new CancellationTokenSource();
+        lock (logGate)
+        {
+            log = new TextLog(logFile);
+        }
+
         try
         {
+            Add($"Verify build for Windows: {targetProfile.Name}, {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}");
             host.Session.PlaceStandIn(targetProfile);
             var result = await Task.Run(() => host.Session.RunWhileStoppedAsync(
                 "",
                 (_, ct) => host.Verify.RunAsync(target, targetKey, new VerifyServices(host, targetProfile, Add), Add, ct),
                 running.Token));
-            result.Save(host.VerifyResultFile(targetProfile.Id));
+            (result with { LogFile = logFile }).Save(host.VerifyResultFile(targetProfile.Id));
         }
         catch (OperationCanceledException)
         {
+            Add("Cancelled.");
             Status = "Cancelled: Monado was stopped again.";
             return;
         }
         catch (MiradorException e)
         {
+            Add(e.Message);
             Status = e.Message;
             return;
         }
         catch (Exception e)
         {
             AppLog.Write("Verify failed", e);
-            Status = $"Verify stopped: {e.Message} Mirador's log has the details.";
+            Add($"Verify stopped: {e.Message}");
+            Status = $"Verify stopped: {e.Message} Diagnostics has the details.";
+            PointsToDiagnostics = true;
             return;
         }
         finally
         {
+            lock (logGate)
+            {
+                log?.Dispose();
+                log = null;
+            }
+
             running.Dispose();
             running = null;
             host.Verifying = false;
@@ -157,6 +179,7 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
     private void Refresh()
     {
         ElevationNote = null;
+        PointsToDiagnostics = false;
         if (profile is null)
         {
             return;
@@ -165,25 +188,18 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
         if (install is null)
         {
             Status = "This profile has no Monado yet.";
-            Details = "";
             return;
         }
 
         var result = VerifyResult.Load(host.VerifyResultFile(profile.Id));
         if (result is null || result.Key != key)
         {
-            Status = "Not verified yet for this build. Verify opens sessions with Monado headless (no headset needed), a game's start through the stand-in, and Monado as administrator.";
-            Details = "";
+            Status = "Not verified yet for this build.";
             return;
         }
 
-        Status = $"{result.Summary()} Verified {result.At.ToLocalTime():g}.";
-        Details = string.Join(Environment.NewLine, result.Steps.Select(s => $"{s.Outcome switch
-        {
-            VerifyOutcome.Passed => "Passed",
-            VerifyOutcome.Failed => "Failed",
-            _ => "Skipped",
-        }}: {s.Name}. {s.Detail}"));
+        Status = result.Verdict(result.At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture));
+        PointsToDiagnostics = result.Steps.Any(s => s.Outcome != VerifyOutcome.Passed);
         ElevationNote = result.HasElevationFix switch
         {
             true => "Verify: games running as you connect to this build running as administrator (it has the elevation fix).",
@@ -192,9 +208,20 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
         };
     }
 
+    /// <summary>A line of the run: to Mirador's log and the run's own, which Diagnostics shows.</summary>
     private void Add(string line)
     {
         AppLog.Write("Verify: " + line);
-        ui.TryEnqueue(() => Details = Details.Length == 0 ? line : Details + Environment.NewLine + line);
+        lock (logGate)
+        {
+            try
+            {
+                log?.Write(line);
+            }
+            catch (IOException)
+            {
+                // Mirador's log still has the line.
+            }
+        }
     }
 }

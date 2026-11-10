@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Mirador.App.Services;
 using Mirador.Core;
+using Mirador.Core.Build;
 using Mirador.Core.Diagnostics;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
@@ -73,6 +75,22 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CheckDisplayCommand))]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>Whether a profile has a "Verify build for Windows" result.</summary>
+    [ObservableProperty]
+    public partial bool HasVerify { get; set; }
+
+    /// <summary>The newest Verify result's profile, time and outcome.</summary>
+    [ObservableProperty]
+    public partial string VerifySummary { get; set; } = "";
+
+    /// <summary>Each step of that result, a line each.</summary>
+    [ObservableProperty]
+    public partial string VerifySteps { get; set; } = "";
+
+    /// <summary>The newest Verify run's own log (the Verify tab).</summary>
+    [ObservableProperty]
+    public partial string VerifyLog { get; set; } = "";
 
     public bool HasCheckResult => CheckResult is not null;
 
@@ -258,6 +276,43 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         IsDreamAir = profile?.ModuleId == PimaxModule.ModuleId;
         CanCheckDisplay = IsDreamAir && host.Session.State == SessionState.Stopped;
         Versions = profile is null ? $"Mirador {AppInfo.Version}" : AppInfo.Versions(profile, host.AppDir).TrimEnd();
+        RefreshVerify();
+    }
+
+    /// <summary>
+    /// The newest Verify result of any profile (the run the user most likely came here from, the Profiles page points
+    /// here when one fails), and the newest run's log.
+    /// </summary>
+    private void RefreshVerify()
+    {
+        IReadOnlyList<Profile> profiles;
+        try
+        {
+            profiles = host.Profiles.Load().Profiles;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            profiles = [];
+        }
+
+        var newest = profiles
+            .Select(p => (p.Name, Result: VerifyResult.Load(host.VerifyResultFile(p.Id))))
+            .Where(r => r.Result is not null)
+            .MaxBy(r => r.Result!.At);
+        HasVerify = newest.Result is not null;
+        if (newest.Result is { } result)
+        {
+            VerifySummary = $"{newest.Name}, {result.At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {result.Summary()}";
+            VerifySteps = string.Join(Environment.NewLine, result.Steps.Select(s => $"{s.Outcome switch
+            {
+                VerifyOutcome.Passed => "Passed",
+                VerifyOutcome.Failed => "Failed",
+                _ => "Skipped",
+            }}: {s.Name}. {s.Detail}"));
+        }
+
+        var log = ReadTail(DiagnosticsZip.NewestVerifyLog(host.Paths.LogsDir));
+        VerifyLog = log.Count > 0 ? string.Join(Environment.NewLine, log) : "No Verify run yet. Verify build for Windows is on the Profiles page.";
     }
 
     private void OnSessionChanged() => ui.TryEnqueue(Refresh);

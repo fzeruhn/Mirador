@@ -32,7 +32,8 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
     public void AddMissing(string entryName, string why) => refused.Add($"{entryName}: {why}");
 
     /// <summary>
-    /// Gathers the usual entries: the newest <c>monado.log</c>, <c>mirador.log</c>, <c>profile.json</c> (the selected
+    /// Gathers the usual entries: the newest <c>monado.log</c>, <c>mirador.log</c>, the newest Verify run's
+    /// <c>verify.log</c> when there is one, <c>profile.json</c> (the selected
     /// profile), <c>monado-settings.json</c>, <c>environment.txt</c> (what Mirador set at the last Start, one
     /// <c>NAME=value</c> a line), <c>versions.txt</c>, then the module's.
     /// </summary>
@@ -55,6 +56,11 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
         }
 
         zip.AddFile("mirador.log", paths.AppLogFile);
+        if (NewestVerifyLog(paths.LogsDir) is { } verifyLog)
+        {
+            zip.AddFile("verify.log", verifyLog);
+        }
+
         zip.AddText("profile.json", JsonFile.Text(profile, DiagnosticsJsonContext.Default.Profile));
         zip.AddFile("monado-settings.json", paths.MonadoSettingsFile);
         zip.AddText(
@@ -166,6 +172,15 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
     public static string? NewestMonadoLog(string logsDir) =>
         Directory.Exists(logsDir)
             ? Directory.EnumerateFiles(logsDir, "monado-*.log").OrderBy(Path.GetFileName, StringComparer.Ordinal).LastOrDefault()
+            : null;
+
+    /// <summary>The prefix of a "Verify build for Windows" run's own log, <c>verify-run-yyyyMMdd-HHmmss.log</c>.</summary>
+    public const string VerifyLogPrefix = "verify-run-";
+
+    /// <summary>The newest Verify run's log (not the Monado logs a run leaves, <c>verify-monado-*.log</c>); null when there is none.</summary>
+    public static string? NewestVerifyLog(string logsDir) =>
+        Directory.Exists(logsDir)
+            ? Directory.EnumerateFiles(logsDir, VerifyLogPrefix + "*.log").OrderBy(Path.GetFileName, StringComparer.Ordinal).LastOrDefault()
             : null;
 }
 

@@ -32,6 +32,12 @@ public sealed partial class ProfilesPage : Page
 
     private void OnCheckBuildTools(object sender, RoutedEventArgs e) => App.Current.MainWindow.ShowBuildTools();
 
+    private void OnOpenDiagnostics(object sender, RoutedEventArgs e)
+    {
+        DiagnosticsPage.ShowVerifyNext = true;
+        App.Current.MainWindow.Navigate("Diagnostics");
+    }
+
     private async void OnBrowseMonado(object sender, RoutedEventArgs e)
     {
         if (await Pickers.FolderAsync() is { } folder)

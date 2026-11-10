@@ -23,8 +23,24 @@ public sealed record VerifyStep(string Name, VerifyOutcome Outcome, string Detai
 /// build running as administrator, false when it couldn't although the same game ran with the build as the user; null
 /// when the step didn't run or couldn't tell.
 /// </param>
-public sealed record VerifyResult(string Key, DateTimeOffset At, IReadOnlyList<VerifyStep> Steps, bool? HasElevationFix = null)
+/// <param name="LogFile">The run's own log (every line it wrote), which Diagnostics shows; null for an older result.</param>
+public sealed record VerifyResult(string Key, DateTimeOffset At, IReadOnlyList<VerifyStep> Steps, bool? HasElevationFix = null, string? LogFile = null)
 {
+    /// <summary>Whether a step failed.</summary>
+    public bool HasFailure() => Steps.Any(s => s.Outcome == VerifyOutcome.Failed);
+
+    /// <summary>
+    /// The profile card's line: passed or failed and <paramref name="when"/> (the run's time as the user reads it); the
+    /// details are on Diagnostics, which a failure or a skipped check points to.
+    /// </summary>
+    public string Verdict(string when)
+    {
+        var skipped = Steps.Count(s => s.Outcome == VerifyOutcome.Skipped);
+        return HasFailure() ? $"Failed on {when}: Diagnostics has what went wrong."
+            : skipped > 0 ? $"Passed on {when}, with {skipped} {(skipped == 1 ? "check" : "checks")} skipped: Diagnostics says why."
+            : $"Passed on {when}.";
+    }
+
     /// <summary>One line for the profile.</summary>
     public string Summary()
     {

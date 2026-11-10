@@ -27,6 +27,12 @@ public sealed partial class DiagnosticsPage : Page
         base.OnNavigatedTo(e);
         ViewModel.LogsChanged += OnLogsChanged;
         ViewModel.Attach();
+        if (ShowVerifyNext)
+        {
+            ShowVerifyNext = false;
+            VerifyExpander.IsExpanded = true;
+            LogPicker.SelectedItem = LogPicker.Items[^1];
+        }
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -74,19 +80,26 @@ public sealed partial class DiagnosticsPage : Page
         LogsArea.Height = Math.Max(LogsMinHeight, Math.Floor(left));
     }
 
+    /// <summary>Set before navigating here from a Verify run: the page then opens on its result and log.</summary>
+    public static bool ShowVerifyNext { get; set; }
+
     /// <summary>Shows the log picked above the box, at its end.</summary>
     private void OnLogPicked(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (MonadoBox is null || MiradorBox is null)
+        if (MonadoBox is null || MiradorBox is null || VerifyBox is null)
         {
             // The first item is picked while the page is still being built.
             return;
         }
 
-        var showMonado = sender.Items.IndexOf(sender.SelectedItem) <= 0;
-        MonadoBox.Visibility = showMonado ? Visibility.Visible : Visibility.Collapsed;
-        MiradorBox.Visibility = showMonado ? Visibility.Collapsed : Visibility.Visible;
-        var shown = showMonado ? MonadoBox : MiradorBox;
+        TextBox[] boxes = [MonadoBox, MiradorBox, VerifyBox];
+        var picked = Math.Max(0, sender.Items.IndexOf(sender.SelectedItem));
+        for (var i = 0; i < boxes.Length; i++)
+        {
+            boxes[i].Visibility = i == picked ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        var shown = boxes[picked];
         shown.UpdateLayout();
         if (Find<ScrollViewer>(shown) is { } viewer)
         {
