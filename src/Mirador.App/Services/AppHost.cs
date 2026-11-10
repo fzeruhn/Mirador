@@ -587,20 +587,16 @@ public sealed class AppHost : IAsyncDisposable
             }
 
             // App settings' "Run Monado as administrator" became each profile's own toggle: once, the profiles it
-            // covered get theirs on while the user's consent is on.
-            var app = Settings.Load();
-            if (!app.RunAsAdministratorPerProfile)
+            // covered get theirs on while the user's consent is on. The profiles remember that it was done.
+            var current = Profiles.Load();
+            if (!current.RunAsAdministratorPerProfile)
             {
-                if (ElevatedMonadoAllowed())
+                var (elevated, moved) = Core.Migration.ProfileMigration.MoveConsentOntoProfiles(
+                    current, Settings.Load().RunAsAdministratorPerProfile, ElevatedMonadoAllowed());
+                if (moved)
                 {
-                    var (elevated, moved) = Core.Migration.ProfileMigration.RunAsAdministratorFromConsent(Profiles.Load());
-                    if (moved)
-                    {
-                        Profiles.Save(elevated);
-                    }
+                    Profiles.Save(elevated);
                 }
-
-                Settings.Save(app with { RunAsAdministratorPerProfile = true });
             }
 
             var bundleGone = !File.Exists(Path.Combine(AppDir, "monado", "runtime", "openxr_monado.json"));

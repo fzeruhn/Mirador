@@ -184,7 +184,7 @@ public class ProfileStoreTests
     }
 
     [Fact]
-    public void The_file_holds_only_the_profiles_and_the_selected_id()
+    public void The_file_holds_only_the_profiles_the_selected_id_and_the_run_as_administrator_mark()
     {
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
@@ -192,7 +192,7 @@ public class ProfileStoreTests
         new ProfileStore(path).Save(ProfileSet.Defaults());
 
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.Equal(["profiles", "selectedId"], doc.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["profiles", "selectedId", "runAsAdministratorPerProfile"], doc.RootElement.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact]
@@ -234,6 +234,29 @@ public class ProfileStoreTests
 
         Assert.False(loaded.Profiles[0].Lighthouse);
         Assert.True(loaded.Profiles[1].Lighthouse);
+    }
+
+    [Fact]
+    public void The_run_as_administrator_mark_is_kept_with_the_profiles()
+    {
+        using var dir = new TempDir();
+        var path = dir.File("profiles.json");
+
+        // A file from before the mark reads unmarked, and an entry left out keeps the mark as it was.
+        File.WriteAllText(path, """
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"name":"no id"}],"selectedId":"a"}
+            """);
+        Assert.False(new ProfileStore(path).Load().RunAsAdministratorPerProfile);
+        File.WriteAllText(path, """
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"name":"no id"}],"selectedId":"a","runAsAdministratorPerProfile":true}
+            """);
+        Assert.True(new ProfileStore(path).Load().RunAsAdministratorPerProfile);
+
+        // Saved, and through a delete.
+        var set = ProfileSet.Defaults().Delete("dreamair");
+        Assert.True(set.RunAsAdministratorPerProfile);
+        new ProfileStore(path).Save(set);
+        Assert.True(new ProfileStore(path).Load().RunAsAdministratorPerProfile);
     }
 
     private static void AssertAreTheDefaults(ProfileSet loaded)

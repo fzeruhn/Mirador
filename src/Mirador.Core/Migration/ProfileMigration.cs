@@ -67,6 +67,26 @@ public static class ProfileMigration
     }
 
     /// <summary>
+    /// Moves App settings' old "Run Monado as administrator" onto the profiles' own toggles, once: the set is marked
+    /// (<see cref="ProfileSet.RunAsAdministratorPerProfile"/>), and while the user's consent is on the profiles it
+    /// covered get theirs on (<see cref="RunAsAdministratorFromConsent"/>). Nothing changes for a marked set, or when an
+    /// install from before the mark kept in the profiles (2026-11-09 to 11-10) already moved it: its
+    /// <c>settings.json</c> says so (<see cref="AppSettings.RunAsAdministratorPerProfile"/>), and the set is only marked.
+    /// </summary>
+    /// <param name="movedBefore">What <c>settings.json</c> says.</param>
+    /// <param name="consentOn">Whether the user's consent for Monado as administrator is recorded.</param>
+    public static (ProfileSet Set, bool Changed) MoveConsentOntoProfiles(ProfileSet set, bool movedBefore, bool consentOn)
+    {
+        if (set.RunAsAdministratorPerProfile)
+        {
+            return (set, false);
+        }
+
+        var moved = !movedBefore && consentOn ? RunAsAdministratorFromConsent(set).Set : set;
+        return (moved with { RunAsAdministratorPerProfile = true }, true);
+    }
+
+    /// <summary>
     /// Profiles under a module's former id get its current one (a renamed module, Mirador_Plan.md Task 67), so the
     /// Profiles page shows their headset and saving keeps it.
     /// </summary>

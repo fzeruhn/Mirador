@@ -86,6 +86,51 @@ public class ProfileMigrationTests
         var set = new ProfileSet([Old.Profiles[1]], "dev");
         Assert.Same(set, ProfileMigration.RunAsAdministratorFromConsent(set).Set);
     }
+
+    [Fact]
+    public void The_consent_moves_onto_an_unmarked_set_once_and_marks_it()
+    {
+        var (set, changed) = ProfileMigration.MoveConsentOntoProfiles(Old, movedBefore: false, consentOn: true);
+
+        Assert.True(changed);
+        Assert.True(set.RunAsAdministratorPerProfile);
+        Assert.True(set.Profiles[0].RunAsAdministrator);
+        Assert.False(set.Profiles[1].RunAsAdministrator);
+
+        // Marked: a profile turned off since stays off, whatever settings.json says (or if it was lost).
+        var turnedOff = set.Replace(set.Profiles[0] with { RunAsAdministrator = false });
+        Assert.Same(turnedOff, ProfileMigration.MoveConsentOntoProfiles(turnedOff, movedBefore: false, consentOn: true).Set);
+    }
+
+    [Fact]
+    public void Without_the_consent_an_unmarked_set_is_only_marked()
+    {
+        var (set, changed) = ProfileMigration.MoveConsentOntoProfiles(Old, movedBefore: false, consentOn: false);
+
+        Assert.True(changed);
+        Assert.True(set.RunAsAdministratorPerProfile);
+        Assert.Equal(Old.Profiles, set.Profiles);
+    }
+
+    [Fact]
+    public void A_move_settings_json_already_records_is_not_made_again()
+    {
+        // An install of 2026-11-09 kept the mark in settings.json: the user may have turned a toggle off since.
+        var (set, changed) = ProfileMigration.MoveConsentOntoProfiles(Old, movedBefore: true, consentOn: true);
+
+        Assert.True(changed);
+        Assert.True(set.RunAsAdministratorPerProfile);
+        Assert.Equal(Old.Profiles, set.Profiles);
+    }
+
+    [Fact]
+    public void A_new_set_has_nothing_to_move()
+    {
+        var set = ProfileSet.Defaults();
+
+        Assert.True(set.RunAsAdministratorPerProfile);
+        Assert.False(ProfileMigration.MoveConsentOntoProfiles(set, movedBefore: false, consentOn: true).Changed);
+    }
 }
 
 public class ApprovedBuildChoiceTests

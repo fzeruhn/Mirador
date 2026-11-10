@@ -66,7 +66,7 @@ public sealed class ProfileStore(string path)
             return null;
         }
 
-        return new ProfileSet(profiles, set.SelectedId is not null && ids.Contains(set.SelectedId) ? set.SelectedId : profiles[0].Id);
+        return set with { Profiles = profiles, SelectedId = set.SelectedId is not null && ids.Contains(set.SelectedId) ? set.SelectedId : profiles[0].Id };
     }
 }
 

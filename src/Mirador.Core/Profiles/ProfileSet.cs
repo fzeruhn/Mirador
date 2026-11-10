@@ -6,7 +6,12 @@ namespace Mirador.Core.Profiles;
 /// All profiles and which one is selected. Never changed in place: every method returns a new set.
 /// New profiles go at the end; names are trimmed and must be unique (ignoring case).
 /// </summary>
-public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string SelectedId)
+/// <param name="RunAsAdministratorPerProfile">
+/// Whether App settings' old "Run Monado as administrator" was moved onto these profiles' own toggles (once, 2026-11-09;
+/// <see cref="Migration.ProfileMigration.MoveConsentOntoProfiles"/>). False only in a file from before then; a new set
+/// has nothing to move. Kept with the profiles, so a lost <c>settings.json</c> can't run the move again.
+/// </param>
+public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string SelectedId, bool RunAsAdministratorPerProfile = false)
 {
     /// <summary>The first-run set: Dream Air (selected) and Custom, both on Mirador's Monado.</summary>
     public static ProfileSet Defaults() => new(
@@ -14,7 +19,8 @@ public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string Selected
             new Profile("dreamair", "Dream Air", "dreamair", BuildSource.Mirador, [], new Dictionary<string, string>()),
             new Profile("custom", "Custom", null, BuildSource.Mirador, [], new Dictionary<string, string>()),
         ],
-        "dreamair");
+        "dreamair",
+        RunAsAdministratorPerProfile: true);
 
     [JsonIgnore]
     public Profile Selected => Find(SelectedId);
@@ -62,7 +68,7 @@ public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string Selected
         }
 
         var rest = Profiles.Where(p => p.Id != id).ToList();
-        return new ProfileSet(rest, SelectedId == id ? rest[0].Id : SelectedId);
+        return this with { Profiles = rest, SelectedId = SelectedId == id ? rest[0].Id : SelectedId };
     }
 
     /// <summary>Swaps in <paramref name="p"/> for the profile with the same id, keeping its place in the list.</summary>

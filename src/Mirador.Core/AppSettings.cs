@@ -13,7 +13,9 @@ namespace Mirador.Core;
 /// <param name="BaseStationsState">Where the stations' states shown come from: the last scan, or listening while shown.</param>
 /// <param name="StartMinimized">When Windows starts Mirador at sign-in, start in the notification area (or minimized, when it doesn't close to the tray) instead of showing the window.</param>
 /// <param name="RunAsAdministratorPerProfile">
-/// Whether App settings' old "Run Monado as administrator" was moved onto the profiles' own toggles (once, 2026-11-09).
+/// Whether App settings' old "Run Monado as administrator" was moved onto the profiles' own toggles: written only by the
+/// installs of 2026-11-09 to 11-10, read so their move isn't made again. The mark is the profiles' own now
+/// (<see cref="Profiles.ProfileSet.RunAsAdministratorPerProfile"/>), so a lost <c>settings.json</c> can't make it again.
 /// </param>
 /// <remarks>
 /// A file from before 2026-11-07 may still have <c>baseStationsOff</c> ("Off means: Sleep / Standby"); it is ignored,
