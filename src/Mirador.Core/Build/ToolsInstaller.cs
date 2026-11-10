@@ -1,6 +1,6 @@
-using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text.Json;
+
+using Mirador.Ipc;
 
 namespace Mirador.Core.Build;
 
@@ -22,6 +22,8 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
     /// <summary>The most a tool's zip may unpack to.</summary>
     public const long MaxUnpackedBytes = 1024L * 1024 * 1024;
 
+    private static MiradorException Fail(string message) => new(message);
+
     /// <summary>Where vcpkg comes from.</summary>
     public const string VcpkgUrl = "https://github.com/microsoft/vcpkg.git";
 
@@ -38,11 +40,11 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
         try
         {
             onLine($"Downloading {pin.Name} {pin.Version} from GitHub…");
-            await Downloads.ToFileAsync(http, url, zipFile, MaxDownloadBytes, pin.Sha256, pin.Name, ct).ConfigureAwait(false);
+            await CheckedDownload.ToFileAsync(http, url, zipFile, MaxDownloadBytes, pin.Sha256, pin.Name, Fail, ct).ConfigureAwait(false);
 
             onLine($"Unpacking {pin.Name}…");
             DeleteFolder(staging);
-            Unpack(zipFile, staging, pin.Name, pin.Exe);
+            CheckedDownload.Unpack(zipFile, staging, MaxUnpackedBytes, pin.Name, Fail, pin.Exe);
             if (!File.Exists(Path.Combine(staging, pin.Exe)))
             {
                 throw new MiradorException($"The {pin.Name} download isn't the one Mirador expects: it has no {pin.Exe}.");
@@ -80,11 +82,11 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
         }
         finally
         {
-            TryDelete(zipFile);
-            TryDeleteFolder(staging);
+            Cleanup.TryDelete(zipFile);
+            Cleanup.TryDeleteDirectory(staging);
             if (Directory.Exists(final))
             {
-                TryDeleteFolder(old);
+                Cleanup.TryDeleteDirectory(old);
             }
         }
     }
@@ -192,61 +194,8 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
         {
             if (!existing)
             {
-                TryDeleteFolder(final + ".new");
+                Cleanup.TryDeleteDirectory(final + ".new");
             }
-        }
-    }
-
-    private static void Unpack(string zipFile, string folder, string name, string exe)
-    {
-        var root = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        using var zip = ZipFile.OpenRead(zipFile);
-
-        // A zip whose every entry is in one top folder holding the program (CMake's) is unpacked without that folder.
-        var names = zip.Entries.Select(e => e.FullName.Replace('\\', '/')).ToList();
-        var first = names.Select(n => n.Split('/')[0]).Distinct(StringComparer.Ordinal).ToList();
-        var strip = first.Count == 1 && names.All(n => n.Contains('/')) && names.Contains(first[0] + "/" + exe.Replace('\\', '/'), StringComparer.Ordinal)
-            ? first[0] + "/"
-            : "";
-
-        // Every path is checked, and the size added up, before anything is written.
-        long size = 0;
-        var targets = new List<(ZipArchiveEntry Entry, string Path)>();
-        for (var i = 0; i < zip.Entries.Count; i++)
-        {
-            var entry = zip.Entries[i];
-            var relative = names[i][strip.Length..];
-            if (relative.Length == 0)
-            {
-                continue;
-            }
-
-            var target = Path.GetFullPath(Path.Combine(root, relative));
-            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(relative))
-            {
-                throw new MiradorException($"The {name} download has a file (\"{entry.FullName}\") that would land outside its folder, so it was not used.");
-            }
-
-            size += entry.Length;
-            if (size > MaxUnpackedBytes)
-            {
-                throw new MiradorException($"The {name} download unpacks to more than Mirador allows, so it was not used.");
-            }
-
-            targets.Add((entry, target));
-        }
-
-        Directory.CreateDirectory(root);
-        foreach (var (entry, target) in targets)
-        {
-            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
-            {
-                Directory.CreateDirectory(target);
-                continue;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            entry.ExtractToFile(target, overwrite: true);
         }
     }
 
@@ -258,29 +207,6 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
         }
     }
 
-    private static void TryDeleteFolder(string folder)
-    {
-        try
-        {
-            DeleteFolder(folder);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Left for the next try, which deletes it first.
-        }
-    }
-
-    private static void TryDelete(string file)
-    {
-        try
-        {
-            File.Delete(file);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Left for the next try, which overwrites it.
-        }
-    }
 }
 
 /// <summary>
@@ -311,7 +237,7 @@ public static class VsBootstrapper
         FileStream? held = null;
         try
         {
-            await Downloads.ToFileAsync(http, new Uri(Url), file, MaxBytes, null, "Visual Studio Build Tools installer", ct).ConfigureAwait(false);
+            await CheckedDownload.ToFileAsync(http, new Uri(Url), file, MaxBytes, null, "the Visual Studio Build Tools installer", m => new MiradorException(m), ct).ConfigureAwait(false);
             held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (!Mirador.Ipc.SignerName.Is(signerOf(file), "Microsoft Corporation"))
             {
@@ -323,7 +249,7 @@ public static class VsBootstrapper
         catch
         {
             held?.Dispose();
-            BootstrapperFile.TryDeleteFolder(folder);
+            Cleanup.TryDeleteDirectory(folder);
             throw;
         }
     }
@@ -337,28 +263,14 @@ public sealed class BootstrapperFile(string path, FileStream held) : IDisposable
     public void Dispose()
     {
         held.Dispose();
-        TryDeleteFolder(System.IO.Path.GetDirectoryName(Path)!);
+        Cleanup.TryDeleteDirectory(System.IO.Path.GetDirectoryName(Path)!);
     }
 
-    internal static void TryDeleteFolder(string folder)
-    {
-        try
-        {
-            Directory.Delete(folder, recursive: true);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // A new folder is used each time; this one is left for Windows' disk clean-up.
-        }
-    }
 }
 
 /// <summary>Mirador's checked downloads for the build tools.</summary>
 internal static class Downloads
 {
-    /// <summary>How long the server may say nothing before a download is given up.</summary>
-    public static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
-
     /// <summary><paramref name="url"/> when it is https on github.com (the address asked for, not where GitHub redirects).</summary>
     public static Uri GitHubUrl(string url, string name) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
@@ -367,77 +279,4 @@ internal static class Downloads
             ? uri
             : throw new MiradorException($"{name}'s download isn't on GitHub, so Mirador won't fetch it.");
 
-    /// <summary>
-    /// Downloads <paramref name="url"/> to <paramref name="file"/>, at most <paramref name="maxBytes"/>, and checks its
-    /// SHA-256 when one is given; a mismatch or failure deletes the file.
-    /// </summary>
-    public static async Task ToFileAsync(HttpClient http, Uri url, string file, long maxBytes, string? sha256, string name, CancellationToken userCt)
-    {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(userCt);
-        var ct = linked.Token;
-        try
-        {
-            linked.CancelAfter(IdleTimeout);
-            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new MiradorException($"The {name} download failed ({(int)response.StatusCode} {response.ReasonPhrase}).");
-            }
-
-            if (response.Content.Headers.ContentLength > maxBytes)
-            {
-                throw new MiradorException($"The {name} download is larger than Mirador allows, so it was not fetched.");
-            }
-
-            using var hash = SHA256.Create();
-            await using (var network = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
-            await using (var output = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                var buffer = new byte[81920];
-                long total = 0;
-                int read;
-                while ((read = await network.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
-                {
-                    total += read;
-                    if (total > maxBytes)
-                    {
-                        throw new MiradorException($"The {name} download is larger than Mirador allows, so it was stopped.");
-                    }
-
-                    linked.CancelAfter(IdleTimeout);
-                    hash.TransformBlock(buffer, 0, read, null, 0);
-                    await output.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-                }
-            }
-
-            hash.TransformFinalBlock([], 0, 0);
-            if (sha256 is not null && !string.Equals(Convert.ToHexString(hash.Hash!), sha256, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new MiradorException($"The {name} download doesn't match the SHA-256 Mirador pins for it, so it was not used.");
-            }
-        }
-        catch (Exception e) when (e is HttpRequestException or IOException || (e is OperationCanceledException && !userCt.IsCancellationRequested))
-        {
-            TryDelete(file);
-            var why = e is OperationCanceledException ? "the server stopped answering" : e.Message.Trim().TrimEnd('.');
-            throw new MiradorException($"Mirador couldn't download {name} ({why}).");
-        }
-        catch
-        {
-            TryDelete(file);
-            throw;
-        }
-    }
-
-    private static void TryDelete(string file)
-    {
-        try
-        {
-            File.Delete(file);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Overwritten by the next download.
-        }
-    }
 }

@@ -1,5 +1,3 @@
-using System.IO.Compression;
-using System.Security.Cryptography;
 using Mirador.Ipc;
 
 namespace Mirador.Helper;
@@ -130,9 +128,11 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         try
         {
             Directory.CreateDirectory(work);
-            await DownloadAsync(release, zip, ct).ConfigureAwait(false);
-            TryDeleteDirectory(part);
-            Unpack(zip, part);
+            await CheckedDownload.ToFileAsync(
+                http, new Uri(release.ZipUrl), zip, MaxZipBytes, release.ZipSha256, "the bundled Monado", m => new MiradorInstallException(m), ct, IdleTimeout)
+                .ConfigureAwait(false);
+            Cleanup.TryDeleteDirectory(part);
+            CheckedDownload.Unpack(zip, part, MaxUnpackedBytes, "the bundled Monado", m => new MiradorInstallException(m));
             Check(part);
             var standInDir = Directory.CreateDirectory(Path.Combine(part, "bin", "service")).FullName;
             File.Copy(standInExe, Path.Combine(standInDir, "monado-service.exe"), overwrite: true);
@@ -148,8 +148,8 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         }
         finally
         {
-            TryDelete(zip);
-            TryDeleteDirectory(part);
+            Cleanup.TryDelete(zip);
+            Cleanup.TryDeleteDirectory(part);
         }
     }
 
@@ -183,9 +183,9 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         {
             // Moved aside first: a folder a game still holds fails here whole, rather than half deleted.
             var aside = Path.Combine(monadoRoot, ".download", version + ".old");
-            TryDeleteDirectory(aside);
+            Cleanup.TryDeleteDirectory(aside);
             Directory.Move(folder, aside);
-            TryDeleteDirectory(aside);
+            Cleanup.TryDeleteDirectory(aside);
         }
 
         Directory.Move(part, folder);
@@ -230,7 +230,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         {
             foreach (var left in Directory.GetDirectories(work, "*.pruned-*").Concat(Directory.GetDirectories(work, "*.old")))
             {
-                TryDeleteDirectory(left);
+                Cleanup.TryDeleteDirectory(left);
             }
         }
 
@@ -254,98 +254,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             }
 
             registry.SetAvailable(MiradorMonado.ManifestOf(monadoRoot, name), available: false);
-            TryDeleteDirectory(aside);
-        }
-    }
-
-    private async Task DownloadAsync(MonadoRelease release, string file, CancellationToken userCt)
-    {
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(userCt);
-        var ct = linked.Token;
-        try
-        {
-            linked.CancelAfter(IdleTimeout);
-            using var response = await http.GetAsync(new Uri(release.ZipUrl), HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new MiradorInstallException($"GitHub didn't give the bundled Monado ({(int)response.StatusCode} {response.ReasonPhrase}).");
-            }
-
-            if (response.Content.Headers.ContentLength > MaxZipBytes)
-            {
-                throw new MiradorInstallException("The bundled Monado's download is larger than Mirador allows, so it was not fetched.");
-            }
-
-            using var hash = SHA256.Create();
-            await using (var network = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false))
-            await using (var output = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                var buffer = new byte[81920];
-                long total = 0;
-                int read;
-                while ((read = await network.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
-                {
-                    total += read;
-                    if (total > MaxZipBytes)
-                    {
-                        throw new MiradorInstallException("The bundled Monado's download is larger than Mirador allows, so it was stopped.");
-                    }
-
-                    linked.CancelAfter(IdleTimeout);
-                    hash.TransformBlock(buffer, 0, read, null, 0);
-                    await output.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-                }
-            }
-
-            hash.TransformFinalBlock([], 0, 0);
-            if (!string.Equals(Convert.ToHexString(hash.Hash!), release.ZipSha256, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new MiradorInstallException("The bundled Monado's download doesn't match the SHA-256 GitHub lists for it, so it was not used.");
-            }
-        }
-        catch (Exception e) when (e is HttpRequestException || (e is OperationCanceledException && !userCt.IsCancellationRequested))
-        {
-            var why = e is OperationCanceledException ? "GitHub stopped answering" : e.Message.Trim().TrimEnd('.');
-            throw new MiradorInstallException($"Mirador couldn't download its Monado ({why}).");
-        }
-    }
-
-    private static void Unpack(string zipFile, string folder)
-    {
-        var root = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        using var zip = ZipFile.OpenRead(zipFile);
-
-        // Every path is checked, and the size added up, before anything is written.
-        long size = 0;
-        var targets = new List<(ZipArchiveEntry Entry, string Path)>();
-        foreach (var entry in zip.Entries)
-        {
-            var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
-            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new MiradorInstallException($"The bundled Monado's download has a file (\"{entry.FullName}\") that would land outside its folder, so it was not used.");
-            }
-
-            size += entry.Length;
-            if (size > MaxUnpackedBytes)
-            {
-                throw new MiradorInstallException("The bundled Monado's download unpacks to more than Mirador allows, so it was not used.");
-            }
-
-            targets.Add((entry, target));
-        }
-
-        Directory.CreateDirectory(root);
-        foreach (var (entry, target) in targets)
-        {
-            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
-            {
-                Directory.CreateDirectory(target);
-                continue;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            entry.ExtractToFile(target, overwrite: true);
+            Cleanup.TryDeleteDirectory(aside);
         }
     }
 
@@ -399,31 +308,6 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         catch (Exception e) when (e is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or IOException or ArgumentException)
         {
             return "can't be read";
-        }
-    }
-
-    private static void TryDelete(string file)
-    {
-        try
-        {
-            File.Delete(file);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-        }
-    }
-
-    private static void TryDeleteDirectory(string folder)
-    {
-        try
-        {
-            if (Directory.Exists(folder))
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
         }
     }
 

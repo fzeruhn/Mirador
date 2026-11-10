@@ -98,7 +98,7 @@ public static partial class ApprovedBuilds
         var profileRoot = ProfileRoot(appDir, owner, profileId);
         var target = Path.Combine(profileRoot, commit);
         var staging = target + ".new";
-        TryDeleteDirectory(staging);
+        Cleanup.TryDeleteDirectory(staging);
         Copy(new DirectoryInfo(from), staging);
         WriteManifest(staging);
         PlaceStandIn(appDir, staging);
@@ -366,7 +366,7 @@ public static partial class ApprovedBuilds
             return;
         }
 
-        TryDeleteDirectory(aside);
+        Cleanup.TryDeleteDirectory(aside);
     }
 
     /// <summary>
@@ -383,7 +383,7 @@ public static partial class ApprovedBuilds
 
         foreach (var left in Directory.GetDirectories(root, ".old-*"))
         {
-            TryDeleteDirectory(left);
+            Cleanup.TryDeleteDirectory(left);
         }
 
         foreach (var user in Directory.GetDirectories(root).Where(d => IsOwner(Path.GetFileName(d))))
@@ -396,21 +396,6 @@ public static partial class ApprovedBuilds
                     RemoveWhole(profile, appDir);
                 }
             }
-        }
-    }
-
-    private static void TryDeleteDirectory(string folder)
-    {
-        try
-        {
-            if (Directory.Exists(folder))
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Still in use (a game, the elevated service): it goes at the next approval.
         }
     }
 

@@ -1,3 +1,4 @@
+using Mirador.Ipc;
 namespace Mirador.Core.Session;
 
 /// <summary>The <c>monado-*.log</c> files a session writes into Mirador's log folder, one per Start.</summary>
@@ -38,20 +39,9 @@ internal static class MonadoLogs
 
         foreach (var old in logs.OrderByDescending(n => n, StringComparer.OrdinalIgnoreCase).Skip(keep))
         {
-            TryDelete(Path.Combine(logsDir, old));
-            TryDelete(Path.Combine(logsDir, old + ".1"));
+            Cleanup.TryDelete(Path.Combine(logsDir, old));
+            Cleanup.TryDelete(Path.Combine(logsDir, old + ".1"));
         }
     }
 
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Open in another program; it goes at a later Start.
-        }
-    }
 }

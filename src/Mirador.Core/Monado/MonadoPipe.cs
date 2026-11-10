@@ -28,7 +28,7 @@ public sealed class MonadoPipe : IMonadoPipe
 {
     private readonly Func<string, string> throughAnsi;
 
-    public MonadoPipe() : this(Win32.ThroughAnsiCodePage)
+    public MonadoPipe() : this(Mirador.Ipc.AnsiCodePage.RoundTrip)
     {
     }
 
@@ -41,5 +41,5 @@ public sealed class MonadoPipe : IMonadoPipe
     /// <summary>What <c>GetTempPath2</c> returns for <paramref name="env"/>, with a backslash at the end.</summary>
     public static string TempPathFrom(IReadOnlyDictionary<string, string> env) => MonadoPipeName.TempPathFrom(env);
 
-    public bool Exists(string name) => Win32.PipeExists(name);
+    public bool Exists(string name) => Mirador.Ipc.ProcessJobs.PipeExists(name);
 }

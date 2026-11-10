@@ -1,3 +1,4 @@
+using Mirador.Ipc;
 using System.Globalization;
 using Mirador.Core.Monado;
 using Mirador.Core.Profiles;
@@ -118,7 +119,7 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
         // 2. The recipe, into a new install folder: the last good one stays until this one is built. The configure cache
         //    starts afresh, so an option taken out of the profile (or another fork's) doesn't linger; objects are kept.
         DeleteFolder(fresh);
-        TryDelete(Path.Combine(build, "CMakeCache.txt"));
+        Cleanup.TryDelete(Path.Combine(build, "CMakeCache.txt"));
         var optionsFile = Path.Combine(root, "cmake-options.txt");
         await File.WriteAllLinesAsync(optionsFile, source.Options, CancellationToken.None).ConfigureAwait(false);
         var arguments = new List<string>
@@ -287,17 +288,6 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // A program the build started may still be letting go of it; the next build clears it.
-        }
-    }
-
-    private static void TryDelete(string file)
-    {
-        try
-        {
-            File.Delete(file);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
         }
     }
 
