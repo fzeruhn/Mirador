@@ -1155,11 +1155,7 @@ public sealed class SessionController(SessionDeps deps)
 
     private static StartOutcome Fail(string message) => new(false, message);
 
-    /// <summary>The module with <paramref name="id"/>, or the one that had it before (<see cref="IHeadsetModule.FormerIds"/>).</summary>
-    private IHeadsetModule? FindModule(string? id) =>
-        id is null ? null
-            : deps.Modules.TryGetValue(id, out var module) ? module
-            : deps.Modules.Values.FirstOrDefault(m => m.FormerIds.Contains(id, StringComparer.Ordinal));
+    private IHeadsetModule? FindModule(string? id) => id is not null && deps.Modules.TryGetValue(id, out var module) ? module : null;
 
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
 

@@ -211,9 +211,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
 
         var full = Path.GetFullPath(active);
         var wasMiradors = from is not null && string.Equals(full, MiradorMonado.ManifestOf(monadoRoot, from), StringComparison.OrdinalIgnoreCase);
-        var wasBundled = string.Equals(full, Path.Combine(monadoRoot, "runtime", "openxr_monado.json"), StringComparison.OrdinalIgnoreCase)
-            && !File.Exists(full);
-        if (wasMiradors || wasBundled)
+        if (wasMiradors)
         {
             registry.SetActive(MiradorMonado.ManifestOf(monadoRoot, to));
         }

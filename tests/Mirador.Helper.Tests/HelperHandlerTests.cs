@@ -12,7 +12,9 @@ public sealed class HelperHandlerTests : IDisposable
 
     public void Dispose() => temp.Dispose();
 
-    private string BundledManifest => temp.File(@"monado\runtime\openxr_monado.json");
+    private readonly FakeMonadoInstaller monado = new();
+
+    private string BundledManifest => temp.File(@"monado\monado-2026.11.10-1a2b3c4d5e\openxr_monado.json");
 
     private HelperHandler Handler(bool serviceRunning = false, bool bundleExists = true, string? version = null)
     {
@@ -21,9 +23,10 @@ public sealed class HelperHandlerTests : IDisposable
         {
             Directory.CreateDirectory(Path.GetDirectoryName(BundledManifest)!);
             File.WriteAllText(BundledManifest, "{}");
+            monado.Current = BundledManifest;
         }
 
-        return new HelperHandler(services, processes, registry, BundledManifest, version);
+        return new HelperHandler(services, processes, registry, version, monado: monado);
     }
 
     private static HelperRequest Request(HelperCommand command) => new(command);
@@ -42,7 +45,7 @@ public sealed class HelperHandlerTests : IDisposable
     [Fact]
     public async Task Get_install_folder_answers_the_helpers_install_folder()
     {
-        var handler = new HelperHandler(services, processes, registry, BundledManifest, installDir: @"D:\Portable\Mirador");
+        var handler = new HelperHandler(services, processes, registry, installDir: @"D:\Portable\Mirador", monado: monado);
 
         var reply = await handler.HandleAsync(Request(HelperCommand.GetInstallFolder));
 
@@ -244,7 +247,7 @@ public sealed class HelperHandlerTests : IDisposable
     public async Task SetRuntimeBundled_knows_the_bundle_by_its_full_path_ignoring_case()
     {
         var directory = Path.GetDirectoryName(BundledManifest)!;
-        registry.Active = Path.Combine(directory, "..", "runtime", "OPENXR_MONADO.JSON").ToUpperInvariant();
+        registry.Active = Path.Combine(directory, "..", Path.GetFileName(directory), "OPENXR_MONADO.JSON").ToUpperInvariant();
 
         var r = await Handler().HandleAsync(Request(HelperCommand.SetRuntimeBundled));
 
@@ -563,7 +566,7 @@ public sealed class HelperHandlerTests : IDisposable
     private HelperHandler ConsentHandler(FakeConsentValues values)
     {
         Handler(); // writes the bundled manifest
-        return new HelperHandler(services, processes, registry, BundledManifest, consent: new ElevatedConsent(values));
+        return new HelperHandler(services, processes, registry, consent: new ElevatedConsent(values), monado: monado);
     }
 
     [Fact]
@@ -619,12 +622,12 @@ public sealed class HelperHandlerTests : IDisposable
 
     // StartMonadoElevated / StopMonadoElevated / WaitMonadoElevated
 
-    private static readonly ElevatedStart Start = new(3000, 100, 6, false, "dreamair");
+    private static readonly ElevatedStart Start = new(3000, 100, 6, false, "pimax");
 
     private HelperHandler ElevatedHandler(FakeElevated elevated)
     {
         Handler(); // writes the bundled manifest
-        return new HelperHandler(services, processes, registry, BundledManifest, elevated: elevated);
+        return new HelperHandler(services, processes, registry, elevated: elevated, monado: monado);
     }
 
     [Fact]

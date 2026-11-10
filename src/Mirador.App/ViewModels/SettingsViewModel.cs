@@ -81,10 +81,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(CheckNowCommand))]
     public partial bool Checking { get; set; }
 
-    /// <summary>The "OpenComposite" card of About: the version and commit, and where this copy came from.</summary>
+    /// <summary>The "OpenComposite" card of About: the version and commit.</summary>
     public string OpenCompositeDescription =>
-        (host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource) is { } source
-            ? $"{source.Describe()}. {(host.OpenCompositeCopy.HoldsDownload ? "From GitHub." : "Bundled with Mirador.")}"
+        host.OpenCompositeCopy.CopySource is { } source
+            ? $"{source.Describe()}. From GitHub."
             : "Not downloaded yet: Home has \"Get OpenComposite\".";
 
     /// <summary>Whether the copy holds a download, so "Roll back" shows.</summary>

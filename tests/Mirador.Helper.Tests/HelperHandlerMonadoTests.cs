@@ -12,7 +12,7 @@ internal sealed class FakeMonadoInstaller : IMonadoInstaller
 
     public string? CurrentManifest() => Current;
 
-    public bool IsMiradors(string manifest) => manifest.Contains(@"\monado-", StringComparison.Ordinal) || manifest.Contains("/monado-", StringComparison.Ordinal);
+    public bool IsMiradors(string manifest) => manifest.Contains(@"\monado-", StringComparison.OrdinalIgnoreCase) || manifest.Contains("/monado-", StringComparison.OrdinalIgnoreCase);
 
     public string? CurrentServerDir() => Current is null ? null : Path.Combine(Path.GetDirectoryName(Current)!, "bin");
 
@@ -37,15 +37,13 @@ public sealed class HelperHandlerMonadoTests : IDisposable
 
     public void Dispose() => temp.Dispose();
 
-    private string Bundled => temp.File("monado", "runtime", "openxr_monado.json");
-
     private string InstallDir => temp.File("Mirador");
 
     /// <summary>The installed Mirador.exe asking.</summary>
     private CallerInfo Caller => new(new SecurityIdentifier("S-1-5-21-1-2-3-1001"), 1, 1234, Path.Combine(InstallDir, "Mirador.exe"));
 
     private HelperHandler Handler(IMonadoInstaller? installer) =>
-        new(new FakeServiceControl(), new FakeProcessControl(), registry, Bundled, "1.0", installDir: InstallDir, monado: installer);
+        new(new FakeServiceControl(), new FakeProcessControl(), registry, "1.0", installDir: InstallDir, monado: installer);
 
     [Fact]
     public async Task Install_passes_only_the_version_name_on()

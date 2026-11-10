@@ -154,7 +154,7 @@ public class SessionControllerTests
         Assert.Equal(SessionState.Running, h.Changes.Last());
 
         // The bundled Monado's stand-in is the installer's business.
-        Assert.Equal(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "service"), h.Controller.CurrentInstall?.StandInDir);
+        Assert.Equal(Path.Combine(h.RuntimeDir, "service"), h.Controller.CurrentInstall?.StandInDir);
         Assert.False(Directory.Exists(h.Controller.CurrentInstall!.StandInDir));
 
         var again = await h.Controller.StartAsync(StartReason.Tray, CancellationToken.None).WaitAsync(Limit);
@@ -227,7 +227,7 @@ public class SessionControllerTests
         await using var h = new Harness(hook);
         h.Pipe.Up = true;
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -592,7 +592,7 @@ public class SessionControllerTests
     {
         await using var h = new Harness();
         h.Pipe.Up = true;
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -608,7 +608,7 @@ public class SessionControllerTests
         h.Module.UsesSteamVrLighthouse = true;
         h.Processes.Running.Add(new ProcInfo("vrserver", 42)); // a later step would refuse with its own words
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -650,7 +650,7 @@ public class SessionControllerTests
         h.UseProfile(Harness.DreamAir with { Name = "Custom", ModuleId = null });
         h.Pipe.Up = true;
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -663,7 +663,7 @@ public class SessionControllerTests
         await using var h = new Harness();
         await h.StartRunningAsync();
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -682,7 +682,7 @@ public class SessionControllerTests
 
         Assert.False(outcome.Ok);
         Assert.StartsWith($"The game uses the Monado in {Path.Combine(h.Root, "other build", "runtime")}, but the profile ", outcome.Message);
-        Assert.Contains($"uses the one in {Path.GetDirectoryName(h.BundledManifest)}.", outcome.Message);
+        Assert.Contains($"uses the one in {h.RuntimeDir}.", outcome.Message);
         Assert.Equal(0, h.Module.BeforeStartCalls);
         Assert.Equal(0, h.Launcher.Starts);
         Assert.Equal(SessionState.Stopped, h.Controller.State);
@@ -928,7 +928,7 @@ public class SessionControllerTests
     {
         await using var h = new Harness();
         h.Controller.PlaceStandIn();
-        Assert.False(Directory.Exists(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "service")));
+        Assert.False(Directory.Exists(Path.Combine(h.RuntimeDir, "service")));
 
         h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, Path.Combine(h.Root, "gone")) });
         h.Controller.PlaceStandIn(); // no throw

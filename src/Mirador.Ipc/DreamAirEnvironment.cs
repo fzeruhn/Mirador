@@ -30,11 +30,6 @@ public static class DirectModeEnvironment
         "XRT_COMPOSITOR_FORCE_NVAPI_DIRECT",
         "MIRADOR_DIRECT_MODE_TEST_NO_EDID",
         "MIRADOR_DIRECT_MODE_IGNORE_HOLDERS",
-
-        // Their names before the rename, which the layer still reads for one release.
-        "DISABLE_DREAMAIR_VK_LAYER",
-        "DREAMAIR_VK_LAYER_TEST_NO_EDID",
-        "DREAMAIR_VK_LAYER_IGNORE_HOLDERS",
     ];
 }
 
@@ -44,9 +39,6 @@ public static class DirectModeEnvironment
 /// </summary>
 public static class DreamAirEnvironment
 {
-    /// <summary>The module id a request names to get this table (Mirador.md section 4.10 item 44).</summary>
-    public const string ModuleId = "dreamair";
-
     /// <summary>
     /// The Dream Air's own variables: SteamVR's Lighthouse driver, the compositor's pacing for its panels, and the Dream
     /// Air drivers' log at info, whose lines the board and eye tracker status come from (their default, warn, leaves those

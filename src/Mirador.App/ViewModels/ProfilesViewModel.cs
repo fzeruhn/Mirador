@@ -677,11 +677,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         UpstreamSource => BuildSource.UpstreamMain,
         LinkSource => BuildSource.FromBranch(
             LinkUrl() ?? MonadoLink.Trim(), MonadoBranch.Trim(), BranchLink.SplitOptions(MonadoOptions)),
-
-        // A profile on the Monado that came with this Mirador (a local build's bundle) keeps it while its source is left
-        // on Mirador's Monado: saving it must not move it to a Monado that isn't installed (ProfileMigration moves it
-        // once the bundle is gone).
-        _ => editing?.Monado.Kind == SourceKind.Bundled ? BuildSource.Bundled : BuildSource.Mirador,
+        _ => BuildSource.Mirador,
     };
 
     private string? LinkUrl()

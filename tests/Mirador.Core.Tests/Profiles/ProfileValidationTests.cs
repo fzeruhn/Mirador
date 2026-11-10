@@ -8,7 +8,7 @@ public class ProfileValidationTests
     private static readonly MonadoLocator Locator = new(Path.Combine(Path.GetTempPath(), "no-mirador-here"));
 
     private static Profile Custom(params EnvVar[] extra) =>
-        new("p1", "Custom", null, BuildSource.Bundled, extra, new Dictionary<string, string>());
+        new("p1", "Custom", null, BuildSource.Mirador, extra, new Dictionary<string, string>());
 
     private static IReadOnlyList<string> Problems(Profile p, string? moduleProblem = null) =>
         ProfileValidation.Problems(p, Locator, _ => moduleProblem);

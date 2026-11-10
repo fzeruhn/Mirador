@@ -23,7 +23,7 @@ public sealed class HelperHandlerApprovalTests : IDisposable
     private CallerInfo Caller(SecurityIdentifier sid) => new(sid, 1, 4242, Path.Combine(App, "Mirador.exe"));
 
     private HelperHandler Handler() =>
-        new(new FakeServiceControl(), new FakeProcessControl(), registry, temp.File("app", "monado", "runtime", "openxr_monado.json"), "1.0",
+        new(new FakeServiceControl(), new FakeProcessControl(), registry, "1.0",
             consent: new ElevatedConsent(consent), installDir: App, monado: monado, approved: store);
 
     private ApprovedBuild Approve(SecurityIdentifier owner, string profileId)

@@ -6,24 +6,17 @@ namespace Mirador.Core.Profiles;
 /// All profiles and which one is selected. Never changed in place: every method returns a new set.
 /// New profiles go at the end; names are trimmed and must be unique (ignoring case).
 /// </summary>
-/// <param name="RunAsAdministratorPerProfile">
-/// Whether App settings' old "Run Monado as administrator" was moved onto these profiles' own toggles (once, 2026-11-09;
-/// <see cref="Migration.ProfileMigration.MoveConsentOntoProfiles"/>). False only in a file from before then; a new set
-/// has nothing to move. Kept with the profiles, so a lost <c>settings.json</c> can't run the move again.
-/// </param>
-public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string SelectedId, bool RunAsAdministratorPerProfile = false)
+public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string SelectedId)
 {
     /// <summary>
-    /// The first-run set: Dream Air (selected, with the Pimax module) and Custom, both on Mirador's Monado. The module is
-    /// named by its id now: a former one would be migrated, and saved, at the first launch.
+    /// The first-run set: Dream Air (selected, with the Pimax module) and Custom, both on the bundled Monado.
     /// </summary>
     public static ProfileSet Defaults() => new(
         [
             new Profile("dreamair", "Dream Air", global::Mirador.Ipc.PimaxEnvironment.ModuleId, BuildSource.Mirador, [], new Dictionary<string, string>()),
             new Profile("custom", "Custom", null, BuildSource.Mirador, [], new Dictionary<string, string>()),
         ],
-        "dreamair",
-        RunAsAdministratorPerProfile: true);
+        "dreamair");
 
     [JsonIgnore]
     public Profile Selected => Find(SelectedId);

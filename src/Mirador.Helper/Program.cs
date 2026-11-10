@@ -10,7 +10,7 @@ using Mirador.Helper.ElevatedMonado;
 if (args is ["--restore-runtime"])
 {
     var restorer = new HelperHandler(
-        new SystemServiceControl(), new SystemProcessControl(), new SystemRuntimeRegistry(), HelperHandler.DefaultBundledManifest,
+        new SystemServiceControl(), new SystemProcessControl(), new SystemRuntimeRegistry(),
     monado: MonadoInstaller.ForInstall(new HttpClient(), new SystemRuntimeRegistry(), "0"));
     var result = await restorer.RestoreRuntimeAsync();
     if (!result.Ok)
@@ -38,7 +38,6 @@ builder.Services.AddSingleton(services =>
         services.GetRequiredService<IServiceControl>(),
         services.GetRequiredService<IProcessControl>(),
         registry,
-        HelperHandler.DefaultBundledManifest,
         consent: elevatedConsent,
         elevated: new ElevatedMonadoRunner(elevatedConsent, monado: monado, approved: approved),
         monado: monado,

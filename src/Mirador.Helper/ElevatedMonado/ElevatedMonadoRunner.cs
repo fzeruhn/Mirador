@@ -30,7 +30,6 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     private readonly ElevatedConsent consent;
     private readonly Func<string, string?> signer;
     private readonly string installDir;
-    private readonly string bundledServerDir;
     private readonly IMonadoInstaller? monado;
     private readonly IApprovedBuildStore? approved;
     private readonly string logDir;
@@ -39,7 +38,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 
     /// <param name="consent">Where users' consent lives, with the SteamVR files each allowed; the caller's SID must be allowed.</param>
     /// <param name="signer">The Authenticode signer subject of a file; the real one is <see cref="WinTrustSigner.SubjectOf"/>.</param>
-    /// <param name="monado">Mirador's Monado: its current version is the one started, else the bundled Monado of an older install.</param>
+    /// <param name="monado">The bundled Monado: its current version is the one started.</param>
     /// <param name="approved">The builds owners approved to run as administrator (Mirador.md §4.11 item 51).</param>
     public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null, IMonadoInstaller? monado = null, IApprovedBuildStore? approved = null)
     {
@@ -48,7 +47,6 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
         this.signer = signer ?? WinTrustSigner.SubjectOf;
         this.monado = monado;
         installDir = HelperHandler.DefaultInstallDir;
-        bundledServerDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "monado", "server"));
         logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado");
     }
 
@@ -154,7 +152,12 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
             }
             else
             {
-                serverDir = monado?.CurrentServerDir() ?? bundledServerDir;
+                if (monado?.CurrentServerDir() is not { } current)
+                {
+                    return Fail(BundledMissing);
+                }
+
+                serverDir = current;
             }
 
             var serviceExe = Path.Combine(serverDir, "monado-service.exe");
@@ -164,8 +167,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
             }
 
             var folders = ReadUserFolders(userToken);
-            var testLines = ReadTestLines();
-            var lighthouse = start.Module is PimaxEnvironment.ModuleId or DreamAirEnvironment.ModuleId || HasLighthouseEnable(testLines);
+            var lighthouse = start.Module is PimaxEnvironment.ModuleId;
 
             IDisposable hold = EmptyHold.Instance;
             string steamVrPath;
@@ -203,7 +205,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 IReadOnlyDictionary<string, string> env;
                 try
                 {
-                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath, testLines);
+                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath);
                 }
                 catch (ArgumentException e)
                 {
@@ -341,32 +343,6 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
         finally
         {
             Marshal.FreeHGlobal(buffer);
-        }
-    }
-
-    private static bool HasLighthouseEnable(IReadOnlyList<string> testLines) =>
-        testLines.Any(line =>
-        {
-            var eq = line.IndexOf('=');
-            return eq > 0
-                && string.Equals(line[..eq].Trim(), "STEAMVR_LH_ENABLE", StringComparison.OrdinalIgnoreCase)
-                && line[(eq + 1)..].Trim() == "1";
-        });
-
-    /// <summary>The admin-only test lines (<c>HKLM\SOFTWARE\Mirador</c> <c>ElevatedMonadoTestEnv</c>), empty when absent.</summary>
-    private static IReadOnlyList<string> ReadTestLines()
-    {
-        try
-        {
-            using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-            using var key = machine.OpenSubKey(@"SOFTWARE\Mirador");
-            return key?.GetValue("ElevatedMonadoTestEnv") is string[] lines
-                ? [.. lines.Where(l => !string.IsNullOrWhiteSpace(l))]
-                : [];
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        {
-            return [];
         }
     }
 

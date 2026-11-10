@@ -104,9 +104,9 @@ public class ProfileStoreTests
         const string text = """
             {"profiles":[
               {"id":"a","name":"Mine","monado":{"kind":"Folder","folder":"D:\\monado\\build"}},
-              {"id":"b","name":"","monado":{"kind":"Bundled"}},
-              {"id":"c","name":"Other","monado":{"kind":"Bundled"}},
-              {"id":"a","name":"Same id","monado":{"kind":"Bundled"}}
+              {"id":"b","name":"","monado":{"kind":"Mirador"}},
+              {"id":"c","name":"Other","monado":{"kind":"Mirador"}},
+              {"id":"a","name":"Same id","monado":{"kind":"Mirador"}}
             ],"selectedId":"c"}
             """;
         File.WriteAllText(path, text);
@@ -126,7 +126,7 @@ public class ProfileStoreTests
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
         File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"},
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Mirador"},
               "extraEnvironment":[null,{"value":"1"},{"name":"KEPT","value":"2"},{"name":"NO_VALUE"}],
               "moduleOptions":{"layerFolder":null,"other":"x"}}],"selectedId":"a"}
             """);
@@ -156,7 +156,7 @@ public class ProfileStoreTests
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
         File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"id":"b","name":"B","monado":{"kind":"Bundled"}}],"selectedId":"gone"}
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Mirador"}},{"id":"b","name":"B","monado":{"kind":"Mirador"}}],"selectedId":"gone"}
             """);
 
         var loaded = new ProfileStore(path).Load();
@@ -184,7 +184,7 @@ public class ProfileStoreTests
     }
 
     [Fact]
-    public void The_file_holds_only_the_profiles_the_selected_id_and_the_run_as_administrator_mark()
+    public void The_file_holds_only_the_profiles_and_the_selected_id()
     {
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
@@ -192,7 +192,7 @@ public class ProfileStoreTests
         new ProfileStore(path).Save(ProfileSet.Defaults());
 
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        Assert.Equal(["profiles", "selectedId", "runAsAdministratorPerProfile"], doc.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["profiles", "selectedId"], doc.RootElement.EnumerateObject().Select(p => p.Name));
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public class ProfileStoreTests
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
         File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}}],"selectedId":"a"}
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Mirador"}}],"selectedId":"a"}
             """);
 
         Assert.Null(new ProfileStore(path).Load().Profiles[0].Lighthouse);
@@ -234,29 +234,6 @@ public class ProfileStoreTests
 
         Assert.False(loaded.Profiles[0].Lighthouse);
         Assert.True(loaded.Profiles[1].Lighthouse);
-    }
-
-    [Fact]
-    public void The_run_as_administrator_mark_is_kept_with_the_profiles()
-    {
-        using var dir = new TempDir();
-        var path = dir.File("profiles.json");
-
-        // A file from before the mark reads unmarked, and an entry left out keeps the mark as it was.
-        File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"name":"no id"}],"selectedId":"a"}
-            """);
-        Assert.False(new ProfileStore(path).Load().RunAsAdministratorPerProfile);
-        File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"name":"no id"}],"selectedId":"a","runAsAdministratorPerProfile":true}
-            """);
-        Assert.True(new ProfileStore(path).Load().RunAsAdministratorPerProfile);
-
-        // Saved, and through a delete.
-        var set = ProfileSet.Defaults().Delete("dreamair");
-        Assert.True(set.RunAsAdministratorPerProfile);
-        new ProfileStore(path).Save(set);
-        Assert.True(new ProfileStore(path).Load().RunAsAdministratorPerProfile);
     }
 
     private static void AssertAreTheDefaults(ProfileSet loaded)

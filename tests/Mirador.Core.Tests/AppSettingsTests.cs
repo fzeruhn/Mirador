@@ -15,18 +15,6 @@ public class AppSettingsTests
     }
 
     [Fact]
-    public void An_old_file_hasnt_moved_run_as_administrator_onto_the_profiles_yet()
-    {
-        using var dir = new TempDir();
-        var store = new AppSettingsStore(dir.File("settings.json"));
-        File.WriteAllText(dir.File("settings.json"), """{"closeToTray": true}""");
-
-        Assert.False(store.Load().RunAsAdministratorPerProfile);
-        store.Save(new AppSettings(RunAsAdministratorPerProfile: true));
-        Assert.True(store.Load().RunAsAdministratorPerProfile);
-    }
-
-    [Fact]
     public void Defaults_without_a_file()
     {
         using var dir = new TempDir();

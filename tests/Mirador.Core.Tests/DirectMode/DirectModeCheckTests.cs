@@ -148,12 +148,10 @@ public sealed class DirectModeCheckTests : IDisposable
     public void Variables_a_shell_may_have_left_that_change_the_layer_are_taken_out_of_monados_environment()
     {
         // As start-monado.ps1 did: an empty value removes the variable from what Monado inherits.
-        // Under both names: the layer still reads the Dream Air ones for one release.
         Assert.Equal(
             [
                 "DISABLE_MIRADOR_DIRECT_MODE", "IPC_RELAXED_CONNECTION_SECURITY", "XRT_COMPOSITOR_FORCE_NVAPI_DIRECT",
                 "MIRADOR_DIRECT_MODE_TEST_NO_EDID", "MIRADOR_DIRECT_MODE_IGNORE_HOLDERS",
-                "DISABLE_DREAMAIR_VK_LAYER", "DREAMAIR_VK_LAYER_TEST_NO_EDID", "DREAMAIR_VK_LAYER_IGNORE_HOLDERS",
             ],
             DirectModeEnvironment.Cleared);
         var inherited = new Dictionary<string, string> { ["IPC_RELAXED_CONNECTION_SECURITY"] = "1", ["PATH"] = @"C:\Windows" };

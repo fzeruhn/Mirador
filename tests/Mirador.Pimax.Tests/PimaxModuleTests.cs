@@ -98,7 +98,7 @@ public sealed class PimaxModuleTests : IDisposable
     private int usbQueries;
 
     private static Profile DreamAirProfile(string? layerFolder = null) => new(
-        "p1", "Dream Air", PimaxModule.ModuleId, BuildSource.Bundled, [],
+        "p1", "Dream Air", PimaxModule.ModuleId, BuildSource.Mirador, [],
         layerFolder is null ? new Dictionary<string, string>() : new Dictionary<string, string> { ["layerFolder"] = layerFolder });
 
     private Task<ModuleSession> BeforeStart(Profile? profile = null, CancellationToken ct = default) =>
@@ -761,7 +761,6 @@ public sealed class PimaxModuleTests : IDisposable
         var module = Module();
 
         Assert.Equal(("pimax", "Pimax"), (module.Id, module.DisplayName));
-        Assert.Equal(["dreamair"], module.FormerIds);
     }
 
     [Theory]

@@ -20,13 +20,6 @@ public class ProfileSetTests
     }
 
     [Fact]
-    public void Bundled_source_has_no_folder()
-    {
-        Assert.Equal(SourceKind.Bundled, BuildSource.Bundled.Kind);
-        Assert.Null(BuildSource.Bundled.Folder);
-    }
-
-    [Fact]
     public void Duplicate_gets_new_id_and_name()
     {
         var original = ProfileSet.Defaults().Profiles[0] with
@@ -108,7 +101,7 @@ public class ProfileSetTests
     [Fact]
     public void Add_appends_a_profile()
     {
-        var p = new Profile(Profile.NewId(), "Lab", null, BuildSource.Bundled, [], new Dictionary<string, string>());
+        var p = new Profile(Profile.NewId(), "Lab", null, BuildSource.Mirador, [], new Dictionary<string, string>());
         var s = ProfileSet.Defaults().Add(p);
         Assert.Equal(3, s.Profiles.Count);
         Assert.Equal(p, s.Profiles[^1]);

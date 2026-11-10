@@ -110,7 +110,7 @@ public enum HelperCommand
 /// <param name="RenderScalePercent">Compositor render scale; <see cref="MonadoSettingsEnvironment.RenderScaleRange"/>.</param>
 /// <param name="CompositorMinTimeMs">Compositor minimum frame time; <see cref="MonadoSettingsEnvironment.CompositorMinTimeRange"/>.</param>
 /// <param name="ExitOnDisconnect">Whether Monado exits when the last app disconnects.</param>
-/// <param name="Module">The headset module's table: <c>""</c> for none, <c>"pimax"</c> (a Dream Air plugged in), or <c>"dreamair"</c> (its id before, for one release).</param>
+/// <param name="Module">The headset module's table: <c>""</c> for none, or <c>"pimax"</c> (a Dream Air plugged in).</param>
 /// <param name="Build">
 /// <c>""</c> for Mirador's Monado; else the id of the profile whose approved build runs (Mirador.md §4.11 item 51). The
 /// helper finds that build in its own record and checks every file's hash; the request names no path.

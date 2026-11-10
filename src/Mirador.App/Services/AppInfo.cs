@@ -45,8 +45,8 @@ public static class AppInfo
     }
 
     /// <summary>
-    /// Which Monado the profile runs: Mirador's Monado's version, a branch with the commit it was built from, a build
-    /// folder, or the bundled one's <c>VERSION.txt</c> (an older install).
+    /// Which Monado the profile runs: the bundled Monado's version, a branch with the commit it was built from, or a
+    /// build folder.
     /// </summary>
     public static string Monado(Profile profile, string appDir)
     {
@@ -60,14 +60,7 @@ public static class AppInfo
                 return $"{profile.Monado.Describe()}{BuiltCommit(profile)}";
         }
 
-        try
-        {
-            return "the Monado an older Mirador installed, " + File.ReadAllText(Path.Combine(appDir, "monado", "VERSION.txt")).Trim();
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return "the Monado an older Mirador installed (no VERSION.txt: a development build without one)";
-        }
+        return profile.Monado.Describe();
     }
 
     /// <summary>The commit and compiler of a branch profile's build, from its <c>build-info.json</c>.</summary>
@@ -80,6 +73,6 @@ public static class AppInfo
     /// <summary>The lines of versions.txt and the Diagnostics page.</summary>
     public static string Versions(Profile profile, string appDir) =>
         $"Mirador {Version}\n{Windows()}\nMonado: {Monado(profile, appDir)}\n" +
-        $"{new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), AppPaths.Default.OpenCompositeDir).VersionLine()}\n" +
+        $"{new OpenCompositeCopy(AppPaths.Default.OpenCompositeDir).VersionLine()}\n" +
         $"Profile: {profile.Name}\n";
 }

@@ -12,13 +12,14 @@ public class OpenVrGamesTests
     {
         private readonly TempDir dir = new();
 
-        public World(bool bundle = true, params string[] runtimes)
+        public World(bool downloaded = true, params string[] runtimes)
         {
-            if (bundle)
+            if (downloaded)
             {
-                Directory.CreateDirectory(Path.Combine(BundleDir, "bin"));
-                File.WriteAllBytes(Path.Combine(BundleDir, "bin", "vrclient_x64.dll"), [1, 2, 3]);
-                File.WriteAllBytes(Path.Combine(BundleDir, "bin", "version.txt"), []);
+                Directory.CreateDirectory(Path.Combine(ReleaseDir, "bin"));
+                File.WriteAllBytes(Path.Combine(ReleaseDir, "bin", "vrclient_x64.dll"), [1, 2, 3]);
+                File.WriteAllBytes(Path.Combine(ReleaseDir, "bin", "version.txt"), []);
+                File.WriteAllText(Path.Combine(ReleaseDir, "SOURCE.txt"), "OpenComposite 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(PathsFile)!);
@@ -29,10 +30,11 @@ public class OpenVrGamesTests
                 ["version"] = 1,
             };
             File.WriteAllText(PathsFile, json.ToJsonString());
-            Games = new OpenVrGames(Paths, new OpenCompositeCopy(BundleDir, RuntimeDir));
+            Games = new OpenVrGames(Paths, new OpenCompositeCopy(RuntimeDir));
         }
 
-        public string BundleDir => dir.File("app", "opencomposite");
+        /// <summary>A downloaded release, as "Get OpenComposite" unpacks it.</summary>
+        public string ReleaseDir => Path.Combine(RuntimeDir, "download", "2026.11.06", "OpenComposite");
 
         public string RuntimeDir => dir.File("Mirador", "OpenComposite");
 
@@ -85,7 +87,7 @@ public class OpenVrGamesTests
     [Fact]
     public void Nothing_downloaded_no_write()
     {
-        using var w = new World(bundle: false);
+        using var w = new World(downloaded: false);
         var before = File.ReadAllText(w.PathsFile);
 
         Assert.False(w.Games.Available);
@@ -98,7 +100,7 @@ public class OpenVrGamesTests
     {
         using var w = new World();
         w.SetThenSteamVrInFront();
-        File.WriteAllBytes(Path.Combine(w.BundleDir, "bin", "vrclient_x64.dll"), [7]);
+        File.WriteAllBytes(Path.Combine(w.ReleaseDir, "bin", "vrclient_x64.dll"), [7]);
 
         using (new FileStream(w.CopiedDll, FileMode.Open, FileAccess.Read, FileShare.None))
         {
@@ -180,7 +182,7 @@ public class OpenVrGamesTests
     {
         using var w = new World();
         w.Games.UseMonado();
-        Directory.Delete(w.RuntimeDir, recursive: true); // a virus scanner took it, or the owner reset Mirador's folder
+        Directory.Delete(Path.Combine(w.RuntimeDir, "bin"), recursive: true); // a virus scanner took it, or the owner reset Mirador's folder
 
         var view = w.Games.View(true, null);
 
@@ -210,7 +212,7 @@ public class OpenVrGamesTests
     {
         using var w = new World();
         w.Games.UseMonado();
-        Directory.Delete(w.RuntimeDir, recursive: true);
+        Directory.Delete(Path.Combine(w.RuntimeDir, "bin"), recursive: true);
 
         Assert.Null(w.Games.UpdateAtLaunch());
 
@@ -222,7 +224,7 @@ public class OpenVrGamesTests
     {
         using var w = new World();
         w.Games.UseMonado();
-        File.WriteAllBytes(Path.Combine(w.BundleDir, "bin", "vrclient_x64.dll"), [8, 8]);
+        File.WriteAllBytes(Path.Combine(w.ReleaseDir, "bin", "vrclient_x64.dll"), [8, 8]);
         using (new FileStream(w.CopiedDll, FileMode.Open, FileAccess.Read, FileShare.None))
         {
             Assert.Equal("OpenComposite will be updated when no game uses it.", w.Games.UpdateAtLaunch());

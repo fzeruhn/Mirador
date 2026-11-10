@@ -45,7 +45,7 @@ public class DiagnosticsZipTests
         Assert.Contains("XRT_COMPOSITOR_SCALE_PERCENTAGE=120\n", entries["environment.txt"]);
         Assert.DoesNotContain("USERPROFILE", entries["environment.txt"]); // only what Mirador set
         Assert.Contains("\"name\": \"Dream Air\"", entries["profile.json"]);
-        Assert.Contains("\"kind\": \"Bundled\"", entries["profile.json"]);
+        Assert.Contains("\"kind\": \"Mirador\"", entries["profile.json"]);
         Assert.Equal("Mirador 0.1.0\n", entries["versions.txt"]);
         Assert.Contains("120", entries["monado-settings.json"]);
         Assert.Contains("Monado service starting", entries["monado.log"]);

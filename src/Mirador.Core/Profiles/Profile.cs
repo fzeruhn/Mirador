@@ -5,12 +5,6 @@ namespace Mirador.Core.Profiles;
 /// <summary>Where a profile's Monado comes from (Mirador.md §4.11 item 55).</summary>
 public enum SourceKind
 {
-    /// <summary>
-    /// The build an older Mirador installed with itself (<c>{app}\monado\runtime</c>). Read from older profile files
-    /// only, and moved to <see cref="Mirador"/> when Mirador first runs after the update (Mirador_Plan.md Task 69).
-    /// </summary>
-    Bundled,
-
     /// <summary>A build in a folder the user chose: a CMake build folder or an install folder.</summary>
     Folder,
 
@@ -46,9 +40,6 @@ public sealed record BuildSource(
     /// <summary>Upstream's main branch.</summary>
     public const string UpstreamRef = "main";
 
-    /// <summary>The build an older Mirador installed (<see cref="SourceKind.Bundled"/>).</summary>
-    public static BuildSource Bundled { get; } = new(SourceKind.Bundled);
-
     /// <summary>Mirador's Monado (<see cref="SourceKind.Mirador"/>), the default.</summary>
     public static BuildSource Mirador { get; } = new(SourceKind.Mirador);
 
@@ -72,7 +63,6 @@ public sealed record BuildSource(
     public string Describe() => Kind switch
     {
         SourceKind.Mirador => "the bundled Monado",
-        SourceKind.Bundled => "the Monado an older Mirador installed",
         SourceKind.Folder => $"build folder {Folder}",
         SourceKind.Branch when IsUpstreamMain => "upstream main, built here",
         SourceKind.Branch => $"{Url} {Ref}, built here",

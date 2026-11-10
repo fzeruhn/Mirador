@@ -4,12 +4,10 @@ using Mirador.Ipc;
 namespace Mirador.Core.Monado;
 
 /// <summary>
-/// Finds the files of a profile's Monado: Mirador's Monado, a branch Mirador built, a build or install folder, or the
-/// build an older Mirador installed with itself.
+/// Finds the files of a profile's Monado: the bundled Monado, a branch Mirador built, or a build or install folder.
 /// </summary>
 /// <param name="bundledRoot">
-/// <c>{app}\monado</c>: Mirador's Monado's versions (<see cref="MiradorMonado"/>), and an older install's <c>runtime</c>
-/// and <c>server</c> folders.
+/// <c>{app}\monado</c>: the bundled Monado's versions (<see cref="MiradorMonado"/>).
 /// </param>
 /// <param name="buildsRoot">Where branch profiles are built (<see cref="AppPaths.BuildsDir"/>), one folder per profile.</param>
 /// <param name="approvedCopy">
@@ -48,7 +46,6 @@ public sealed class MonadoLocator(string bundledRoot, string? buildsRoot = null,
     /// <exception cref="MiradorException">The build is not there or is incomplete; the message says what to do.</exception>
     public MonadoInstall Locate(BuildSource source, string? profileId = null) => source.Kind switch
     {
-        SourceKind.Bundled => LocateBundled(),
         SourceKind.Mirador => LocateMiradors(),
         SourceKind.Branch => LocateBranch(profileId),
         _ => LocateFolder(source.Folder),
@@ -111,28 +108,6 @@ public sealed class MonadoLocator(string bundledRoot, string? buildsRoot = null,
 
         var dll = ReadRuntimeDll(manifest, isMiradors ? "Install the bundled Monado again on the Profiles page." : "Build it again, or pick another folder in the profile.");
         return new MonadoInstall(manifest, dll, service, StandInDirFor(dll), IsBundled: isMiradors);
-    }
-
-    private MonadoInstall LocateBundled()
-    {
-        var root = Path.GetFullPath(bundledRoot);
-        var runtimeDir = Path.Combine(root, "runtime");
-        var manifest = Path.Combine(runtimeDir, "openxr_monado.json");
-        if (!File.Exists(manifest))
-        {
-            throw new MiradorException("This Mirador has no Monado from an older install. Pick another Monado in the profile.");
-        }
-
-        var dll = ReadRuntimeDll(manifest, "Pick another Monado in the profile.");
-
-        var service = Path.Combine(root, "server", "monado-service.exe");
-        if (!File.Exists(service))
-        {
-            throw new MiradorException(
-                $"The Monado an older Mirador installed is incomplete: {service} is missing. Pick another Monado in the profile.");
-        }
-
-        return new MonadoInstall(manifest, dll, service, StandInDirFor(dll), IsBundled: true);
     }
 
     private static MonadoInstall LocateFolder(string? folderGiven)

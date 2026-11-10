@@ -81,7 +81,7 @@ public sealed class Updates(AppHost host)
     /// <summary>
     /// The OpenComposite Mirador runs (the one place that says so): the per-user copy's, else the bundle's.
     /// </summary>
-    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource;
+    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.CopySource;
 
     /// <summary>Whether OpenComposite can be updated from the notice and the Updates card.</summary>
     public bool CanUpdateOpenComposite => true;

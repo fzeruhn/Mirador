@@ -2686,7 +2686,7 @@ internal sealed class StationHarness : IDisposable
 
     /// <summary>A profile whose Lighthouse toggle is <paramref name="lighthouse"/>, with no headset module and no variables.</summary>
     public static Profile Profile(bool? lighthouse) =>
-        new("p", "Test", null, BuildSource.Bundled, [], new Dictionary<string, string>(), lighthouse);
+        new("p", "Test", null, BuildSource.Mirador, [], new Dictionary<string, string>(), lighthouse);
 
     /// <summary>Another manager on the same radio, clock and file.</summary>
     public StationManager NewManager() => new(Radio, new StationStore(Path), () => Settings, Time, Log);

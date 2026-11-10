@@ -11,8 +11,6 @@
 #define Bundle "..\artifacts\bundle"
 ; Monado is optional in the bundle (tools\build-bundle.ps1; Mirador.md section 4.11 items 48 and 54): what isn't there
 ; is not registered. The layer is always in a bundle that tools\build-bundle.ps1 made (item 52).
-#define BundleHasMonado FileExists(AddBackslash(SourcePath) + Bundle + "\monado\runtime\openxr_monado.json")
-#define BundleHasLayer FileExists(AddBackslash(SourcePath) + Bundle + "\layer\mirador_direct_mode.json")
 #define ServiceName "MiradorHelper"
 
 [Setup]
@@ -47,14 +45,9 @@ MinVersion=10.0.19041
 ; What an older version (or the dev install's helper.new) left there goes, so no stale file is loaded.
 Type: filesandordirs; Name: "{app}\helper"
 Type: filesandordirs; Name: "{app}\helper.new"
-; In monado\ only what an older Mirador installed: the versions of Mirador's Monado there are the helper's, and stay.
-Type: filesandordirs; Name: "{app}\monado\runtime"
-Type: filesandordirs; Name: "{app}\monado\server"
-Type: files; Name: "{app}\monado\VERSION.txt"
 Type: filesandordirs; Name: "{app}\layer"
 Type: filesandordirs; Name: "{app}\standin"
 Type: filesandordirs; Name: "{app}\tools"
-Type: filesandordirs; Name: "{app}\opencomposite"
 
 [UninstallDelete]
 ; Mirador's Monado, which the helper installed (Mirador.md section 4.11 item 55), and its download folder; and the
@@ -69,14 +62,8 @@ Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs 
 Name: "{autoprograms}\Mirador"; Filename: "{app}\Mirador.exe"
 
 [Registry]
-#if BundleHasLayer
-; The bundled layer, registered as an implicit layer; it acts only when MIRADOR_DIRECT_MODE=1 (in Monado's process).
+; The layer, registered as an implicit layer; it acts only when MIRADOR_DIRECT_MODE=1 (in Monado's process).
 Root: HKLM64; Subkey: "SOFTWARE\Khronos\Vulkan\ImplicitLayers"; ValueType: dword; ValueName: "{app}\layer\mirador_direct_mode.json"; ValueData: "0"; Flags: uninsdeletevalue
-#endif
-#if BundleHasMonado
-; The bundled Monado, listed as an available OpenXR runtime.
-Root: HKLM64; Subkey: "SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes"; ValueType: dword; ValueName: "{app}\monado\runtime\openxr_monado.json"; ValueData: "0"; Flags: uninsdeletevalue
-#endif
 ; Where the stand-in finds Mirador when no user has run it yet.
 Root: HKLM64; Subkey: "SOFTWARE\Mirador"; ValueType: string; ValueName: "AppPath"; ValueData: "{app}\Mirador.exe"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
@@ -210,8 +197,7 @@ begin
   HelperStep('started', Sc('start {#ServiceName}'));
 end;
 
-{ Whether Manifest is one of Mirador's: the bundled one of an older install, a version of Mirador's Monado, or an
-  approved build's copy. }
+{ Whether Manifest is one of Mirador's: a version of the bundled Monado, or an approved build's copy. }
 function IsMiradorsManifest(const Manifest: String): Boolean;
 var
   Monado, Builds: String;
@@ -222,7 +208,7 @@ begin
     and HasSuffix(Lowercase(Manifest), '\openxr_monado.json');
 end;
 
-{ The runtime entries of Mirador's Monado's versions (the helper's) and of an older install's bundled Monado. }
+{ The runtime entries of the bundled Monado's versions (the helper's). }
 procedure RemoveMiradorsRuntimes;
 var
   Names: TArrayOfString;
@@ -236,17 +222,9 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-#if !BundleHasMonado
-  { An update from an install that bundled Monado (Mirador_Plan.md Task 69): its runtime entry goes with its files. The
-    active runtime, if it was that one, is moved to Mirador's Monado when the helper installs it. }
-  if CurStep = ssInstall then
-    RegDeleteValue(HKLM64, AvailableRuntimes, ExpandConstant('{app}\monado\runtime\openxr_monado.json'));
-#endif
   if CurStep = ssPostInstall then
   begin
-#if BundleHasLayer
     RemoveOtherLayers;
-#endif
     InstallHelper;
   end;
 end;

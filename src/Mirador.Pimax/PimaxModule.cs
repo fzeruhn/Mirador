@@ -41,9 +41,6 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
     /// <summary>The Pimax module (Mirador.md §4.11 item 53): every P3C headset, the steps each model has.</summary>
     public const string ModuleId = PimaxEnvironment.ModuleId;
 
-    /// <summary>Its id when it was the Dream Air module: profiles and session files under it are this module's.</summary>
-    public const string FormerId = DreamAirEnvironment.ModuleId;
-
     /// <summary>
     /// The Dream Air's own variables (Mirador.md §4.3): SteamVR's Lighthouse driver, the pacing for its panels, and the
     /// Dream Air drivers' log at info, whose lines the board and eye tracker status come from (their default, warn,
@@ -55,8 +52,6 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
         [.. DreamAirEnvironment.ModuleVariables.Select(v => new EnvVar(v.Key, v.Value))];
 
     public string Id => ModuleId;
-
-    public IReadOnlyList<string> FormerIds => [FormerId];
 
     public string DisplayName => "Pimax";
 

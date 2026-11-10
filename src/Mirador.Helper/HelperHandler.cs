@@ -96,7 +96,6 @@ public sealed class HelperHandler
     private readonly IServiceControl services;
     private readonly IProcessControl processes;
     private readonly IRuntimeRegistry registry;
-    private readonly string bundledManifest;
     private readonly ElevatedConsent? consent;
     private readonly IElevatedMonado? elevated;
     private readonly string version;
@@ -105,14 +104,13 @@ public sealed class HelperHandler
     private readonly IApprovedBuildStore? approved;
     private readonly object gate = new();
 
-    /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
     /// <param name="version">What <see cref="HelperCommand.Ping"/> answers; the helper's own version when null.</param>
     /// <param name="consent">Where users' consent to run Monado as administrator is; without it, revoking fails with a message.</param>
     /// <param name="elevated">Starts and stops the elevated Monado; without it, the elevated commands fail with a message.</param>
     /// <param name="installDir">What <see cref="HelperCommand.GetInstallFolder"/> answers; <see cref="DefaultInstallDir"/> when null.</param>
-    /// <param name="monado">Mirador's Monado; without it, installing fails with a message and only the bundled Monado is set.</param>
+    /// <param name="monado">The bundled Monado; without it, installing and setting it as the runtime fail with a message.</param>
     public HelperHandler(
-        IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
+        IServiceControl services, IProcessControl processes, IRuntimeRegistry registry,
         string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null, string? installDir = null,
         IMonadoInstaller? monado = null, IApprovedBuildStore? approved = null)
     {
@@ -121,7 +119,6 @@ public sealed class HelperHandler
         this.services = services;
         this.processes = processes;
         this.registry = registry;
-        this.bundledManifest = Path.GetFullPath(bundledManifest);
         this.consent = consent;
         this.elevated = elevated;
         this.version = version ?? OwnVersion();
@@ -133,12 +130,6 @@ public sealed class HelperHandler
     /// elevated Monado is started for (<see cref="ElevatedMonado.ElevatedRequestCheck"/>).
     /// </summary>
     public static string DefaultInstallDir { get; } = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
-
-    /// <summary>
-    /// The bundled manifest of a normal install: <c>&lt;helper folder&gt;\..\monado\runtime\openxr_monado.json</c>.
-    /// </summary>
-    public static string DefaultBundledManifest { get; } = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "..", "monado", "runtime", "openxr_monado.json"));
 
     /// <summary>
     /// Carries out one request. Any failure comes back as an error reply, never as an exception.
@@ -341,8 +332,7 @@ public sealed class HelperHandler
         if (approved.Get(owner, profileId) is { } build && registry.GetActive() is { } active
             && string.Equals(Path.GetFullPath(active), Path.GetFullPath(build.Manifest), StringComparison.OrdinalIgnoreCase))
         {
-            var miradors = monado?.CurrentManifest() ?? bundledManifest;
-            if (File.Exists(miradors))
+            if (monado?.CurrentManifest() is { } miradors && File.Exists(miradors))
             {
                 registry.SetActive(miradors);
             }
@@ -356,11 +346,10 @@ public sealed class HelperHandler
         ApprovedBuilds.Forget(owner, profileId, installDir, approved);
     }
 
-    /// <summary>Mirador's Monado's current version when one is installed, else the bundled Monado of an older install.</summary>
+    /// <summary>The bundled Monado's current version.</summary>
     private HelperReply SetRuntimeBundled()
     {
-        var manifest = monado?.CurrentManifest() ?? bundledManifest;
-        if (!File.Exists(manifest))
+        if (monado?.CurrentManifest() is not { } manifest || !File.Exists(manifest))
         {
             return new HelperReply(false, BundledMissing);
         }
@@ -536,12 +525,10 @@ public sealed class HelperHandler
     }
 
     /// <summary>
-    /// Whether <paramref name="manifest"/> is Mirador's: the bundled one (the same full path, ignoring case) or a version
-    /// of Mirador's Monado.
+    /// Whether <paramref name="manifest"/> is Mirador's: a version of the bundled Monado, or an approved copy.
     /// </summary>
     private bool IsBundled(string manifest) =>
-        string.Equals(Path.GetFullPath(manifest), bundledManifest, StringComparison.OrdinalIgnoreCase)
-        || monado?.IsMiradors(manifest) == true
+        monado?.IsMiradors(manifest) == true
         || Path.GetFullPath(manifest).StartsWith(ApprovedBuilds.Root(installDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Keeps a reply within one protocol line.</summary>

@@ -84,7 +84,7 @@ public sealed class AppHost : IAsyncDisposable
             Calibrations,
             () => Usb.Present()));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
-        OpenCompositeCopy = new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir);
+        OpenCompositeCopy = new OpenCompositeCopy(paths.OpenCompositeDir);
         OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir), OpenCompositeCopy);
 
         radio = new WinRtStationRadio(text => AppLog.Write(text));
@@ -545,10 +545,8 @@ public sealed class AppHost : IAsyncDisposable
         // The Pimax module's model, looked up early and off the UI thread, so the window's first reads find it known.
         _ = Task.Run(host.RefreshModels);
 
-        // Before anything can write the file: a migration's save mustn't make a first run look like a later one.
         host.FirstRun = !File.Exists(paths.ProfilesFile);
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
-        host.MigrateProfiles();
 
         // A consent no profile uses (one an older installer's task recorded, or left after a failed take-back) goes.
         _ = Task.Run(async () =>
@@ -666,68 +664,13 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// An older install's profiles on the bundled Monado move to Mirador's Monado once the bundle is gone
-    /// (Mirador_Plan.md Task 69); Home says so.
-    /// </summary>
-    private void MigrateProfiles()
-    {
-        try
-        {
-            // A renamed module (the Dream Air module became the Pimax module): its profiles follow it.
-            var (renamed, idsChanged) = Core.Migration.ProfileMigration.MigrateModuleIds(
-                Profiles.Load(), Modules.Values.SelectMany(m => m.FormerIds.Select(former => (former, m.Id))));
-            if (idsChanged)
-            {
-                Profiles.Save(renamed);
-            }
-
-            // The layer comes with Mirador: a layer folder a profile named before is dropped.
-            var (withoutFolders, foldersDropped) = Core.Migration.ProfileMigration.DropLayerFolders(Profiles.Load());
-            if (foldersDropped)
-            {
-                Profiles.Save(withoutFolders);
-            }
-
-            // App settings' "Run Monado as administrator" became each profile's own toggle: once, the profiles it
-            // covered get theirs on while the user's consent is on. The profiles remember that it was done.
-            var current = Profiles.Load();
-            if (!current.RunAsAdministratorPerProfile)
-            {
-                var (elevated, moved) = Core.Migration.ProfileMigration.MoveConsentOntoProfiles(
-                    current, Settings.Load().RunAsAdministratorPerProfile, ElevatedMonadoAllowed());
-                if (moved)
-                {
-                    Profiles.Save(elevated);
-                }
-            }
-
-            var bundleGone = !File.Exists(Path.Combine(AppDir, "monado", "runtime", "openxr_monado.json"));
-            var (set, changed) = Core.Migration.ProfileMigration.Migrate(Profiles.Load(), bundleGone);
-            if (changed)
-            {
-                Profiles.Save(set);
-                notices.Add("Your profiles now use the bundled Monado, upstream's weekly build, which Mirador downloads for them, instead of the Monado an older Mirador installed.");
-            }
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            AppLog.Write("Couldn't move the profiles to the bundled Monado", e);
-        }
-    }
-
-    /// <summary>
     /// When a profile runs Mirador's Monado and none is installed: the helper installs the newest weekly build (Mirador.md
-    /// §4.11 item 55: the first run, or an install moved from the bundled Monado). What happened, for Home; null when
+    /// §4.11 item 55: the first run). What happened, for Home; null when
     /// nothing was needed.
     /// </summary>
     public async Task<(string Message, bool Ok)?> InstallMiradorsMonadoIfNeededAsync()
     {
-        // Also when the machine's runtime is still an older install's bundled Monado, whose files the update removed: the
-        // helper moves it to Mirador's Monado as it installs it.
-        var bundled = Path.Combine(Locator.MiradorRoot, "runtime", "openxr_monado.json");
-        var danglingBundled = Runtime.Active() is { } active
-            && string.Equals(Path.GetFullPath(active), bundled, StringComparison.OrdinalIgnoreCase) && !File.Exists(bundled);
-        if ((!Profiles.Load().Profiles.Any(p => p.Monado.Kind == SourceKind.Mirador) && !danglingBundled)
+        if (!Profiles.Load().Profiles.Any(p => p.Monado.Kind == SourceKind.Mirador)
             || Ipc.MiradorMonado.Read(Locator.MiradorRoot).Current is not null)
         {
             return null;

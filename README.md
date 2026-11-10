@@ -30,16 +30,10 @@ The direct-mode Vulkan layer (`layer\`, C++) needs the same tools, CMake and Nin
 Catch2 tests (skipped with a warning when the C++ tools are missing, except on CI). `tools\build-cmake.ps1 -Source layer
 -BuildDir artifacts\layer-build -Configure -Build -Test` builds it alone.
 
-OpenComposite, which runs OpenVR games on Monado: `tools\get-opencomposite.ps1` downloads the 64-bit build from the
-release of Mirador's fork (github.com/fzeruhn/OpenComposite), checks its pinned SHA-256 and unpacks it to
-`artifacts\opencomposite`. The default pin, v2026.11.06, has no `OpenComposite-windows.zip` asset of its own: take that
-file out of the release's `OpenComposite.zip` and give it as `-Zip <file>`.
-
 The installer: `tools\build-bundle.ps1` puts the install layout in `artifacts\bundle`, then
 `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
-`artifacts\Mirador-<version>-setup.exe` from it. The bundle always has the layer, which it builds from `layer\`; without
-arguments it has no Monado and no OpenComposite, as CI builds it; `-Monado <build> -OpenComposite artifacts\opencomposite`
-add them.
+`artifacts\Mirador-<version>-setup.exe` from it. The bundle has the layer, which it builds from `layer\`, and no Monado
+or OpenComposite: Mirador downloads both.
 
 CI (`.github/workflows/`):
 - `build.yml` builds and tests every push and pull request on a Windows runner, leaving out tests marked

@@ -400,8 +400,6 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
 
     public bool UsesNvidiaDirectMode { get; set; }
 
-    public IReadOnlyList<string> FormerIds { get; set; } = [];
-
     public string? ElevatedModuleId { get; set; } = "fake";
 
     /// <summary>When set, BeforeStart throws it (after waiting at <see cref="Gate"/>).</summary>
@@ -586,10 +584,12 @@ internal sealed class Harness : IAsyncDisposable
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
 
         var bundledRoot = Path.Combine(Root, "Mirador App", "monado");
-        var dll = Touch(bundledRoot, "runtime", "openxr_monado.dll");
-        BundledManifest = Path.Combine(bundledRoot, "runtime", "openxr_monado.json");
+        const string version = "monado-2026.11.10-1a2b3c4d5e";
+        var dll = Touch(bundledRoot, version, "bin", "openxr_monado.dll");
+        BundledManifest = Path.Combine(bundledRoot, version, "openxr_monado.json");
         File.WriteAllText(BundledManifest, TestManifest.Json(dll));
-        BundledServer = Touch(bundledRoot, "server", "monado-service.exe");
+        BundledServer = Touch(bundledRoot, version, "bin", "monado-service.exe");
+        MiradorMonado.Write(bundledRoot, new MiradorMonadoVersions(version, null));
 
         BundledLayer = Path.Combine(Root, "Mirador App", "layer");
         Touch(BundledLayer, DirectModeLayer.ManifestName);
@@ -645,7 +645,7 @@ internal sealed class Harness : IAsyncDisposable
     }
 
     public static Profile DreamAir { get; } =
-        new("p1", "Dream Air", "fake", BuildSource.Bundled, [], new Dictionary<string, string>());
+        new("p1", "Dream Air", "fake", BuildSource.Mirador, [], new Dictionary<string, string>());
 
     /// <summary>Program files under this folder count as Mirador's stand-in, nothing else does.</summary>
     public const string StandInImages = @"C:\Games\stand-ins\";
@@ -666,6 +666,9 @@ internal sealed class Harness : IAsyncDisposable
     public string BundledManifest { get; }
 
     public string BundledServer { get; }
+
+    /// <summary>The bundled Monado's runtime DLL folder, with the stand-in's <c>service</c> folder below it.</summary>
+    public string RuntimeDir => Path.GetDirectoryName(BundledServer)!;
 
     public string StandInExe { get; }
 

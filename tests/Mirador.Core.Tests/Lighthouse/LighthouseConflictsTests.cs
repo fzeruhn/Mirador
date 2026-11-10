@@ -8,7 +8,7 @@ public class LighthouseConflictsTests
     private static ProcInfo Proc(string name, int id = 1) => new(name, id);
 
     private static Profile ProfileWith(params EnvVar[] extra) =>
-        new("p", "Test", null, BuildSource.Bundled, extra, new Dictionary<string, string>());
+        new("p", "Test", null, BuildSource.Mirador, extra, new Dictionary<string, string>());
 
     [Fact]
     public void Finds_the_steamvr_processes_sorted_and_without_case()

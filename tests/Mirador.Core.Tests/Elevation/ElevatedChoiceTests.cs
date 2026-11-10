@@ -6,7 +6,7 @@ namespace Mirador.Core.Tests.Elevation;
 public class ElevatedChoiceTests
 {
     private static Profile Custom(BuildSource? monado = null, params EnvVar[] extra) =>
-        new("p", "Custom", null, monado ?? BuildSource.Bundled, extra, new Dictionary<string, string>());
+        new("p", "Custom", null, monado ?? BuildSource.Mirador, extra, new Dictionary<string, string>());
 
     [Fact]
     public void Installed_copy_with_a_plain_bundled_profile_may_run_elevated() =>

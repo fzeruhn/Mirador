@@ -18,8 +18,8 @@ public class ElevatedEnvironmentTests
         int lh = 3000, int scale = 100, int comp = 6, bool exit = false, string module = "") =>
         new(lh, scale, comp, exit, module);
 
-    private static IReadOnlyDictionary<string, string> Build(ElevatedStart? start = null, string module = "", params string[] testLines) =>
-        ElevatedEnvironment.Build(start ?? Start(module: module), Folders, ServerDir, SteamVrPath, testLines);
+    private static IReadOnlyDictionary<string, string> Build(ElevatedStart? start = null, string module = "") =>
+        ElevatedEnvironment.Build(start ?? Start(module: module), Folders, ServerDir, SteamVrPath);
 
     [Fact]
     public void Headless_adds_the_null_compositor_and_the_simulated_headset_and_nothing_else()
@@ -37,7 +37,7 @@ public class ElevatedEnvironmentTests
     [Fact]
     public void Headless_with_a_headset_module_is_refused()
     {
-        Assert.Throws<ArgumentException>(() => Build(Start(module: DreamAirEnvironment.ModuleId) with { Headless = true }));
+        Assert.Throws<ArgumentException>(() => Build(Start(module: PimaxEnvironment.ModuleId) with { Headless = true }));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class ElevatedEnvironmentTests
         };
 
         var folders = UserFolders.FromBlock(block);
-        var env = ElevatedEnvironment.Build(Start(), folders, ServerDir, SteamVrPath, []);
+        var env = ElevatedEnvironment.Build(Start(), folders, ServerDir, SteamVrPath);
 
         Assert.Equal(block["TEMP"], env["TEMP"]);
         Assert.Equal(block["TMP"], env["TMP"]);
@@ -113,7 +113,7 @@ public class ElevatedEnvironmentTests
         Assert.Equal(@"D:\TempB", UserFolders.FromBlock(temp).Temp);
         Assert.Equal(
             MonadoPipeName.NameFor(temp, AnsiCodePage.RoundTrip),
-            MonadoPipeName.NameFor(ElevatedEnvironment.Build(Start(), UserFolders.FromBlock(temp), ServerDir, SteamVrPath, []), AnsiCodePage.RoundTrip));
+            MonadoPipeName.NameFor(ElevatedEnvironment.Build(Start(), UserFolders.FromBlock(temp), ServerDir, SteamVrPath), AnsiCodePage.RoundTrip));
 
         var none = UserFolders.FromBlock(new Dictionary<string, string> { ["USERPROFILE"] = @"C:\Users\u" });
         Assert.Equal(@"C:\Users\u", none.Temp);
@@ -157,9 +157,9 @@ public class ElevatedEnvironmentTests
     }
 
     [Fact]
-    public void Dreamair_adds_its_fixed_table()
+    public void Pimax_adds_the_dream_airs_fixed_table()
     {
-        var env = Build(module: "dreamair");
+        var env = Build(module: PimaxEnvironment.ModuleId);
 
         foreach (var (name, value) in DreamAirEnvironment.FixedEnvironment)
         {
@@ -170,7 +170,7 @@ public class ElevatedEnvironmentTests
     [Fact]
     public void No_vk_or_xr_variables_but_layers_allow()
     {
-        var env = Build(module: "dreamair");
+        var env = Build(module: PimaxEnvironment.ModuleId);
 
         var vk = env.Keys.Where(k => k.StartsWith("VK_", StringComparison.OrdinalIgnoreCase)).ToList();
         Assert.Equal(["VK_LOADER_LAYERS_ALLOW"], vk);
@@ -192,16 +192,6 @@ public class ElevatedEnvironmentTests
         var env = Build();
 
         Assert.Equal(SteamVrPath, env["STEAMVR_PATH"]);
-    }
-
-    [Fact]
-    public void Test_lines_only_when_given()
-    {
-        Assert.False(Build().ContainsKey("XRT_COMPOSITOR_NULL"));
-
-        var env = Build(Start(), "", "XRT_COMPOSITOR_NULL=1", "SIMULATED_ENABLE=1");
-        Assert.Equal("1", env["XRT_COMPOSITOR_NULL"]);
-        Assert.Equal("1", env["SIMULATED_ENABLE"]);
     }
 
     [Fact]

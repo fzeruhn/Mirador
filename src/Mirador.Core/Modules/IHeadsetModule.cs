@@ -27,9 +27,6 @@ public interface IHeadsetModule
     /// </summary>
     bool UsesNvidiaDirectMode => false;
 
-    /// <summary>Ids the module had before (a renamed module): profiles and session files under them are its own.</summary>
-    IReadOnlyList<string> FormerIds => [];
-
     /// <summary>
     /// The table the helper writes for this module when Monado runs as administrator (<c>ElevatedStart.Module</c>), for
     /// the headset as it is now; null when the helper has none for it, and Monado then runs as the user.
