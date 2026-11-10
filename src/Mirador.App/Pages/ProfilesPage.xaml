@@ -42,6 +42,8 @@
                             MinWidth="200"
                             AutomationProperties.Name="Profile"
                             IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
+                            IsTextSearchEnabled="False"
+                            PreviewKeyDown="OnPickerPreviewKeyDown"
                             ItemsSource="{x:Bind ViewModel.Profiles}"
                             SelectedItem="{x:Bind ViewModel.Selected, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
                         <Button
