@@ -118,6 +118,7 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
         }
 
         var (target, targetKey, targetProfile) = (install, key, profile);
+        PruneRunLogs();
         var logFile = Path.Combine(host.Paths.LogsDir, $"{DiagnosticsZip.VerifyLogPrefix}{DateTime.Now:yyyyMMdd-HHmmss}.log");
         IsBusy = true;
         host.Verifying = true;
@@ -234,6 +235,20 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
             {
                 // Mirador's log still has the line.
             }
+        }
+    }
+
+    /// <summary>Tidies the run logs before a run writes its own, keeping every log a profile's result still names.</summary>
+    private void PruneRunLogs()
+    {
+        try
+        {
+            var inUse = host.Profiles.Load().Profiles.Select(p => VerifyResult.Load(host.VerifyResultFile(p.Id))?.LogFile).ToList();
+            VerifyRunLogs.Prune(host.Paths.LogsDir, inUse);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Write("Couldn't tidy Verify's run logs", e);
         }
     }
 }
