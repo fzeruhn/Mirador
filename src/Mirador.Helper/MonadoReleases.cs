@@ -24,7 +24,7 @@ public interface IMonadoInstaller
 }
 
 /// <summary>
-/// Mirador's Monado in the helper (Mirador.md §4.11 item 55, Mirador_Plan.md Task 62): the nightly builds of upstream
+/// Mirador's Monado in the helper (Mirador.md §4.11 item 55, Mirador_Plan.md Task 62): the weekly builds of upstream
 /// <c>main</c> from Mirador's own releases, installed in <c>{app}\monado\&lt;version&gt;\</c>, which only administrators
 /// can change, so that this Monado may run elevated and be the machine's runtime without any further approval.
 /// The request names only a version. The list, the download address and the SHA-256 all come from GitHub, read here;

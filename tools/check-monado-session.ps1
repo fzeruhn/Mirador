@@ -1,7 +1,7 @@
 #Requires -Version 7.3
 <#
 .SYNOPSIS
-  Starts a Monado build headless and connects an OpenXR app to it: the last check of the nightly (Mirador.md §4.11
+  Starts a Monado build headless and connects an OpenXR app to it: the last check of the weekly build (Mirador.md §4.11
   item 55).
 .DESCRIPTION
   Starts the build's monado-service.exe with its null compositor and simulated headset (XRT_COMPOSITOR_NULL=1,

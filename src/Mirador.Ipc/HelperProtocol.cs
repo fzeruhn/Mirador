@@ -131,7 +131,7 @@ public sealed record ElevatedStart(
 
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and
-/// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a nightly's name, checked by the helper), and
+/// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a weekly build's name, checked by the helper), and
 /// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper).
 /// </summary>
 public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null);

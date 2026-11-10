@@ -277,7 +277,7 @@ public class MonadoReleaseListTests
         $$"""{"tag_name":"{{tag}}","prerelease":{{(prerelease ? "true" : "false")}},"draft":{{(draft ? "true" : "false")}},"published_at":"2026-11-10T03:40:00Z","assets":[{"name":"{{name ?? tag + ".zip"}}","browser_download_url":"{{url ?? $"https://github.com/fzeruhn/Mirador/releases/download/{tag}/{tag}.zip"}}","digest":"{{digest}}"}]}""";
 
     [Fact]
-    public void Only_listed_nightlies_with_their_zip_and_digest_count()
+    public void Only_listed_builds_with_their_zip_and_digest_count()
     {
         const string good = "monado-2026.11.10-1a2b3c4d5e";
         var json = "[" + string.Join(",",

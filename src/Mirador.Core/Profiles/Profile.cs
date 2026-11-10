@@ -15,7 +15,7 @@ public enum SourceKind
     Folder,
 
     /// <summary>
-    /// Mirador's Monado: the nightly build of upstream <c>main</c> from Mirador's releases, installed by the helper in
+    /// Mirador's Monado: the weekly build of upstream <c>main</c> from Mirador's releases, installed by the helper in
     /// <c>{app}\monado\&lt;version&gt;</c>. The default.
     /// </summary>
     Mirador,

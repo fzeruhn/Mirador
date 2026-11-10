@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Mirador.Ipc;
 
-/// <summary>One of Mirador's Monado builds on GitHub: a nightly prerelease and its zip.</summary>
+/// <summary>One of Mirador's Monado builds on GitHub: a weekly prerelease and its zip.</summary>
 /// <param name="Version">The tag, which is the version: <c>monado-&lt;yyyy.mm.dd&gt;-&lt;sha&gt;</c>.</param>
 /// <param name="ZipUrl">The zip's download, on github.com under Mirador's releases.</param>
 /// <param name="ZipSha256">The zip's SHA-256 from GitHub's <c>digest</c>, lower case.</param>
@@ -16,7 +16,7 @@ public sealed record MonadoRelease(string Version, string ZipUrl, string ZipSha2
 /// </summary>
 public static class MonadoReleaseList
 {
-    /// <summary>Mirador's repository, where the nightly is published.</summary>
+    /// <summary>Mirador's repository, where the weekly build is published.</summary>
     public const string Repository = "fzeruhn/Mirador";
 
     /// <summary>The releases list, newest first.</summary>

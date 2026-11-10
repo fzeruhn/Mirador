@@ -673,7 +673,7 @@ public sealed class AppHost : IAsyncDisposable
             if (changed)
             {
                 Profiles.Save(set);
-                notices.Add("Mirador no longer comes with Monado: your profiles now use Mirador's Monado, upstream's nightly build, which Mirador downloads for them.");
+                notices.Add("Mirador no longer comes with Monado: your profiles now use Mirador's Monado, upstream's weekly build, which Mirador downloads for them.");
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -683,7 +683,7 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// When a profile runs Mirador's Monado and none is installed: the helper installs the newest nightly (Mirador.md
+    /// When a profile runs Mirador's Monado and none is installed: the helper installs the newest weekly build (Mirador.md
     /// §4.11 item 55: the first run, or an install moved from the bundled Monado). What happened, for Home; null when
     /// nothing was needed.
     /// </summary>

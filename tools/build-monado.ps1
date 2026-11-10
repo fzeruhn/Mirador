@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Mirador's Monado build recipe: configures, builds and installs a Monado source tree, the same way on CI (the
-    nightly) and in the app (a profile built from a branch link).
+    weekly build) and in the app (a profile built from a branch link).
 .DESCRIPTION
     Based on upstream's .gitlab-ci\windows\monado_build.ps1 (forks don't carry one): MSVC found with vswhere, Ninja,
     RelWithDebInfo, the vcpkg toolchain (Monado's vcpkg.json says what it needs), the vcpkg DLLs installed next to

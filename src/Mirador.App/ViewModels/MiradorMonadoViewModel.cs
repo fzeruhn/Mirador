@@ -7,7 +7,7 @@ using Mirador.Ipc;
 namespace Mirador.App.ViewModels;
 
 /// <summary>
-/// The Profiles page's card for Mirador's Monado (Mirador.md §4.11 items 50 and 55): which nightly is installed and the
+/// The Profiles page's card for Mirador's Monado (Mirador.md §4.11 items 50 and 55): which weekly build is installed and the
 /// one kept for "Roll back", the newest on GitHub, and Install or "Update Monado". The helper does the installing; this
 /// only names the version.
 /// </summary>

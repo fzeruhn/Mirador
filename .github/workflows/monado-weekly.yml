@@ -1,16 +1,17 @@
-name: Monado nightly
+name: Monado weekly
 
-# Mirador's Monado (Mirador.md §4.11 item 55): upstream main, built once a night with Mirador's recipe
-# (tools\build-monado.ps1) and checked (tools\check-monado-build.ps1), published as a prerelease
-# monado-<yyyy.mm.dd>-<short sha> when its checks pass. Skipped when upstream has no new commit since the last
-# published build; a failed night publishes nothing and fails the run. The last 2 are kept: Mirador offers only the
+# Mirador's Monado (Mirador.md §4.11 item 55): upstream main, built once a week (Finn, 2026-11-10; it was nightly) with
+# Mirador's recipe (tools\build-monado.ps1) and checked (tools\check-monado-build.ps1, then a headless start on a machine
+# of its own: tools\check-monado-session.ps1), published as a prerelease monado-<yyyy.mm.dd>-<short sha> when its checks
+# pass. Skipped when upstream has no new commit since the last published build; a failed week publishes nothing and
+# fails the run (started again by hand, with workflow_dispatch). The last 2 are kept: Mirador offers only the
 # newest, and "Roll back" goes to the version the helper kept on disk, so older releases are never asked for.
 #
 # A push that changes the recipe, the checks or this file builds and checks too, without publishing.
 
 on:
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '17 3 * * 1' # Mondays, 03:17 UTC
   workflow_dispatch:
     inputs:
       force:
@@ -24,13 +25,13 @@ on:
       - tools/check-monado-session.ps1
       - tools/xr-check/**
       - tools/vcpkg-commit.txt
-      - .github/workflows/monado-nightly.yml
+      - .github/workflows/monado-weekly.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: monado-nightly-${{ github.ref }}
+  group: monado-weekly-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -93,7 +94,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git -C "$env:RUNNER_TEMP\vcpkg" checkout -q $pin
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # A pin that isn't on vcpkg's history must fail the night, not build with vcpkg's newest.
+          # A pin that isn't on vcpkg's history must fail the run, not build with vcpkg's newest.
           $head = (git -C "$env:RUNNER_TEMP\vcpkg" rev-parse HEAD).Trim()
           if ($head -ne $pin) { Write-Error "vcpkg is at $head, not the pin $pin."; exit 1 }
           & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
@@ -103,7 +104,7 @@ jobs:
           "VCPKG_DEFAULT_BINARY_CACHE=$($cache.FullName)" >> $env:GITHUB_ENV
           "pin=$pin" >> $env:GITHUB_OUTPUT
 
-      # A night without dependency changes doesn't build them again.
+      # A week without dependency changes doesn't build them again.
       - name: vcpkg's binary cache
         if: steps.upstream.outputs.skip != 'true'
         uses: actions/cache@v4
@@ -154,7 +155,7 @@ jobs:
           if-no-files-found: error
           path: ${{ runner.temp }}/xr-check-build/xr-check.exe
 
-      - name: The build log of a failed night
+      - name: The build log of a failed build
         if: failure()
         uses: actions/upload-artifact@v5
         with:
@@ -214,7 +215,7 @@ jobs:
           name: monado-session
           path: ${{ runner.temp }}/monado-session/
 
-  # Only a scheduled or started night publishes, and only this job may write.
+  # Only a scheduled or started run publishes, and only this job may write.
   publish:
     needs: [build, session]
     if: needs.build.outputs.skip != 'true' && github.event_name != 'push'

@@ -61,7 +61,7 @@
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Builds" />
-                <toolkit:SettingsCard Description="Mirador's Monado is upstream's nightly build. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
+                <toolkit:SettingsCard Description="Mirador's Monado is upstream's weekly build. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
                     <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.MonadoSource, Mode=TwoWay}">
                         <ComboBoxItem Content="Mirador's Monado" />
                         <ComboBoxItem Content="Build upstream main" />

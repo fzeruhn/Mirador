@@ -14,7 +14,7 @@ namespace Mirador.App.Services;
 /// <param name="OpenComposite">The OpenComposite in use: its release version (or commit); null when this build has none.</param>
 /// <param name="NewerOpenComposite">OpenComposite's latest full release when it is newer; null otherwise.</param>
 /// <param name="NewerMonado">
-/// Mirador's Monado's newest nightly when it isn't the one installed (Mirador.md §4.11 item 50); null otherwise, and when
+/// Mirador's Monado's newest weekly build when it isn't the one installed (Mirador.md §4.11 item 50); null otherwise, and when
 /// no profile runs Mirador's Monado.
 /// </param>
 public sealed record UpdateReport(
@@ -163,7 +163,7 @@ public sealed class Updates(AppHost host)
     }
 
     /// <summary>
-    /// The newest nightly of Mirador's Monado when a profile runs Mirador's Monado and a newer one than the installed is
+    /// The newest weekly build of Mirador's Monado when a profile runs Mirador's Monado and a newer one than the installed is
     /// out; never installed from here (Mirador.md §4.11 item 50: "Never installed by itself").
     /// </summary>
     private async Task<string?> NewerMonadoAsync(HttpClient http)

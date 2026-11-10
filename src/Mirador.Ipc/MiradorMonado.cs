@@ -10,7 +10,7 @@ namespace Mirador.Ipc;
 public sealed record MiradorMonadoVersions(string? Current, string? Previous);
 
 /// <summary>
-/// Mirador's Monado (Mirador.md §4.11 item 55): the nightly builds of upstream <c>main</c> the helper installs in
+/// Mirador's Monado (Mirador.md §4.11 item 55): the weekly builds of upstream <c>main</c> the helper installs in
 /// <c>{app}\monado\&lt;version&gt;\</c>, an admin-only folder, with <c>current.json</c> beside them saying which is in use.
 /// Only the helper writes there; the app reads.
 /// </summary>
@@ -19,10 +19,10 @@ public static partial class MiradorMonado
     /// <summary>The file in the root that names the current and previous versions.</summary>
     public const string CurrentFile = "current.json";
 
-    /// <summary>The releases' tag prefix: Mirador's nightly prereleases are <c>monado-&lt;yyyy.mm.dd&gt;-&lt;sha&gt;</c>.</summary>
+    /// <summary>The releases' tag prefix: Mirador's weekly prereleases are <c>monado-&lt;yyyy.mm.dd&gt;-&lt;sha&gt;</c>.</summary>
     public const string TagPrefix = "monado-";
 
-    /// <summary>Whether <paramref name="version"/> is a nightly's name, and so a safe folder name.</summary>
+    /// <summary>Whether <paramref name="version"/> is a weekly build's name, and so a safe folder name.</summary>
     public static bool IsVersion(string? version) => version is not null && VersionPattern().IsMatch(version);
 
     /// <summary>The versions in <paramref name="root"/>, or none when nothing is installed or the file is unusable.</summary>

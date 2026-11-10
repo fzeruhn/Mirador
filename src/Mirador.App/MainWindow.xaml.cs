@@ -75,7 +75,7 @@ public sealed partial class MainWindow : Window
         {
             var root = await LoadedRootAsync();
             var choices = new RadioButtons { SelectedIndex = 0 };
-            choices.Items.Add("Mirador's Monado (recommended): upstream's nightly build, ready to run");
+            choices.Items.Add("Mirador's Monado (recommended): upstream's weekly build, ready to run");
             choices.Items.Add("Build upstream main here (needs the build tools)");
             choices.Items.Add("Build a branch or merge request from its link");
             choices.Items.Add("A Monado I built myself (a build folder)");
