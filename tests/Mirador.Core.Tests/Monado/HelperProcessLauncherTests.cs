@@ -275,6 +275,15 @@ public class HelperProcessLauncherTests
 
         var process = Launcher(client, dir.File("log"), stopLimit: TimeSpan.FromMilliseconds(300)).Start(Spec);
         process.Kill();
+
+        // The stop goes out on the thread pool, which a busy test run (CI) may start later than the limit: wait for it
+        // to reach the helper, so that the limit is what Dispose then waits for Monado's exit.
+        var until = DateTime.UtcNow + Limit;
+        while (!client.Stopped && DateTime.UtcNow < until)
+        {
+            await Task.Delay(10);
+        }
+
         var clock = System.Diagnostics.Stopwatch.StartNew();
         await process.DisposeAsync().AsTask().WaitAsync(Limit);
 
