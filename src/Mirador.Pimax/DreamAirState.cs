@@ -8,16 +8,11 @@ namespace Mirador.Pimax;
 /// <param name="BlobVariant">The eye geometry variant this headset needs, once known (Task 21).</param>
 /// <param name="BlobSource">Where <paramref name="BlobVariant"/> came from: <c>pimax</c> or <c>owner</c>.</param>
 /// <param name="BlobTrackerSerial">The eye tracker the variant belongs to.</param>
-/// <param name="LastCheck">The last gaze check's result.</param>
 public sealed record DreamAirState(
     string? LastGoodDriver = null,
     string? BlobVariant = null,
     string? BlobSource = null,
-    string? BlobTrackerSerial = null,
-    LastCheck? LastCheck = null);
-
-/// <summary>A gaze check's result, kept to show on the Eye tracking page.</summary>
-public sealed record LastCheck(DateTimeOffset When, double MedianDeg, double WorstDotDeg, int Dots);
+    string? BlobTrackerSerial = null);
 
 /// <summary>Keeps the <see cref="DreamAirState"/> in one JSON file. Safe to use from several threads.</summary>
 public sealed class DreamAirStateStore(string path)

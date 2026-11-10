@@ -12,39 +12,7 @@
         <StackPanel Style="{StaticResource PageStack}">
             <TextBlock Style="{StaticResource PageTitle}" Text="Eye tracking" />
 
-            <!-- The check needs gaze_world, which only Finn's local builds carry (Mirador.md §4.11 item 54): hidden without it. -->
-            <TextBlock
-                Style="{StaticResource FirstSectionHeader}"
-                Text="Calibration"
-                Visibility="{x:Bind ViewModel.HasGazeWorld}" />
-            <toolkit:SettingsCard
-                Description="{x:Bind ViewModel.CheckDescription, Mode=OneWay}"
-                Header="Check my calibration"
-                Visibility="{x:Bind ViewModel.HasGazeWorld}">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <ProgressRing
-                        Width="20"
-                        Height="20"
-                        IsActive="{x:Bind ViewModel.IsChecking, Mode=OneWay}" />
-                    <Button
-                        Command="{x:Bind ViewModel.RunCheckCommand}"
-                        Content="Check"
-                        Style="{StaticResource AccentButtonStyle}" />
-                </StackPanel>
-            </toolkit:SettingsCard>
-            <toolkit:SettingsCard
-                Description="{x:Bind ViewModel.LastCheck, Mode=OneWay}"
-                Header="Last check"
-                Visibility="{x:Bind ViewModel.HasGazeWorld}" />
-            <InfoBar
-                Closed="OnResultClosed"
-                IsClosable="True"
-                IsOpen="{x:Bind ViewModel.HasResult, Mode=OneWay}"
-                Message="{x:Bind ViewModel.Result, Mode=OneWay}"
-                Severity="{x:Bind ViewModel.ResultSeverity, Mode=OneWay}"
-                Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
-
-            <TextBlock Style="{StaticResource SectionHeader}" Text="Headset" />
+            <TextBlock Style="{StaticResource FirstSectionHeader}" Text="Headset" />
             <toolkit:SettingsCard Description="{x:Bind ViewModel.VariantDescription, Mode=OneWay}" Header="Headset variant">
                 <!-- Below 700 wide the ComboBox goes under the text (the toolkit's default is 476), so the description keeps its width. -->
                 <toolkit:SettingsCard.Resources>

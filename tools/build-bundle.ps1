@@ -1,7 +1,7 @@
 #Requires -Version 7.3
 <#
 .SYNOPSIS
-    Builds Mirador's install bundle (artifacts\bundle): the app, the helper, the stand-in and the direct-mode layer, and, when given, a Monado build, gaze_world and the fork's OpenComposite release.
+    Builds Mirador's install bundle (artifacts\bundle): the app, the helper, the stand-in and the direct-mode layer, and, when given, a Monado build and the fork's OpenComposite release.
 .DESCRIPTION
     The bundle is the install layout of the plan's Global Constraints, which the installer (installer\Mirador.iss)
     copies to {app}:
@@ -14,13 +14,12 @@
       monado\VERSION.txt             git describe of the Monado source
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
       layer\                         mirador_direct_mode.json, .dll, mirador-display-check.exe (built from layer\)
-      tools\                         build-monado.ps1, vcpkg-commit.txt, xr-check.exe; gaze_world.exe, openxr_loader.dll when given
+      tools\                         build-monado.ps1, vcpkg-commit.txt, xr-check.exe
       opencomposite\bin\             vrclient_x64.dll and version.txt (empty; Mirador copies them per user)
       opencomposite\                 SOURCE.txt (line 1: version and commit), OpenComposite's licences and notes
 
-    Monado, gaze_world and OpenComposite are each optional (Mirador.md §4.11 items 48, 54 and 56): CI builds the
-    installer with none of them, so it registers no OpenXR runtime and hides "Check my calibration". Finn's local
-    builds can still pass them. The layer is part of Mirador (item 52): built here from layer\, as the stand-in is,
+    Monado and OpenComposite are each optional (Mirador.md §4.11 items 48 and 56): CI builds the installer with
+    neither, so it registers no OpenXR runtime. Finn's local builds can still pass them. The layer is part of Mirador (item 52): built here from layer\, as the stand-in is,
     into artifacts\layer-build, and always in the bundle.
 
     A Monado build that isn't Release or RelWithDebInfo is refused. Debug copies of a DLL (a name ending in "d" next
@@ -32,12 +31,11 @@
 .EXAMPLE
     tools\build-bundle.ps1
 .EXAMPLE
-    tools\build-bundle.ps1 -Monado ..\monado-dreamair\build -GazeWorld ..\DreamAirWin\tools\gaze_world -OpenComposite artifacts\opencomposite
+    tools\build-bundle.ps1 -Monado ..\monado-dreamair\build -OpenComposite artifacts\opencomposite
 #>
 [CmdletBinding()]
 param(
     [string]$Monado,
-    [string]$GazeWorld,
     [string]$OpenComposite,
     [string]$Out = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\bundle')
 )
@@ -71,7 +69,6 @@ function Resolve-Given([string]$path) {
     if ($path) { (Resolve-Path -LiteralPath $path).Path } else { '' }
 }
 $Monado = Resolve-Given $Monado
-$GazeWorld = Resolve-Given $GazeWorld
 $OpenComposite = Resolve-Given $OpenComposite
 
 # 1. The Monado build: Release or RelWithDebInfo only, and where its source is.
@@ -97,11 +94,6 @@ if ($Monado) {
     $serviceBuild = Join-Path $Monado 'src\xrt\targets\service'
     Need (Join-Path $runtimeBuild 'openxr_monado.dll') 'Monado''s runtime DLL'
     Need (Join-Path $serviceBuild 'monado-service.exe') 'Monado''s service'
-}
-
-if ($GazeWorld) {
-    Need (Join-Path $GazeWorld 'gaze_world.exe') 'gaze_world.exe'
-    Need (Join-Path $GazeWorld 'openxr_loader.dll') 'gaze_world''s openxr_loader.dll'
 }
 
 # OpenComposite: the fork's release, unpacked by tools\get-opencomposite.ps1.
@@ -148,10 +140,8 @@ Invoke-Checked { & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo
 $xrCheck = Join-Path $xrCheckBuild 'xr-check.exe'
 Need $xrCheck 'xr-check''s build'
 
-# 5. The app (with the stand-in copied in by its project) and the helper. Without -GazeWorld the app's project must
-#    not pick up a gaze_world of its own (its GazeWorldDir default), or the check would show.
-$gazeWorldDir = if ($GazeWorld) { $GazeWorld } else { Join-Path $repo 'artifacts\no-gaze-world' }
-Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.App\Mirador.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 "-p:GazeWorldDir=$gazeWorldDir" -o $Out } 'Publishing the app'
+# 5. The app (with the stand-in copied in by its project) and the helper.
+Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.App\Mirador.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -o $Out } 'Publishing the app'
 Invoke-Checked { dotnet publish (Join-Path $repo 'src\Mirador.Helper\Mirador.Helper.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -o (Join-Path $Out 'helper') } 'Publishing the helper'
 Copy-Item -LiteralPath $standin -Destination (New-Item -ItemType Directory -Force -Path (Join-Path $Out 'standin')).FullName -Force
 # Mirador's Monado build recipe and its vcpkg pin, which the app runs to build a profile's branch (Mirador.md §4.11
@@ -193,14 +183,9 @@ if ($Monado) {
     Set-Content -LiteralPath (Join-Path $Out 'monado\VERSION.txt') -Value $version -Encoding utf8NoBOM
 }
 
-# 7. The layer and gaze_world (the app's publish already put gaze_world in tools\ when given; copied again here so
-#    the bundle has it whatever the project does).
+# 7. The layer.
 $layerOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'layer')
 Copy-Item -LiteralPath $layerFiles -Destination $layerOut.FullName
-if ($GazeWorld) {
-    $toolsOut = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'tools')
-    Copy-Item -LiteralPath (Join-Path $GazeWorld 'gaze_world.exe'), (Join-Path $GazeWorld 'openxr_loader.dll') -Destination $toolsOut.FullName
-}
 
 # 8. OpenComposite: the DLL and version.txt (empty: it keeps Steam from rewriting the OpenVR paths file while the
 #    copy is first in it), SOURCE.txt and the licences and notes, all from the release.
@@ -218,5 +203,4 @@ Write-Host "Bundle: $Out"
 Write-Host "  stand-in $([math]::Round($standinSize / 1KB)) KB"
 Write-Host $(if ($Monado) { "  Monado $version ($buildType)" } else { '  no Monado' })
 Write-Host '  the layer'
-Write-Host $(if ($GazeWorld) { '  gaze_world' } else { '  no gaze_world: "Check my calibration" is hidden' })
 Write-Host $(if ($OpenComposite) { "  $ocFirstLine" } else { '  no OpenComposite' })

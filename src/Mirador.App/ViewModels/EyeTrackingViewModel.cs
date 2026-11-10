@@ -21,7 +21,7 @@ public sealed record BackupItem(CalibrationBackup Backup)
     public string Text => Backup.Taken.ToLocalTime().ToString("f", CultureInfo.CurrentCulture);
 }
 
-/// <summary>The Eye tracking page (Dream Air profiles only): the gaze check, and the calibrations' copies.</summary>
+/// <summary>The Eye tracking page (Dream Air profiles only): the eye geometry variant, and the calibrations' copies.</summary>
 public sealed partial class EyeTrackingViewModel : ObservableObject
 {
     private readonly AppHost host;
@@ -32,41 +32,9 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         Refresh();
     }
 
-    /// <summary>
-    /// Whether this install has <c>gaze_world</c>, which the check needs. A CI-built installer has none (Mirador.md
-    /// §4.11 item 54), so the check is hidden there.
-    /// </summary>
-    public bool HasGazeWorld => File.Exists(host.GazeWorldExe);
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RunCheckCommand))]
-    [NotifyPropertyChangedFor(nameof(CheckDescription))]
-    public partial bool IsChecking { get; set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CheckDescription))]
-    public partial string? Progress { get; set; }
-
-    /// <summary>The check card's description: what to do, or how far the check is while it runs.</summary>
-    public string CheckDescription => IsChecking && Progress is { } progress
-        ? progress
-        : "Put the headset on and look at each dot in turn. The check takes about a minute.";
-
     /// <summary>The variant card's description: where the variant came from, and why it matters.</summary>
     public string VariantDescription =>
         $"{VariantSource.TrimEnd('.')}. The eye tracker's geometry differs between variants; Mirador uploads the one for yours at every Start.";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasResult))]
-    public partial string? Result { get; set; }
-
-    [ObservableProperty]
-    public partial InfoBarSeverity ResultSeverity { get; set; }
-
-    [ObservableProperty]
-    public partial string LastCheck { get; set; } = "";
-
-    public bool HasResult => Result is not null;
 
     public IReadOnlyList<VariantItem> Variants { get; } = [.. EyeBlobVariants.All.Select(v => new VariantItem(v))];
 
@@ -95,8 +63,6 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
     public partial bool HasSerials { get; set; }
 
     public bool HasBackupMessage => BackupMessage is not null;
-
-    public void DismissResult() => Result = null;
 
     public void DismissBackupMessage() => BackupMessage = null;
 
@@ -276,7 +242,7 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
         }
     }
 
-    /// <summary>Reads what Mirador remembers (the last check) again.</summary>
+    /// <summary>Reads what Mirador remembers (the variant, the calibrations) again.</summary>
     public void Refresh()
     {
         DreamAirState state;
@@ -291,42 +257,5 @@ public sealed partial class EyeTrackingViewModel : ObservableObject
 
         LoadSerials();
         ShowVariant(state);
-        LastCheck = state.LastCheck is { } last
-            ? $"{last.When.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {CalibrationCheck.Describe(last.MedianDeg, last.WorstDotDeg, last.Dots).Text}"
-            : "Not checked yet.";
     }
-
-    [RelayCommand(CanExecute = nameof(CanRunCheck))]
-    private async Task RunCheckAsync()
-    {
-        IsChecking = true;
-        Result = null;
-        try
-        {
-            var progress = new Progress<string>(text => Progress = text);
-            var result = await host.CalibrationCheck.RunAsync(host.Session, host.GazeWorldExe, host.Paths, progress, CancellationToken.None);
-            var (text, good) = CalibrationCheck.Describe(result.MedianDeg, result.WorstDotDeg, result.Dots);
-            Result = text;
-            ResultSeverity = good ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
-        }
-        catch (MiradorException e)
-        {
-            Result = e.Message;
-            ResultSeverity = InfoBarSeverity.Error;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            AppLog.Write("The gaze check failed", e);
-            Result = $"The gaze check failed ({e.Message.Trim().TrimEnd('.')}).";
-            ResultSeverity = InfoBarSeverity.Error;
-        }
-        finally
-        {
-            IsChecking = false;
-            Progress = null;
-            Refresh();
-        }
-    }
-
-    private bool CanRunCheck() => !IsChecking && HasGazeWorld;
 }

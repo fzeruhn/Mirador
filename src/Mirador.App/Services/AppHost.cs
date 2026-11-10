@@ -81,7 +81,6 @@ public sealed class AppHost : IAsyncDisposable
             Calibrations,
             () => Usb.Present()));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
-        CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
         OpenCompositeCopy = new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir);
         OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir), OpenCompositeCopy);
 
@@ -209,12 +208,6 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>The eye calibrations Monado uses, and Mirador's copies of them.</summary>
     public CalibrationStore Calibrations { get; }
-
-    /// <summary>The Dream Air's gaze check ("Check my calibration").</summary>
-    public CalibrationCheck CalibrationCheck { get; }
-
-    /// <summary><c>gaze_world</c>, which shows the check's dots (<c>{app}\tools\gaze_world.exe</c>).</summary>
-    public string GazeWorldExe => Path.Combine(AppDir, "tools", "gaze_world.exe");
 
     /// <summary>Raised on the UI thread after the profiles or the selected one changed (Home, the Profiles page).</summary>
     public event Action? ProfilesChanged;

@@ -6,7 +6,7 @@ namespace Mirador.Pimax;
 /// <param name="Board">The USB id of its board, by which it is told apart.</param>
 /// <param name="Name">Its name.</param>
 /// <param name="EyeSteps">
-/// Whether Mirador's eye steps run for it: the eye geometry upload, calibration backups and "Check my calibration". Only
+/// Whether Mirador's eye steps run for it: the eye geometry upload and the calibration backups. Only
 /// the Dream Air: the geometry Mirador uploads is the Dream Air's (the Crystal Super's Tobii tracker has its own).
 /// </param>
 /// <param name="Lighthouse">Whether it tracks with SteamVR's Lighthouse driver (the Crystals are mostly inside-out).</param>
