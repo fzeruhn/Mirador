@@ -106,6 +106,18 @@ public static class ElevatedEnvironment
             Set(env, name, value);
         }
 
+        // Verify's run: no headset and no display, fixed values only.
+        if (start.Headless)
+        {
+            if (start.Module.Length > 0)
+            {
+                throw new ArgumentException("A headless Monado runs without a headset module.", nameof(start));
+            }
+
+            Set(env, "XRT_COMPOSITOR_NULL", "1");
+            Set(env, "SIMULATED_ENABLE", "1");
+        }
+
         foreach (var line in testLines)
         {
             var eq = line.IndexOf('=');

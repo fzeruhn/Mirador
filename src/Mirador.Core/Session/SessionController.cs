@@ -308,11 +308,13 @@ public sealed class SessionController(SessionDeps deps)
     /// Does nothing for the bundled Monado (its stand-in is the installer's) or a build that can't be found (its Start
     /// says why).
     /// </summary>
-    public void PlaceStandIn()
+    public void PlaceStandIn() => PlaceStandIn(deps.Profiles.Load().Selected);
+
+    /// <summary>Puts the stand-in below <paramref name="profile"/>'s build folder (Verify's game start needs it there).</summary>
+    public void PlaceStandIn(Profile profile)
     {
         try
         {
-            var profile = deps.Profiles.Load().Selected;
             if (profile.Monado.Kind is SourceKind.Folder or SourceKind.Branch)
             {
                 var install = deps.Locator.Locate(profile);

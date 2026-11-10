@@ -243,6 +243,27 @@
                             Content="Browse…" />
                     </Grid>
                 </toolkit:SettingsCard>
+                <toolkit:SettingsExpander
+                    Description="{x:Bind ViewModel.Verify.Status, Mode=OneWay}"
+                    Header="Verify build for Windows"
+                    Visibility="{x:Bind ViewModel.Verify.IsVisible, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.Verify.IsBusy, Mode=OneWay}" />
+                        <Button Command="{x:Bind ViewModel.Verify.CancelCommand}" Content="Cancel" />
+                        <Button Command="{x:Bind ViewModel.Verify.VerifyCommand}" Content="Verify" />
+                    </StackPanel>
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard ContentAlignment="Left">
+                            <TextBlock
+                                IsTextSelectionEnabled="True"
+                                Text="{x:Bind ViewModel.Verify.Details, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
 
                 <toolkit:SettingsCard
                     Description="The Dream Air's direct-mode layer: the one that comes with Mirador, or its build or release folder."

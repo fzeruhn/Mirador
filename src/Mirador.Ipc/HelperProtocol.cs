@@ -99,13 +99,19 @@ public enum HelperCommand
 /// <c>""</c> for Mirador's Monado; else the id of the profile whose approved build runs (Mirador.md §4.11 item 51). The
 /// helper finds that build in its own record and checks every file's hash; the request names no path.
 /// </param>
+/// <param name="Headless">
+/// For "Verify build for Windows" (Mirador.md §4.11 item 49): Monado's null compositor and its simulated headset
+/// (<c>XRT_COMPOSITOR_NULL=1</c>, <c>SIMULATED_ENABLE=1</c>), so it opens sessions without touching a headset or a
+/// display. Only with no module.
+/// </param>
 public sealed record ElevatedStart(
     [property: JsonRequired] int LighthouseWaitMs,
     [property: JsonRequired] int RenderScalePercent,
     [property: JsonRequired] int CompositorMinTimeMs,
     [property: JsonRequired] bool ExitOnDisconnect,
     [property: JsonRequired] string Module,
-    string Build = "");
+    string Build = "",
+    bool Headless = false);
 
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and

@@ -14,7 +14,7 @@
       monado\VERSION.txt             git describe of the Monado source
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
       layer\                         dreamair_vk_layer.json, .dll, dreamair-display-check.exe (built from layer\)
-      tools\                         build-monado.ps1 and vcpkg-commit.txt; gaze_world.exe, openxr_loader.dll when given
+      tools\                         build-monado.ps1, vcpkg-commit.txt, xr-check.exe; gaze_world.exe, openxr_loader.dll when given
       opencomposite\bin\             vrclient_x64.dll and version.txt (empty; Mirador copies them per user)
       opencomposite\                 SOURCE.txt (line 1: version and commit), OpenComposite's licences and notes
 
@@ -142,6 +142,12 @@ foreach ($file in $layerFiles) {
     Need $file 'The layer''s build'
 }
 
+# xr-check, Verify's OpenXR test client (Mirador.md §4.11 item 49), from tools\xr-check.
+$xrCheckBuild = Join-Path $repo 'artifacts\xr-check-build'
+Invoke-Checked { & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'tools\build-cmake.ps1') -Source (Join-Path $repo 'tools\xr-check') -BuildDir $xrCheckBuild -Configure -Build } 'Building xr-check'
+$xrCheck = Join-Path $xrCheckBuild 'xr-check.exe'
+Need $xrCheck 'xr-check''s build'
+
 # 5. The app (with the stand-in copied in by its project) and the helper. Without -GazeWorld the app's project must
 #    not pick up a gaze_world of its own (its GazeWorldDir default), or the check would show.
 $gazeWorldDir = if ($GazeWorld) { $GazeWorld } else { Join-Path $repo 'artifacts\no-gaze-world' }
@@ -151,7 +157,7 @@ Copy-Item -LiteralPath $standin -Destination (New-Item -ItemType Directory -Forc
 # Mirador's Monado build recipe and its vcpkg pin, which the app runs to build a profile's branch (Mirador.md §4.11
 # item 49).
 $toolsDir = New-Item -ItemType Directory -Force -Path (Join-Path $Out 'tools')
-Copy-Item -LiteralPath (Join-Path $repo 'tools\build-monado.ps1'), (Join-Path $repo 'tools\vcpkg-commit.txt') -Destination $toolsDir.FullName
+Copy-Item -LiteralPath (Join-Path $repo 'tools\build-monado.ps1'), (Join-Path $repo 'tools\vcpkg-commit.txt'), $xrCheck -Destination $toolsDir.FullName
 
 # 6. Monado: the runtime with the stand-in below it, and the real service where the runtime DLL doesn't look.
 $version = $null

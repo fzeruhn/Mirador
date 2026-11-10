@@ -43,6 +43,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         this.host = host;
         Build = new BuildViewModel(host, App.Current.Ui);
+        Verify = new VerifyViewModel(host, App.Current.Ui);
+        Verify.Changed += () => RefreshApproval();
         MiradorMonado = new MiradorMonadoViewModel(host);
         Headsets.Add(new HeadsetItem(null, "None"));
         foreach (var module in host.Modules.Values)
@@ -70,6 +72,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     /// <summary>The build card of a branch profile.</summary>
     public BuildViewModel Build { get; }
+
+    /// <summary>"Verify build for Windows" (Mirador_Plan.md Task 63).</summary>
+    public VerifyViewModel Verify { get; }
 
     /// <summary>The card of Mirador's Monado: installed, newest, Update, Roll back.</summary>
     public MiradorMonadoViewModel MiradorMonado { get; }
@@ -206,8 +211,10 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         host.Session.Changed += OnSessionChanged;
         Build.Attach();
+        Verify.Attach();
         IsRunning = host.Session.State != SessionState.Stopped;
         Build.MonadoRuns = IsRunning;
+        Verify.MonadoRuns = IsRunning;
         MiradorMonado.MonadoRuns = IsRunning;
         if (!IsDirty)
         {
@@ -219,6 +226,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     {
         host.Session.Changed -= OnSessionChanged;
         Build.Detach();
+        Verify.Detach();
     }
 
     /// <summary>A name no profile has yet: <paramref name="wanted"/>, else with 2, 3, … after it.</summary>
@@ -381,6 +389,11 @@ public sealed partial class ProfilesViewModel : ObservableObject
             : host.ApprovedBuildCurrent(editing)
                 ? "Approved: this build runs as administrator and can be the OpenXR runtime."
                 : "The new build runs as you until you approve it.";
+        if (Verify.ElevationNote is { } verified)
+        {
+            state += " " + verified;
+        }
+
         ApprovalStatus = problem is null ? state : $"{problem} {state}";
     }
 
@@ -487,6 +500,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = false;
+        Verify.Show(p);
+        Verify.Unsaved = false;
         RefreshApproval();
         MiradorMonado.Show(MonadoSource == MiradorSource);
         Build.Show(p);
@@ -576,6 +591,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
         IsDirty = true;
         Build.Unsaved = true;
+        Verify.Unsaved = true;
         Validate(Edited());
 
         // While untouched, the toggle follows the headset and the variables.
@@ -628,5 +644,5 @@ public sealed partial class ProfilesViewModel : ObservableObject
     }
 
     private void OnSessionChanged() =>
-        App.Current.Ui.TryEnqueue(() => MiradorMonado.MonadoRuns = Build.MonadoRuns = IsRunning = host.Session.State != SessionState.Stopped);
+        App.Current.Ui.TryEnqueue(() => MiradorMonado.MonadoRuns = Build.MonadoRuns = Verify.MonadoRuns = IsRunning = host.Session.State != SessionState.Stopped);
 }

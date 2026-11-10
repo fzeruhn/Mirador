@@ -44,6 +44,7 @@ jobs:
             artifacts/layer-build/layer/dreamair_vk_layer.json
             artifacts/layer-build/layer/dreamair_vk_layer.dll
             artifacts/layer-build/check/dreamair-display-check.exe
+            artifacts/xr-check-build/xr-check.exe
 
       - name: Upload the test results
         if: failure()

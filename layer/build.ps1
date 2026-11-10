@@ -1,13 +1,9 @@
 # Copyright 2026, Finn Zeruhn
 # SPDX-License-Identifier: BSL-1.0
 #
-# Configure, build and test the direct-mode layer in a Visual Studio developer shell (Mirador's tools\build.ps1 and
-# tools\build-bundle.ps1 run it).
+# Configure, build and test the direct-mode layer (Mirador's tools\build.ps1 and tools\build-bundle.ps1 run it), with
+# Mirador's tools\build-cmake.ps1: a Visual Studio developer shell, vcpkg's x64-windows-static triplet, Ninja.
 #   pwsh -NoProfile -File layer\build.ps1 -Configure -Build -Test
-# Visual Studio (or its Build Tools) with the C++ x64 tools is found with vswhere, as for the stand-in and Monado's
-# recipe; -VsPath names one instead. vcpkg: VCPKG_ROOT, else Mirador's pinned copy (%LOCALAPPDATA%\Mirador\tools\vcpkg),
-# else the one inside that Visual Studio (it fetches vcpkg.json's baseline itself), else VCPKG_INSTALLATION_ROOT
-# (GitHub's runners; its clone must hold the baseline commit).
 param(
     [switch]$Configure,
     [switch]$Build,
@@ -17,57 +13,5 @@ param(
     [string[]]$Extra = @()
 )
 $ErrorActionPreference = 'Stop'
-$source = $PSScriptRoot
-$buildDir = $BuildDir
-$installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
-$env:PATH = "$installer;$env:PATH"
-if ($VsPath) {
-    $vs = $VsPath
-} else {
-    $vswhere = Join-Path $installer 'vswhere.exe'
-    if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
-        throw "vswhere.exe is not in ${installer}: install Visual Studio or its Build Tools, or give -VsPath"
-    }
-    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (-not $vs) {
-        throw ('no Visual Studio with the C++ x64 tools found (vswhere); install the "Desktop development with C++" ' +
-            'workload or the Build Tools, or give -VsPath')
-    }
-}
-$vcpkg = @(
-    $env:VCPKG_ROOT,
-    $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Mirador\tools\vcpkg' }),
-    (Join-Path $vs 'VC\vcpkg'),
-    $env:VCPKG_INSTALLATION_ROOT
-) | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'scripts\buildsystems\vcpkg.cmake') -PathType Leaf) } |
-    Select-Object -First 1
-if (-not $vcpkg) {
-    throw "no vcpkg found: set VCPKG_ROOT, or add the 'vcpkg package manager' component to $vs in the Visual Studio Installer"
-}
-$toolchain = Join-Path $vcpkg 'scripts\buildsystems\vcpkg.cmake'
-$env:VCPKG_DISABLE_METRICS = '1'
-# vcpkg picks the newest Visual Studio on its own. Its static libraries then may need a newer STL than the toolset
-# that links the tests, so pin vcpkg to the same Visual Studio.
-$env:VCPKG_VISUAL_STUDIO_PATH = $vs
-Import-Module (Join-Path $vs "Common7\Tools\Microsoft.VisualStudio.DevShell.dll")
-Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -no_logo -host_arch=amd64' | Out-Null
-if ($Configure) {
-    # x64-windows-static: the dependencies (Catch2, for the tests) with the static CRT, as everything here is built
-    # (CMakeLists.txt), so the layer and the check tool need no Visual C++ Redistributable.
-    $cmakeArgs = @(
-        "-S", $source, "-B", $buildDir, "-GNinja",
-        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-        "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
-        "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
-    ) + $Extra
-    cmake @cmakeArgs
-    if ($LASTEXITCODE) { throw "configure failed ($LASTEXITCODE)" }
-}
-if ($Build) {
-    cmake --build $buildDir
-    if ($LASTEXITCODE) { throw "build failed ($LASTEXITCODE)" }
-}
-if ($Test) {
-    ctest --test-dir $buildDir --output-on-failure
-    if ($LASTEXITCODE) { throw "tests failed ($LASTEXITCODE)" }
-}
+& (Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\build-cmake.ps1') -Source $PSScriptRoot -BuildDir $BuildDir `
+    -Configure:$Configure -Build:$Build -Test:$Test -VsPath $VsPath -Extra $Extra

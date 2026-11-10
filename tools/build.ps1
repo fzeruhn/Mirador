@@ -34,6 +34,11 @@ try {
         $layerArgs = @('-Configure', '-Build') + $(if ($Test) { @('-Test') } else { @() })
         & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'layer\build.ps1') @layerArgs
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        # xr-check, Verify's OpenXR test client (tools\xr-check): built here, run only by Verify on a PC with a GPU.
+        & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'tools\build-cmake.ps1') -Source (Join-Path $repo 'tools\xr-check') `
+            -BuildDir (Join-Path $repo 'artifacts\xr-check-build') -Configure -Build
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     elseif ($env:CI) {
         throw "The layer can't be built on CI: Visual Studio's C++ x64 tools are missing."

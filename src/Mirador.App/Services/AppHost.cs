@@ -91,6 +91,9 @@ public sealed class AppHost : IAsyncDisposable
         ElevatedConsent = new ElevatedConsent(new RegistryConsentValues());
         var elevatedLogPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado", CurrentSid() + ".log");
+        Pipe = new MonadoPipe();
+        InheritedEnvironment = UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e));
+        Verify = new VerifyBuild(new CommandRunner(), Path.Combine(appDir, "tools", "xr-check.exe"), TimeProvider.System);
         Session = new SessionController(new SessionDeps(
             Profiles,
             MonadoSettings,
@@ -98,10 +101,10 @@ public sealed class AppHost : IAsyncDisposable
             Context,
             Locator,
             launcher,
-            new MonadoPipe(),
+            Pipe,
             Runtime,
             StandInExe,
-            UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e)),
+            InheritedEnvironment,
             Stations,
             ElevatedConsented: ElevatedMonadoAllowed,
             ApprovedBuildCurrent: ApprovedBuildCurrent,
@@ -139,6 +142,56 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>The build tools' check and "Install what's missing" (Mirador_Plan.md Task 58).</summary>
     public BuildToolsSetup BuildToolsSetup { get; }
+
+    /// <summary>"Verify build for Windows" (Mirador_Plan.md Task 63).</summary>
+    public VerifyBuild Verify { get; }
+
+    /// <summary>Monado's pipe, as the session watches it.</summary>
+    public IMonadoPipe Pipe { get; }
+
+    /// <summary>The user's environment, which Monado's started from.</summary>
+    public IReadOnlyDictionary<string, string> InheritedEnvironment { get; }
+
+    /// <summary>Starts Monado as the user (in a job object, ended with Mirador).</summary>
+    public IProcessLauncher Launcher => launcher;
+
+    /// <summary>Where a profile's last verify result is kept (by the build's key inside).</summary>
+    public string VerifyResultFile(string profileId) => Path.Combine(Paths.ChecksDir, $"verify-{profileId}.json");
+
+    private StandInWait? standInExpected;
+
+    /// <summary>While Verify waits for a stand-in, that stand-in's START goes to <paramref name="wait"/>.</summary>
+    public void ExpectStandIn(StandInWait wait)
+    {
+        wait.Ended = () => Interlocked.CompareExchange(ref standInExpected, null, wait);
+        Volatile.Write(ref standInExpected, wait);
+    }
+
+    /// <summary>Whether "Verify build for Windows" runs (a branch build waits meanwhile).</summary>
+    public bool Verifying { get; set; }
+
+    /// <summary>
+    /// The app pipe's answer to a stand-in Verify is waiting for (it gets a headless Monado), or null when the START is
+    /// a game's own and goes to the session.
+    /// </summary>
+    public async Task<string?> TryAnswerStandInAsync(string? standIn, CancellationToken ct)
+    {
+        if (Volatile.Read(ref standInExpected) is not { } expected || standIn is null || !StandIn.BelongsTo(standIn, expected.Install))
+        {
+            return null;
+        }
+
+        try
+        {
+            await expected.StartAsync(ct);
+            return AppPipe.Ok;
+        }
+        catch (MiradorException e)
+        {
+            AppLog.Write($"Verify couldn't start Monado for the stand-in: {e.Message}");
+            return AppPipe.FailPrefix + e.Message;
+        }
+    }
 
     public IUsbDevices Usb { get; }
 

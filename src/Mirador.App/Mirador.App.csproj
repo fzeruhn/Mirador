@@ -29,6 +29,7 @@
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\..\tools\build-monado.ps1" Link="tools\build-monado.ps1" CopyToOutputDirectory="PreserveNewest" />
     <None Include="$(MSBuildThisFileDirectory)..\..\tools\vcpkg-commit.txt" Link="tools\vcpkg-commit.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(MSBuildThisFileDirectory)..\..\artifacts\xr-check-build\xr-check.exe" Link="tools\xr-check.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('$(MSBuildThisFileDirectory)..\..\artifacts\xr-check-build\xr-check.exe')" />
   </ItemGroup>
   <!-- The stand-in (standin\build.ps1), when it has been built: copied into build folders, it lets games start Monado. -->
   <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\artifacts\standin\monado-service.exe')">

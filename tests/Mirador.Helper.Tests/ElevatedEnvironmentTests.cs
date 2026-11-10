@@ -22,6 +22,25 @@ public class ElevatedEnvironmentTests
         ElevatedEnvironment.Build(start ?? Start(module: module), Folders, ServerDir, SteamVrPath, testLines);
 
     [Fact]
+    public void Headless_adds_the_null_compositor_and_the_simulated_headset_and_nothing_else()
+    {
+        var plain = Build();
+        var headless = Build(Start() with { Headless = true });
+
+        Assert.False(plain.ContainsKey("XRT_COMPOSITOR_NULL"));
+        Assert.False(plain.ContainsKey("SIMULATED_ENABLE"));
+        Assert.Equal("1", headless["XRT_COMPOSITOR_NULL"]);
+        Assert.Equal("1", headless["SIMULATED_ENABLE"]);
+        Assert.Equal(plain.Count + 2, headless.Count);
+    }
+
+    [Fact]
+    public void Headless_with_a_headset_module_is_refused()
+    {
+        Assert.Throws<ArgumentException>(() => Build(Start(module: DreamAirEnvironment.ModuleId) with { Headless = true }));
+    }
+
+    [Fact]
     public void No_user_path()
     {
         var env = Build();

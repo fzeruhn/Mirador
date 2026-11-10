@@ -66,6 +66,12 @@ public sealed partial class BuildViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanBuild))]
     private void Build()
     {
+        if (host.Verifying)
+        {
+            Status = "Verify build for Windows is running: build when it is done.";
+            return;
+        }
+
         if (host.BuildToolsSetup.IsInstalling)
         {
             Status = "The build tools are being installed: build when that is done.";
