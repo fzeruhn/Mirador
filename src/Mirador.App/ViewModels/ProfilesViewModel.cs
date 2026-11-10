@@ -80,14 +80,17 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public string PickerDescription => IsDirty ? "Save or revert your changes to pick another." : "The profile to change. Home picks the one Monado starts with.";
 
     /// <summary>
-    /// Whether the picked profile can be deleted: not with unsaved changes, not the last one, and not the one Monado
-    /// runs with now.
+    /// Whether the picked profile can be deleted: not with unsaved changes, not the last one, not the one Monado runs
+    /// with now, and not while its branch is being built (the build writes into the folder the delete removes).
     /// </summary>
     public bool CanDelete =>
         !IsDirty
         && Selected is { } selected && selected != AddItem
         && Profiles.Count(p => p != AddItem) > 1
-        && host.Session.CurrentProfile?.Profile.Id != selected.Id;
+        && host.Session.CurrentProfile?.Profile.Id != selected.Id
+        && !IsBuilding(selected.Id);
+
+    private bool IsBuilding(string profileId) => host.Builds.RunOf(profileId) is { Outcome: null, Cancelled: false };
 
     /// <summary>The build card of a branch profile.</summary>
     public BuildViewModel Build { get; }
@@ -244,6 +247,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public void Attach()
     {
         host.Session.Changed += OnSessionChanged;
+        host.Builds.Changed += OnBuildsChanged;
         Build.Attach();
         Verify.Attach();
         IsRunning = host.Session.State != SessionState.Stopped;
@@ -259,9 +263,13 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public void Detach()
     {
         host.Session.Changed -= OnSessionChanged;
+        host.Builds.Changed -= OnBuildsChanged;
         Build.Detach();
         Verify.Detach();
     }
+
+    // A build started or ended: Delete follows it.
+    private void OnBuildsChanged(string profileId) => App.Current.Ui.TryEnqueue(() => OnPropertyChanged(nameof(CanDelete)));
 
     /// <summary>A name no profile has yet: <paramref name="wanted"/>, else with 2, 3, … after it.</summary>
     public string FreeName(string wanted)
@@ -285,34 +293,71 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>Deletes the selected profile; the page asked first. The consent goes with the last profile that needed it.</summary>
     public async Task DeleteAsync()
     {
-        if (Change(set => set.Delete(Selected!.Id), keep: null))
+        var id = Selected!.Id;
+        if (IsBuilding(id))
+        {
+            Message = "Its Monado is being built: cancel the build, then delete the profile.";
+            return;
+        }
+
+        if (Change(set => set.Delete(id), keep: null))
         {
             Message = await host.TakeBackUnneededConsentAsync();
+
+            // What was the profile's alone goes with it: its branch's source, build and install (often gigabytes),
+            // and its Verify result.
+            _ = Task.Run(() => RemoveLeftovers(id));
+        }
+    }
+
+    private void RemoveLeftovers(string profileId)
+    {
+        try
+        {
+            if (host.Locator.BuildsRoot is not null && host.Locator.BranchDir(profileId) is var dir && Directory.Exists(dir))
+            {
+                // Git keeps its objects read-only, which a recursive delete refuses: clear that first. Links in the
+                // tree aren't followed (the enumeration doesn't recurse into them), and a delete removes the link only.
+                foreach (var file in Directory.EnumerateFiles(dir, "*", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = 0, IgnoreInaccessible = true }))
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+
+                Directory.Delete(dir, recursive: true);
+            }
+
+            File.Delete(host.VerifyResultFile(profileId));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            AppLog.Write($"Couldn't remove what was left of a deleted profile's build ({profileId})", e);
         }
     }
 
     /// <summary>"Add a profile…" was picked: adds one and picks it, or picks the one before again when adding failed.</summary>
-    private void AddFromPicker()
+    private async Task AddFromPickerAsync()
     {
         var before = editing?.Id;
-        if (!Add())
+        if (!await AddAsync())
         {
             LoadList(before);
         }
     }
 
-    private bool Add()
+    private async Task<bool> AddAsync()
     {
         // New profiles start with no headset module, unless a headset a module knows is plugged in (Mirador.md §4.11 item 53).
+        // Listing the USB devices is a WMI query (up to seconds): off the UI thread.
         string? module = null;
         try
         {
-            var present = host.Usb.Present();
+            var present = await Task.Run(() => host.Usb.Present());
             module = host.Modules.Values.FirstOrDefault(m => m.IsPresent(present))?.Id;
         }
-        catch (MiradorException)
+        catch (Exception e)
         {
             // The devices can't be listed: no module.
+            AppLog.Write("Couldn't list the USB devices for a new profile", e);
         }
 
         var profile = new Profile(Profile.NewId(), FreeName("New profile"), module, BuildSource.Mirador, [], new Dictionary<string, string>());
@@ -361,7 +406,9 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
         // "Run as administrator" needs the user's consent: Windows asks once, here. Without it the profile runs as you.
         string? problem = null;
-        if (profile.RunAsAdministrator && !host.ElevatedMonadoAllowed())
+        // Only the installed copy asks: the helper starts Monado as administrator for it alone, so a consent recorded
+        // from another copy would buy nothing (Home says why this copy runs as you).
+        if (profile.RunAsAdministrator && !host.ElevatedMonadoAllowed() && host.IsInstalledCopy(askHelper: false))
         {
             var code = await ElevatedMonado.AllowAsync();
             if (code == 0)
@@ -402,7 +449,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         if (value == AddItem)
         {
             // After the drop-down has closed: adding reloads the list it shows.
-            App.Current.Ui.TryEnqueue(AddFromPicker);
+            App.Current.Ui.TryEnqueue(() => _ = AddFromPickerAsync());
             return;
         }
 

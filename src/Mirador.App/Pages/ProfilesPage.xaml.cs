@@ -1,3 +1,4 @@
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -5,6 +6,7 @@ using Microsoft.UI.Xaml.Navigation;
 using Mirador.App.Services;
 using Mirador.App.ViewModels;
 using Windows.System;
+using Windows.UI.Core;
 
 namespace Mirador.App.Pages;
 
@@ -37,7 +39,9 @@ public sealed partial class ProfilesPage : Page
     /// </summary>
     private void OnPickerPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (sender is not ComboBox { IsDropDownOpen: false } picker)
+        // Alt+Down opens the drop-down: left to the picker.
+        if (sender is not ComboBox { IsDropDownOpen: false } picker
+            || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(CoreVirtualKeyStates.Down))
         {
             return;
         }
