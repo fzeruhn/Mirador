@@ -5,9 +5,13 @@ using Mirador.Ipc;
 namespace Mirador.Core.DirectMode;
 
 /// <summary>The direct-mode Vulkan layer's files Mirador uses.</summary>
-/// <param name="ManifestDir">The folder holding <c>dreamair_vk_layer.json</c> and its DLL, for <c>VK_ADD_IMPLICIT_LAYER_PATH</c>.</param>
-/// <param name="CheckExe">The full path of <c>dreamair-display-check.exe</c>, which tells whether direct mode works.</param>
-public sealed record LayerFiles(string ManifestDir, string CheckExe);
+/// <param name="ManifestDir">The folder holding <c>mirador_direct_mode.json</c> and its DLL, for <c>VK_ADD_IMPLICIT_LAYER_PATH</c>.</param>
+/// <param name="CheckExe">The full path of <c>mirador-display-check.exe</c>, which tells whether direct mode works.</param>
+/// <param name="Legacy">
+/// A layer folder with a build from before the rename (<c>dreamair_vk_layer</c>, switched on by
+/// <c>DREAMAIR_VK_LAYER</c>), found for one release; the one that comes with Mirador never is.
+/// </param>
+public sealed record LayerFiles(string ManifestDir, string CheckExe, bool Legacy = false);
 
 /// <summary>Finds the direct-mode Vulkan layer: the one that comes with Mirador, or one a profile names.</summary>
 public static class DirectModeLayer
@@ -15,9 +19,14 @@ public static class DirectModeLayer
     /// <summary>The key in <c>Profile.ModuleOptions</c> naming a layer folder to use instead of Mirador's own.</summary>
     public const string OptionKey = "layerFolder";
 
-    public const string ManifestName = "dreamair_vk_layer.json";
-    public const string DllName = "dreamair_vk_layer.dll";
-    public const string CheckExeName = "dreamair-display-check.exe";
+    public const string ManifestName = "mirador_direct_mode.json";
+    public const string DllName = "mirador_direct_mode.dll";
+    public const string CheckExeName = "mirador-display-check.exe";
+
+    /// <summary>The names the layer had before Mirador renamed it (2026-11-09), still found in a profile's folder for one release.</summary>
+    public const string LegacyManifestName = "dreamair_vk_layer.json";
+    public const string LegacyDllName = "dreamair_vk_layer.dll";
+    public const string LegacyCheckExeName = "dreamair-display-check.exe";
 
     /// <summary>The profile's layer folder (its <see cref="OptionKey"/> option), or null for the one that comes with Mirador.</summary>
     public static string? FolderOf(Profile profile) =>
@@ -35,7 +44,7 @@ public static class DirectModeLayer
         var layer = Locate(folder, bundledDir);
         IEnumerable<EnvVar> variables =
         [
-            .. DirectModeEnvironment.Variables.Select(v => new EnvVar(v.Key, v.Value)),
+            .. (layer.Legacy ? DirectModeEnvironment.LegacyVariables : DirectModeEnvironment.Variables).Select(v => new EnvVar(v.Key, v.Value)),
             .. DirectModeEnvironment.Cleared.Select(name => new EnvVar(name, "")),
         ];
         return folder is null ? [.. variables] : [.. variables, new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", layer.ManifestDir)];
@@ -43,11 +52,13 @@ public static class DirectModeLayer
 
     private static readonly string[] LayerFileNames = [ManifestName, DllName];
 
+    private static readonly string[] LegacyFileNames = [LegacyManifestName, LegacyDllName];
+
     /// <summary>
     /// Finds the layer in <paramref name="folder"/>, or in <paramref name="bundledDir"/> when no folder is given, the way
     /// the layer's <c>install.ps1 -Source</c> does: the manifest and DLL side by side in the folder or in its
     /// <c>layer</c> folder, the check tool in the folder or in its <c>check</c> folder. A release folder has everything
-    /// side by side; a build folder (<c>dreamair-vk-layer\build</c>) has the two folders.
+    /// side by side; a build folder (<c>artifacts\layer-build</c>) has the two folders.
     /// </summary>
     /// <param name="folder">The profile's layer folder (<see cref="OptionKey"/>); null or blank for Mirador's own.</param>
     /// <param name="bundledDir">The layer that comes with Mirador (<c>{app}\layer</c>).</param>
@@ -71,14 +82,25 @@ public static class DirectModeLayer
         }
 
         string[] manifestDirs = [root, Path.Combine(root, "layer")];
-        var manifestDir = manifestDirs.FirstOrDefault(dir => LayerFileNames.All(name => File.Exists(Path.Combine(dir, name))))
-            ?? throw (bundled ? BundledIncomplete(root, LayerFileNames) : NotALayerFolder(root, LayerFilesMissing(manifestDirs), "layer"));
+        var manifestDir = manifestDirs.FirstOrDefault(dir => LayerFileNames.All(name => File.Exists(Path.Combine(dir, name))));
+        var legacy = false;
+        if (manifestDir is null && !bundled)
+        {
+            manifestDir = manifestDirs.FirstOrDefault(dir => LegacyFileNames.All(name => File.Exists(Path.Combine(dir, name))));
+            legacy = manifestDir is not null;
+        }
 
-        string[] checkExes = [Path.Combine(root, CheckExeName), Path.Combine(root, "check", CheckExeName)];
+        if (manifestDir is null)
+        {
+            throw bundled ? BundledIncomplete(root, LayerFileNames) : NotALayerFolder(root, LayerFilesMissing(manifestDirs), "layer");
+        }
+
+        var checkName = legacy ? LegacyCheckExeName : CheckExeName;
+        string[] checkExes = [Path.Combine(root, checkName), Path.Combine(root, "check", checkName)];
         var checkExe = checkExes.FirstOrDefault(File.Exists)
-            ?? throw (bundled ? BundledIncomplete(root, [CheckExeName]) : NotALayerFolder(root, CheckExeName, "check"));
+            ?? throw (bundled ? BundledIncomplete(root, [CheckExeName]) : NotALayerFolder(root, checkName, "check"));
 
-        return new LayerFiles(manifestDir, checkExe);
+        return new LayerFiles(manifestDir, checkExe, legacy);
     }
 
     private static string UserFolder(string folder)
@@ -93,7 +115,7 @@ public static class DirectModeLayer
     }
 
     /// <summary>
-    /// The layer files neither folder has, such as <c>dreamair_vk_layer.json or dreamair_vk_layer.dll</c>; when each
+    /// The layer files neither folder has, such as <c>mirador_direct_mode.json or mirador_direct_mode.dll</c>; when each
     /// is in one of them, that they aren't side by side.
     /// </summary>
     private static string LayerFilesMissing(string[] dirs)

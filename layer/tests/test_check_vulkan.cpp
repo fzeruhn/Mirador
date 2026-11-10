@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// dreamair-display-check --vulkan (design 7), run for real against the test build of the layer DLL: a small stand-in for
+// mirador-display-check --vulkan (design 7), run for real against the test build of the layer DLL: a small stand-in for
 // the Vulkan loader (below) hands the tool a vkGetInstanceProcAddr, puts the loader's link info in front of the layer
 // the way the loader does, and lets through everything else to the layer, whose "next layer" is the fake driver and
 // whose display session sits on a fake NVAPI with a running clock. So the tool's whole call sequence (instance, device

@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: BSL-1.0
 
 cmake_minimum_required(VERSION 3.21)
-project(dreamair_vk_layer VERSION 0.1.0 LANGUAGES CXX)
+project(mirador_direct_mode VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT WIN32)
-    message(FATAL_ERROR "dreamair-vk-layer is a Windows-only project")
+    message(FATAL_ERROR "mirador-direct-mode is a Windows-only project")
 endif()
 
 if(MSVC)
@@ -31,8 +31,8 @@ find_package(Catch2 3 CONFIG REQUIRED)
 # build works while some of these folders do not exist yet.
 #   core/   nvdm                   static library
 #   layer/  dvl_pure               object library (no driver calls)
-#           dreamair_vk_layer      shared library, links dvl_pure and nvdm
-#   check/  dreamair-display-check executable
+#           mirador_direct_mode      shared library, links dvl_pure and nvdm
+#   check/  mirador-display-check executable
 #   tests/  dvl_tests              Catch2 tests, links nvdm and dvl_pure
 foreach(dir core layer check)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")

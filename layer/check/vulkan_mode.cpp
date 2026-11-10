@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// dreamair-display-check --vulkan (design 7): the layer exercised the way Monado uses it, in Monado's order
+// mirador-display-check --vulkan (design 7): the layer exercised the way Monado uses it, in Monado's order
 // (comp_vulkan.c, then comp_window_vk_display.c, comp_window_direct.c, comp_target_swapchain.c, comp_renderer.c):
 //
 //   instance (API 1.0, COMP_INSTANCE_EXTENSIONS_COMMON + VK_KHR_display + VK_EXT_display_surface_counter)
@@ -464,7 +464,7 @@ private:
 
         VkApplicationInfo app{};
         app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        app.pApplicationName = "dreamair-display-check";
+        app.pApplicationName = "mirador-display-check";
         app.apiVersion = VK_API_VERSION_1_0; // Monado's vk_display instance
         VkInstanceCreateInfo ci{};
         ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -540,7 +540,7 @@ private:
         }
         print_layer_failure();
         return fail("display: " + last_reason +
-                    " (the layer's lines above and %LOCALAPPDATA%\\DreamAirVkLayer\\layer.log say why: a holder, NVAPI, "
+                    " (the layer's lines above and %LOCALAPPDATA%\\Mirador\\direct-mode\\layer.log say why: a holder, NVAPI, "
                     "the board asleep, the EDID, the import)");
     }
 
@@ -1017,8 +1017,10 @@ private:
         // Joined first of all, as in Monado's teardown (also when a step below fails).
         cleanup.add([vblank] { vblank->stop_and_join(); });
 
+        const double refresh_hz = refresh_mhz_ != 0 ? refresh_mhz_ / 1000.0 : kRefreshHz;
+        result_.counts.refresh_hz = refresh_hz;
         say(out_, "presenting for %d s (%llu presents at %.0f Hz expected), a display event per frame", options_.seconds,
-            static_cast<unsigned long long>(expected_flips(options_.seconds)), kRefreshHz);
+            static_cast<unsigned long long>(expected_flips(options_.seconds, refresh_hz)), refresh_hz);
 
         const Clock::time_point start = Clock::now();
         const Clock::time_point deadline = start + std::chrono::seconds(options_.seconds);
@@ -1111,11 +1113,11 @@ private:
             }
 
             // A dead display makes the layer complete every present at once (design 6.7 step 5): the loop would run at
-            // the speed of the clears and hammer the GPU for the rest of the run. 90 Hz cannot do 3 times its count.
-            if (presented > 3 * expected_flips(options_.seconds) + 100) {
+            // the speed of the clears and hammer the GPU for the rest of the run. The mode's rate cannot do 3 times its count.
+            if (presented > 3 * expected_flips(options_.seconds, refresh_hz) + 100) {
                 problem("presenting " + std::to_string(presented) + " frames in " +
                         std::to_string(std::chrono::duration<double>(Clock::now() - start).count()) +
-                        " s, far above 90 Hz: the display is not flipping (the layer completes presents at once while "
+                        " s, far above the mode's rate: the display is not flipping (the layer completes presents at once while "
                         "flips are stopped)");
                 broke = true;
                 break;
@@ -1215,7 +1217,7 @@ bool is_elevated()
     return ok && elevation.TokenIsElevated != 0;
 }
 
-// The layer's log (design 8): %LOCALAPPDATA%\DreamAirVkLayer\layer.log. The layer starts a new file per process, but
+// The layer's log (design 8): %LOCALAPPDATA%\Mirador\direct-mode\layer.log. The layer starts a new file per process, but
 // the newest file can still be an older process's (this one's layer wrote nothing), so the facts are taken from this
 // process's lines only (layer_log_facts).
 std::optional<std::string> read_layer_log()
@@ -1225,7 +1227,7 @@ std::optional<std::string> read_layer_log()
     if (n == 0 || n >= MAX_PATH) {
         return std::nullopt;
     }
-    return read_layer_log_file(std::wstring(base) + L"\\DreamAirVkLayer\\layer.log");
+    return read_layer_log_file(std::wstring(base) + L"\\Mirador\\direct-mode\\layer.log");
 }
 
 } // namespace
@@ -1278,7 +1280,7 @@ ModeResult run_vulkan_mode(const Options& options, Output& out)
     VulkanEnv env;
     env.gipa = gipa;
     env.elevated = is_elevated();
-    env.disable_var_set = GetEnvironmentVariableW(L"DISABLE_DREAMAIR_VK_LAYER", nullptr, 0) != 0;
+    env.disable_var_set = GetEnvironmentVariableW(L"DISABLE_MIRADOR_DIRECT_MODE", nullptr, 0) != 0;
     env.interrupted = [] { return interrupted(); };
     env.layer_log = read_layer_log;
     return run_vulkan_check(env, options, out);

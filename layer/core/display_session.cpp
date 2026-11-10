@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "board.hpp"
+#include "edid.hpp"
 
 namespace nvdm {
 namespace {
@@ -275,19 +276,27 @@ OpenResult DisplaySession::find_display()
     const int64_t deadline = deps_.clock.now_ns() + static_cast<int64_t>(deps_.wait_ms) * 1'000'000;
     std::vector<uint32_t> ids;
     for (;;) {
-        const int ret = deps_.api.enumerate(kVendorPvr, ids);
-        if (ret != 0) {
-            return fail(OpenStep::Enumerate, ret, "NVAPI could not list the direct-mode displays");
-        }
-        if (!ids.empty()) {
-            display_id_ = ids.front();
-            display_count_ = ids.size();
-            return proceed(OpenStep::Enumerate);
+        // Each direct-mode vendor in turn (Pimax first); the first with a display is the one.
+        for (const DirectModeVendor& vendor : kDirectModeVendors) {
+            const int ret = deps_.api.enumerate(vendor.nvapi_id, ids);
+            if (ret != 0) {
+                return fail(OpenStep::Enumerate, ret, "NVAPI could not list the direct-mode displays");
+            }
+            if (!ids.empty()) {
+                vendor_ = &vendor;
+                display_id_ = ids.front();
+                display_count_ = ids.size();
+                return proceed(OpenStep::Enumerate);
+            }
         }
         const int64_t now = deps_.clock.now_ns();
         if (now >= deadline) {
+            std::string vendors;
+            for (const DirectModeVendor& vendor : kDirectModeVendors) {
+                vendors += (vendors.empty() ? "" : ", ") + std::string(vendor.letters) + " (" + hex(vendor.nvapi_id) + ")";
+            }
             return fail(OpenStep::Enumerate, 0,
-                        "no direct-mode display of vendor PVR (" + hex(kVendorPvr) + ") appeared within " +
+                        "no direct-mode display of vendor " + vendors + " appeared within " +
                             std::to_string(deps_.wait_ms) + " ms (is the headset connected and its board awake?)");
         }
         deps_.sleep(std::min(kPollNs, deadline - now));
@@ -319,9 +328,9 @@ OpenResult DisplaySession::identify_product()
     if (product_known_) {
         return proceed(OpenStep::Product);
     }
-    // DREAMAIR_VK_LAYER_TEST_NO_EDID (tests only): no EDID route is tried, so the last route below decides.
+    // MIRADOR_DIRECT_MODE_TEST_NO_EDID (tests only): no EDID route is tried, so the last route below decides.
     if (deps_.skip_edid && !skip_edid_logged_) {
-        log("warning: DREAMAIR_VK_LAYER_TEST_NO_EDID is set: every EDID route is skipped (tests only)");
+        log("warning: MIRADOR_DIRECT_MODE_TEST_NO_EDID is set: every EDID route is skipped (tests only)");
         skip_edid_logged_ = true;
     }
     std::vector<uint8_t> edid;
@@ -331,7 +340,7 @@ OpenResult DisplaySession::identify_product()
         // The last route (design 6.3): no EDID, but the one PVR display is the Dream Air if its board is connected (the
         // display only appears while the board gets its heartbeat, design 7). Nothing is opened to find out.
         const std::string unread =
-            deps_.skip_edid ? "the display's EDID was not read (DREAMAIR_VK_LAYER_TEST_NO_EDID skips every route)"
+            deps_.skip_edid ? "the display's EDID was not read (MIRADOR_DIRECT_MODE_TEST_NO_EDID skips every route)"
                             : "the display's EDID could not be read (NVAPI, then the registry)";
         if (display_count_ != 1) {
             return fail(OpenStep::Product, kBadOutput,
@@ -355,7 +364,22 @@ OpenResult DisplaySession::identify_product()
             const std::string who = ids ? pnp_letters(ids->pnp_vendor) + " " + hex(ids->pnp_product) : "(not an EDID)";
             return fail(OpenStep::Product, 0,
                         "unknown display product " + who + "; this layer knows " + kDreamAir.name + " (PVR " +
-                            hex(kDreamAir.pnp_product) + ")");
+                            hex(kDreamAir.pnp_product) + "), and other headsets of a direct-mode vendor whose EDID "
+                            "gives their mode");
+        }
+        if (!product->tested) {
+            // A headset Windows drives itself (its HMD route, WDDC) is left to it (Mirador.md section 4.11 item 52).
+            // Never the tested Dream Air: its own EDID has no such block, and an override that adds one doesn't hand
+            // it to Windows.
+            if (has_microsoft_hmd_block(edid)) {
+                return fail(OpenStep::Product, 0,
+                            std::string("the ") + product->name + "'s EDID carries Microsoft's HMD block, so Windows "
+                                "drives it through its own HMD route and this layer leaves it alone");
+            }
+            log(std::string("warning: the ") + product->name + " is not tested with this layer: it gets the mode its "
+                "EDID asks for, " + std::to_string(product->width) + "x" + std::to_string(product->height) + " at " +
+                std::to_string(product->refresh_mhz / 1000) + "." + std::to_string(product->refresh_mhz % 1000 / 100) +
+                " Hz. If it stays black, report the layer's log");
         }
     }
     log(std::string("EDID route: ") + edid_route_name(route));
@@ -370,9 +394,10 @@ OpenResult DisplaySession::enable_direct_mode()
     if (direct_mode_enabled_) {
         return proceed(OpenStep::EnableDirectMode);
     }
-    const int ret = deps_.api.enable_direct_mode(kVendorPvr);
+    const int ret = deps_.api.enable_direct_mode(vendor_ ? vendor_->nvapi_id : kVendorPvr);
     if (ret != 0) {
-        return fail(OpenStep::EnableDirectMode, ret, "NVAPI refused direct mode for vendor PVR");
+        return fail(OpenStep::EnableDirectMode, ret,
+                    std::string("NVAPI refused direct mode for vendor ") + (vendor_ ? vendor_->letters : "PVR"));
     }
     direct_mode_enabled_ = true;
     return proceed(OpenStep::EnableDirectMode);
@@ -396,7 +421,7 @@ OpenResult DisplaySession::bind_device()
     if (bound_) {
         return proceed(OpenStep::BindDevice);
     }
-    const int ret = deps_.api.bind_device(display_id_, device_);
+    const int ret = deps_.api.bind_device(display_id_, device_, vendor_ ? vendor_->nvapi_id : kVendorPvr);
     if (ret != 0) {
         return fail(OpenStep::BindDevice, ret, "NVAPI would not bind the display (is another program using it?)");
     }
@@ -537,11 +562,22 @@ IUnknown* create_d3d11_on(const LUID& luid)
     return device.Detach(); // The ID3D11Device* itself, upcast: what Api::bind_device wants.
 }
 
-std::string environment(const char* name)
+std::string environment_one(const char* name)
 {
     char value[64];
     const DWORD length = GetEnvironmentVariableA(name, value, static_cast<DWORD>(sizeof(value)));
     return length > 0 && length < sizeof(value) ? std::string(value, length) : std::string();
+}
+
+// MIRADOR_DIRECT_MODE_<x>, else (for one release) its Dream Air name DREAMAIR_VK_LAYER_<x>.
+std::string environment(const char* name)
+{
+    std::string value = environment_one(name);
+    constexpr const char* kNew = "MIRADOR_DIRECT_MODE";
+    if (value.empty() && std::strncmp(name, kNew, std::strlen(kNew)) == 0) {
+        value = environment_one(("DREAMAIR_VK_LAYER" + std::string(name + std::strlen(kNew))).c_str());
+    }
+    return value;
 }
 
 class ProcessSession {
@@ -552,9 +588,9 @@ public:
 private:
     SessionDeps make_deps()
     {
-        const std::string wait_ms = environment("DREAMAIR_VK_LAYER_WAIT_MS");
-        const std::string ignore_holders = environment("DREAMAIR_VK_LAYER_IGNORE_HOLDERS");
-        const std::string no_edid = environment("DREAMAIR_VK_LAYER_TEST_NO_EDID");
+        const std::string wait_ms = environment("MIRADOR_DIRECT_MODE_WAIT_MS");
+        const std::string ignore_holders = environment("MIRADOR_DIRECT_MODE_IGNORE_HOLDERS");
+        const std::string no_edid = environment("MIRADOR_DIRECT_MODE_TEST_NO_EDID");
         const SessionSettings settings = parse_session_settings(wait_ms.c_str(), ignore_holders.c_str(), no_edid.c_str());
 
         SessionDeps deps{*api_, clock_};

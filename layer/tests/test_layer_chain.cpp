@@ -115,8 +115,8 @@ bool contains(const std::vector<std::string>& v, const char* s)
 
 TEST_CASE("layer_chains_instance_and_device_creation")
 {
-    dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"dvl_tests.exe");
-    dvl_test::ScopedEnv quiet(L"DREAMAIR_VK_LAYER_LOG", L"off");
+    dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"dvl_tests.exe");
+    dvl_test::ScopedEnv quiet(L"MIRADOR_DIRECT_MODE_LOG", L"off");
     g_next = NextLayer{};
     dvl_test::LayerDll dll;
     REQUIRE(dll.loaded());
@@ -223,8 +223,8 @@ TEST_CASE("layer_chains_instance_and_device_creation")
 
 TEST_CASE("layer_create_instance_without_link_info_fails")
 {
-    dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"dvl_tests.exe");
-    dvl_test::ScopedEnv quiet(L"DREAMAIR_VK_LAYER_LOG", L"off");
+    dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"dvl_tests.exe");
+    dvl_test::ScopedEnv quiet(L"MIRADOR_DIRECT_MODE_LOG", L"off");
     g_next = NextLayer{};
     dvl_test::LayerDll dll;
     REQUIRE(dll.loaded());

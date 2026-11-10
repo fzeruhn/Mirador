@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "core/display_session.hpp"
+#include "fakes/edids.hpp"
 #include "fakes/fake_api.hpp"
 #include "fakes/fake_clock.hpp"
 
@@ -628,6 +629,63 @@ TEST_CASE("an unknown product is rejected before direct mode, naming it")
     CHECK(rig.d3d11_made == 0);
 }
 
+TEST_CASE("another headset of a direct-mode vendor opens with its EDID's mode, with a warning that it is untested")
+{
+    Rig rig;
+    rig.api.edid = nvdm::edids::bytes(nvdm::edids::kPimax5kSuper);
+    nvdm::DisplaySession session(rig.deps());
+
+    const nvdm::OpenResult result = session.open(rig.api.luid);
+    REQUIRE(result.ok);
+    CHECK(rig.lines_containing("is not tested") == 1);
+    CHECK(rig.lines_containing("2880x2560") >= 1);
+    REQUIRE_FALSE(rig.api.modes_set.empty());
+    CHECK(rig.api.modes_set.back().width == 2880);
+    CHECK(rig.api.modes_set.back().height == 2560);
+    CHECK_FALSE(session.product().tested);
+}
+
+TEST_CASE("an untested headset that carries Microsoft's HMD block is left to Windows, before direct mode")
+{
+    Rig rig;
+    std::vector<uint8_t> edid = nvdm::edids::bytes(nvdm::edids::kDreamAirRegistry);
+    edid[10] = 0x30; // another PVR product code: not the tested Dream Air
+    rig.api.edid = edid;
+    nvdm::DisplaySession session(rig.deps());
+
+    const nvdm::OpenResult result = session.open(rig.api.luid);
+    CHECK_FALSE(result.ok);
+    CHECK(result.step == OpenStep::Product);
+    CHECK(contains(result.message, "Microsoft"));
+    CHECK(contains(result.message, "Windows"));
+    CHECK(rig.api.count("enable_direct_mode") == 0);
+}
+
+TEST_CASE("the tested Dream Air is the layer's even when its EDID carries Microsoft's HMD block")
+{
+    Rig rig;
+    rig.api.edid = nvdm::edids::bytes(nvdm::edids::kDreamAirRegistry);
+    nvdm::DisplaySession session(rig.deps());
+
+    REQUIRE(session.open(rig.api.luid).ok);
+    CHECK(session.product().tested);
+    CHECK(rig.lines_containing("is not tested") == 0);
+}
+
+TEST_CASE("direct mode is asked for the vendor whose display was found")
+{
+    Rig rig;
+    nvdm::DisplaySession session(rig.deps());
+    REQUIRE(session.open(rig.api.luid).ok);
+
+    for (const auto& call : rig.api.calls()) {
+        if (call.name == "enumerate" || call.name == "enable_direct_mode") {
+            CHECK(call.arg == nvdm::kDirectModeVendors[0].nvapi_id);
+        }
+    }
+    CHECK(rig.api.count("enable_direct_mode") == 1);
+}
+
 TEST_CASE("the EDID route that answered is logged once and kept")
 {
     Rig rig;
@@ -733,7 +791,7 @@ TEST_CASE("an EDID that can be read is the answer: the board is never asked")
     CHECK(other.board_checks == 0);
 }
 
-TEST_CASE("DREAMAIR_VK_LAYER_TEST_NO_EDID: no EDID route is tried, so the board identifies the product")
+TEST_CASE("MIRADOR_DIRECT_MODE_TEST_NO_EDID: no EDID route is tried, so the board identifies the product")
 {
     // A machine where every route would read the EDID, run as if none could: the last route answers, and the lines
     // name the variable.
@@ -747,7 +805,7 @@ TEST_CASE("DREAMAIR_VK_LAYER_TEST_NO_EDID: no EDID route is tried, so the board 
     CHECK(rig.board_checks == 1);
     CHECK(rig.lines_containing("EDID route: board") == 1);
     CHECK(rig.warnings() == 2); // the variable is set; the product is assumed
-    CHECK(rig.lines_containing("DREAMAIR_VK_LAYER_TEST_NO_EDID") == 2);
+    CHECK(rig.lines_containing("MIRADOR_DIRECT_MODE_TEST_NO_EDID") == 2);
 
     // Without the board, the failure line says the routes were skipped rather than tried.
     Rig no_board;
@@ -757,7 +815,7 @@ TEST_CASE("DREAMAIR_VK_LAYER_TEST_NO_EDID: no EDID route is tried, so the board 
     const nvdm::OpenResult result = failed.open(no_board.api.luid);
     CHECK(result.step == OpenStep::Product);
     CHECK(no_board.api.count("read_edid") == 0);
-    CHECK(contains(result.message, "DREAMAIR_VK_LAYER_TEST_NO_EDID"));
+    CHECK(contains(result.message, "MIRADOR_DIRECT_MODE_TEST_NO_EDID"));
     CHECK(contains(result.message, "34A4:0044"));
 
     // A second attempt says the variable once only.
@@ -890,7 +948,7 @@ TEST_CASE("session settings come from the layer's three variables")
     CHECK_FALSE(nvdm::parse_session_settings(nullptr, "true").ignore_holders);
     CHECK_FALSE(nvdm::parse_session_settings(nullptr, "").ignore_holders);
 
-    // DREAMAIR_VK_LAYER_TEST_NO_EDID, tests only: "1" skips every EDID route, anything else does not.
+    // MIRADOR_DIRECT_MODE_TEST_NO_EDID, tests only: "1" skips every EDID route, anything else does not.
     CHECK_FALSE(defaults.skip_edid);
     CHECK(nvdm::parse_session_settings(nullptr, nullptr, "1").skip_edid);
     CHECK_FALSE(nvdm::parse_session_settings(nullptr, nullptr, "0").skip_edid);

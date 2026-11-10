@@ -57,7 +57,7 @@ struct SwapchainRecord {
     DeviceData* device = nullptr;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
-    bool present_at = true; // present at a time (design 6.11), read once at creation: DREAMAIR_VK_LAYER_NO_PRESENT_AT
+    bool present_at = true; // present at a time (design 6.11), read once at creation: MIRADOR_DIRECT_MODE_NO_PRESENT_AT
 
     // Under the display-session lock.
     bool alive = true;         // until vkDestroySwapchainKHR
@@ -185,8 +185,8 @@ public:
     // first; returns at once if until_ns has passed. May return early, so callers loop on their condition.
     void wait_changed(std::unique_lock<std::mutex>& hold, int64_t until_ns);
 
-    // DREAMAIR_VK_LAYER_TRACE (a folder, or 1 for the log's folder): per-frame timing records, added to
-    // dreamair-trace-<pid>.csv each time the display thread stops. Null when the variable is off (unset, empty or 0).
+    // MIRADOR_DIRECT_MODE_TRACE (a folder, or 1 for the log's folder): per-frame timing records, added to
+    // mirador-trace-<pid>.csv each time the display thread stops. Null when the variable is off (unset, empty or 0).
     std::unique_ptr<nvdm::Trace> trace;
     std::wstring trace_path;
     // A record stamped now on `clock`, if tracing. Any thread, no lock needed.

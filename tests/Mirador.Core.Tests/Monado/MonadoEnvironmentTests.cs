@@ -109,13 +109,13 @@ public class MonadoEnvironmentTests
     [Fact]
     public void Extra_variables_win_over_everything()
     {
-        EnvVar[] moduleFixed = [new("DREAMAIR_VK_LAYER", "1")];
-        var profile = CustomWith(new EnvVar("dreamair_vk_layer", "0"));
+        EnvVar[] moduleFixed = [new("MIRADOR_DIRECT_MODE", "1")];
+        var profile = CustomWith(new EnvVar("mirador_direct_mode", "0"));
 
         var env = MonadoEnvironment.Build(Inherited(), new MonadoSettings(), profile, moduleFixed);
 
-        Assert.Equal("0", env["DREAMAIR_VK_LAYER"]);
-        Assert.Single(env.Keys, k => string.Equals(k, "DREAMAIR_VK_LAYER", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("0", env["MIRADOR_DIRECT_MODE"]);
+        Assert.Single(env.Keys, k => string.Equals(k, "MIRADOR_DIRECT_MODE", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -185,11 +185,11 @@ public class MonadoEnvironmentTests
     [Fact]
     public void An_empty_extra_value_removes_a_module_variable()
     {
-        EnvVar[] moduleFixed = [new("DREAMAIR_VK_LAYER", "1")];
+        EnvVar[] moduleFixed = [new("MIRADOR_DIRECT_MODE", "1")];
 
-        var env = MonadoEnvironment.Build(Inherited(), new MonadoSettings(), CustomWith(new EnvVar("DREAMAIR_VK_LAYER", "")), moduleFixed);
+        var env = MonadoEnvironment.Build(Inherited(), new MonadoSettings(), CustomWith(new EnvVar("MIRADOR_DIRECT_MODE", "")), moduleFixed);
 
-        Assert.False(env.ContainsKey("DREAMAIR_VK_LAYER"));
+        Assert.False(env.ContainsKey("MIRADOR_DIRECT_MODE"));
     }
 
     [Fact]

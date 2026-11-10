@@ -8,6 +8,8 @@ add_executable(dvl_tests
     test_nvapi_ids.cpp
     test_api.cpp
     test_product_table.cpp
+    test_edid.cpp
+    test_env.cpp
     test_holders.cpp
     test_board.cpp
     test_display_session.cpp
@@ -48,12 +50,12 @@ endforeach()
 
 # The layer tests load the built DLL and read the manifest next to it, so the tests build after both. The intercept
 # tests load the DLL's test build, which takes a display session on a fake NVAPI (fakes/fake_chain.hpp).
-if(TARGET dreamair_vk_layer)
-    add_dependencies(dvl_tests dreamair_vk_layer dvl_layer_for_tests)
+if(TARGET mirador_direct_mode)
+    add_dependencies(dvl_tests mirador_direct_mode dvl_layer_for_tests)
     target_compile_definitions(dvl_tests PRIVATE
-        "DVL_LAYER_DLL=\"$<TARGET_FILE:dreamair_vk_layer>\""
+        "DVL_LAYER_DLL=\"$<TARGET_FILE:mirador_direct_mode>\""
         "DVL_LAYER_TEST_DLL=\"$<TARGET_FILE:dvl_layer_for_tests>\""
-        "DVL_LAYER_MANIFEST=\"$<TARGET_FILE_DIR:dreamair_vk_layer>/dreamair_vk_layer.json\"")
+        "DVL_LAYER_MANIFEST=\"$<TARGET_FILE_DIR:mirador_direct_mode>/mirador_direct_mode.json\"")
 endif()
 
 # PRE_TEST: discover test cases when ctest runs, not as a post-build step, so

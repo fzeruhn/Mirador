@@ -41,9 +41,9 @@ jobs:
             src/Mirador.App/bin/x64/Release/
             src/Mirador.Helper/bin/x64/Release/
             artifacts/standin/monado-service.exe
-            artifacts/layer-build/layer/dreamair_vk_layer.json
-            artifacts/layer-build/layer/dreamair_vk_layer.dll
-            artifacts/layer-build/check/dreamair-display-check.exe
+            artifacts/layer-build/layer/mirador_direct_mode.json
+            artifacts/layer-build/layer/mirador_direct_mode.dll
+            artifacts/layer-build/check/mirador-display-check.exe
             artifacts/xr-check-build/xr-check.exe
 
       - name: Upload the test results

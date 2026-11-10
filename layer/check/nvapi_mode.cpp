@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// The default mode of dreamair-display-check (design 7): NVAPI only. The display session opens exactly as it does in
+// The default mode of mirador-display-check (design 7): NVAPI only. The display session opens exactly as it does in
 // the layer; then this file plays an application that presents one solid colour per frame, through the same frame
 // model, display loop and display thread the layer runs, and counts the display's flips. There is no Vulkan here, so
 // the frame fences are always signalled and the back-buffers are cleared through a D3D11 device of our own.
@@ -365,8 +365,10 @@ ModeResult run_nvapi_check(const NvapiEnv& env, const Options& options, Output& 
         std::lock_guard<std::mutex> hold(r->lock);
         gen = r->model.add_swapchain();
     }
+    const double refresh_hz = product.refresh_mhz != 0 ? product.refresh_mhz / 1000.0 : kRefreshHz;
+    result.counts.refresh_hz = refresh_hz;
     say(out, "presenting for %d s (%llu presents at %.0f Hz expected)", options.seconds,
-        static_cast<unsigned long long>(expected_flips(options.seconds)), kRefreshHz);
+        static_cast<unsigned long long>(expected_flips(options.seconds, refresh_hz)), refresh_hz);
 
     const nvdm::FrameModel::Counters before = counters_of(*r);
     const int64_t t0 = r->clock.now_ns();
@@ -402,11 +404,11 @@ ModeResult run_nvapi_check(const NvapiEnv& env, const Options& options, Output& 
         }
         r->lines.drain(out);
         // A dead display completes every present at once (design 6.7 step 5): the loop would run at the speed of the
-        // clears for the rest of the run. 90 Hz cannot do 3 times its count.
-        if (id > 3 * expected_flips(options.seconds) + 100) {
+        // clears for the rest of the run. The mode's rate cannot do 3 times its count.
+        if (id > 3 * expected_flips(options.seconds, refresh_hz) + 100) {
             result.steps_ok = false;
             result.failed_step = "presenting " + std::to_string(id) +
-                                 " frames far above 90 Hz: the display is not flipping (presents complete at once "
+                                 " frames far above the mode's rate: the display is not flipping (presents complete at once "
                                  "while flips are stopped)";
             break;
         }

@@ -189,8 +189,8 @@ TEST_CASE("handled_commands_match_the_layers_proc_address_tables")
 {
     // "Handled" has to mean intercepted, or the coverage list proves nothing. Asked without an instance, the layer
     // answers only what it intercepts itself (there is no next layer to pass the name on to).
-    dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"dvl_tests.exe");
-    dvl_test::ScopedEnv quiet(L"DREAMAIR_VK_LAYER_LOG", L"off");
+    dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"dvl_tests.exe");
+    dvl_test::ScopedEnv quiet(L"MIRADOR_DIRECT_MODE_LOG", L"off");
     dvl_test::LayerDll dll;
     REQUIRE(dll.loaded());
     auto n = dvl_test::negotiate(dll, 2);

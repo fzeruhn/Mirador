@@ -141,9 +141,9 @@ HolderFindings holder_findings(const std::vector<std::string>& processes)
 
 // --- The verdict -------------------------------------------------------------------------------------------------
 
-uint64_t expected_flips(double seconds)
+uint64_t expected_flips(double seconds, double refresh_hz)
 {
-    return seconds <= 0 ? 0 : static_cast<uint64_t>(std::llround(kRefreshHz * seconds));
+    return seconds <= 0 || refresh_hz <= 0 ? 0 : static_cast<uint64_t>(std::llround(refresh_hz * seconds));
 }
 
 Verdict judge(bool steps_ok, const std::string& failed_step, const RunCounts& c)
@@ -158,7 +158,7 @@ Verdict judge(bool steps_ok, const std::string& failed_step, const RunCounts& c)
     if (c.requested_seconds > 0 && c.seconds < 0.98 * c.requested_seconds) {
         reasons.push_back(format("stopped after %.1f s of the requested %.0f s", c.seconds, c.requested_seconds));
     }
-    const uint64_t expected = expected_flips(c.seconds);
+    const uint64_t expected = expected_flips(c.seconds, c.refresh_hz);
     const uint64_t slack = tolerance(expected);
     auto out_of_range = [&](uint64_t n) { return n + slack < expected || n > expected + slack; };
     if (out_of_range(c.presents)) {
@@ -367,7 +367,7 @@ std::vector<std::string> diagnose_missing_layer(const LayerFacts& facts)
     if (!facts.layer_listed) {
         advice.push_back(std::string("the Vulkan loader does not know the layer ") + kLayerName +
                          ": install it (install.ps1, run as administrator), or start this tool with VK_IMPLICIT_LAYER_PATH=<the "
-                         "NVIDIA driver's nv-vk64.json>;<path of dreamair_vk_layer.json>");
+                         "NVIDIA driver's nv-vk64.json>;<path of mirador_direct_mode.json>");
         if (facts.elevated) {
             advice.push_back("this process is elevated, and the loader ignores VK_IMPLICIT_LAYER_PATH and the per-user "
                              "registry in elevated processes: start the tool unelevated, or install the layer");
@@ -375,7 +375,7 @@ std::vector<std::string> diagnose_missing_layer(const LayerFacts& facts)
         return advice;
     }
     if (facts.disable_var_set) {
-        advice.push_back("DISABLE_DREAMAIR_VK_LAYER is set in this environment, which switches the layer off: clear it");
+        advice.push_back("DISABLE_MIRADOR_DIRECT_MODE is set in this environment, which switches the layer off: clear it");
         return advice;
     }
     advice.push_back(std::string("the layer ") + kLayerName +

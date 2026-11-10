@@ -53,8 +53,8 @@ public class SessionControllerTests
 
         Assert.True(outcome.Ok, outcome.Message);
         var env = h.Launcher.Spec.Environment;
-        Assert.Equal("1", env["DREAMAIR_VK_LAYER"]);
-        Assert.Equal("VK_LAYER_DREAMAIR_nvapi_direct", env["VK_LOADER_LAYERS_ALLOW"]);
+        Assert.Equal("1", env["MIRADOR_DIRECT_MODE"]);
+        Assert.Equal("VK_LAYER_MIRADOR_direct_mode", env["VK_LOADER_LAYERS_ALLOW"]);
         Assert.Equal("1", env["FAKE_HEADSET"]);
         Assert.False(env.ContainsKey("VK_ADD_IMPLICIT_LAYER_PATH"));
     }
@@ -66,7 +66,7 @@ public class SessionControllerTests
 
         await h.StartRunningAsync();
 
-        Assert.False(h.Launcher.Spec.Environment.ContainsKey("DREAMAIR_VK_LAYER"));
+        Assert.False(h.Launcher.Spec.Environment.ContainsKey("MIRADOR_DIRECT_MODE"));
     }
 
     [Fact]

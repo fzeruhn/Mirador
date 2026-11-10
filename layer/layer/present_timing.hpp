@@ -38,7 +38,7 @@ inline constexpr VkPresentStageFlagsEXT kPresentStages = VK_PRESENT_STAGE_QUEUE_
                                                          VK_PRESENT_STAGE_REQUEST_DEQUEUED_BIT_EXT |
                                                          VK_PRESENT_STAGE_IMAGE_FIRST_PIXEL_OUT_BIT_EXT;
 
-// Present at a time (design 6.11): on unless DREAMAIR_VK_LAYER_NO_PRESENT_AT is set to a value other than 0, for an A/B
+// Present at a time (design 6.11): on unless MIRADOR_DIRECT_MODE_NO_PRESENT_AT is set to a value other than 0, for an A/B
 // of the same build with and without target times. Read when called; a swapchain keeps what it read at creation.
 bool present_at_enabled();
 
@@ -75,7 +75,7 @@ struct Target {
     enum class Use {
         None,     // no target (no timing info, or targetTime 0): shown at the first flip it can make, as always
         Hold,     // not shown at a flip before not_before_ns (FrameModel::hold)
-        Off,      // a target, but present at a time is off (DREAMAIR_VK_LAYER_NO_PRESENT_AT): taken as none
+        Off,      // a target, but present at a time is off (MIRADOR_DIRECT_MODE_NO_PRESENT_AT): taken as none
         Relative, // PRESENT_AT_RELATIVE_TIME, which the surface does not offer: taken as none
         TooFar,   // more than kFarTargetNs after now_ns: taken as none
     } use = Use::None;

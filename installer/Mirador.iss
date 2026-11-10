@@ -12,7 +12,7 @@
 ; Monado is optional in the bundle (tools\build-bundle.ps1; Mirador.md section 4.11 items 48 and 54): what isn't there
 ; is not registered. The layer is always in a bundle that tools\build-bundle.ps1 made (item 52).
 #define BundleHasMonado FileExists(AddBackslash(SourcePath) + Bundle + "\monado\runtime\openxr_monado.json")
-#define BundleHasLayer FileExists(AddBackslash(SourcePath) + Bundle + "\layer\dreamair_vk_layer.json")
+#define BundleHasLayer FileExists(AddBackslash(SourcePath) + Bundle + "\layer\mirador_direct_mode.json")
 #define ServiceName "MiradorHelper"
 
 [Setup]
@@ -70,8 +70,8 @@ Name: "{autoprograms}\Mirador"; Filename: "{app}\Mirador.exe"
 
 [Registry]
 #if BundleHasLayer
-; The bundled layer, registered as an implicit layer; it acts only when DREAMAIR_VK_LAYER=1 (in Monado's process).
-Root: HKLM64; Subkey: "SOFTWARE\Khronos\Vulkan\ImplicitLayers"; ValueType: dword; ValueName: "{app}\layer\dreamair_vk_layer.json"; ValueData: "0"; Flags: uninsdeletevalue
+; The bundled layer, registered as an implicit layer; it acts only when MIRADOR_DIRECT_MODE=1 (in Monado's process).
+Root: HKLM64; Subkey: "SOFTWARE\Khronos\Vulkan\ImplicitLayers"; ValueType: dword; ValueName: "{app}\layer\mirador_direct_mode.json"; ValueData: "0"; Flags: uninsdeletevalue
 #endif
 #if BundleHasMonado
 ; The bundled Monado, listed as an available OpenXR runtime.
@@ -180,12 +180,14 @@ var
   I: Integer;
   Ours, Name: String;
 begin
-  Ours := Lowercase(ExpandConstant('{app}\layer\dreamair_vk_layer.json'));
+  Ours := Lowercase(ExpandConstant('{app}\layer\mirador_direct_mode.json'));
   if RegGetValueNames(HKLM64, ImplicitLayers, Names) then
     for I := 0 to GetArrayLength(Names) - 1 do
     begin
       Name := Lowercase(Names[I]);
-      if (Name <> Ours) and HasSuffix(Name, '\dreamair_vk_layer.json') then
+      { Another copy of this layer, or the one it was before it was renamed (dreamair_vk_layer.json, the standalone
+        release's and an older Mirador's): two registered would both load. }
+      if (Name <> Ours) and (HasSuffix(Name, '\mirador_direct_mode.json') or HasSuffix(Name, '\dreamair_vk_layer.json')) then
         RegDeleteValue(HKLM64, ImplicitLayers, Names[I]);
     end;
 end;

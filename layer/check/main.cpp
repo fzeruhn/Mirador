@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// dreamair-display-check [--vulkan] [--no-heartbeat] [--ignore-holders] [--seconds=20]  (design 7)
+// mirador-display-check [--vulkan] [--no-heartbeat] [--ignore-holders] [--seconds=20]  (design 7)
 //
 // The order: arguments, then the holder checks (before anything is touched: no NVAPI, no HID, no Vulkan if Pimax or
 // Monado runs), then the board heartbeat, then the mode, then the verdict. Exit code: 0 PASS, 1 a check failed, 2 usage.
@@ -26,7 +26,7 @@ int main(int argc, char** argv)
     const std::vector<std::string> args(argv + 1, argv + argc);
     const ParsedOptions parsed = parse_options(args);
     if (!parsed.ok()) {
-        std::fprintf(stderr, "dreamair-display-check: %s\n\n%s", parsed.error.c_str(), usage_text().c_str());
+        std::fprintf(stderr, "mirador-display-check: %s\n\n%s", parsed.error.c_str(), usage_text().c_str());
         return kExitUsage;
     }
     const Options& options = parsed.options;
@@ -36,7 +36,7 @@ int main(int argc, char** argv)
     }
 
     StdoutOutput out;
-    say(out, "dreamair-display-check %s: %s, %d s%s%s", DVL_CHECK_VERSION,
+    say(out, "mirador-display-check %s: %s, %d s%s%s", DVL_CHECK_VERSION,
         options.vulkan ? "--vulkan (through the layer)" : "NVAPI only", options.seconds,
         options.no_heartbeat ? ", no heartbeat" : "", options.ignore_holders ? ", holder checks skipped" : "");
 

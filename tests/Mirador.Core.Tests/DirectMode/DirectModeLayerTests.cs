@@ -5,14 +5,14 @@ namespace Mirador.Core.Tests.DirectMode;
 
 public class DirectModeLayerTests
 {
-    private const string Json = "dreamair_vk_layer.json";
-    private const string Dll = "dreamair_vk_layer.dll";
-    private const string Check = "dreamair-display-check.exe";
+    private const string Json = "mirador_direct_mode.json";
+    private const string Dll = "mirador_direct_mode.dll";
+    private const string Check = "mirador-display-check.exe";
 
     [Fact]
     public void A_build_folder_has_the_layer_and_the_check_in_their_own_folders()
     {
-        // dreamair-vk-layer\build, as install.ps1 -Source takes it.
+        // artifacts\layer-build, as layer\build.ps1 makes it.
         using var dir = new TempDir();
         dir.Touch("layer", Json);
         dir.Touch("layer", Dll);
@@ -21,6 +21,30 @@ public class DirectModeLayerTests
         var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
 
         Assert.Equal(new LayerFiles(Path.Combine(dir.Path, "layer"), Path.Combine(dir.Path, "check", Check)), files);
+    }
+
+    [Fact]
+    public void A_folder_with_the_layer_under_its_dream_air_names_is_found_for_one_release()
+    {
+        using var dir = new TempDir();
+        dir.Touch("layer", "dreamair_vk_layer.json");
+        dir.Touch("layer", "dreamair_vk_layer.dll");
+        dir.Touch("check", "dreamair-display-check.exe");
+
+        var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
+
+        Assert.Equal(new LayerFiles(Path.Combine(dir.Path, "layer"), Path.Combine(dir.Path, "check", "dreamair-display-check.exe"), Legacy: true), files);
+    }
+
+    [Fact]
+    public void The_layer_that_comes_with_mirador_is_only_found_under_its_new_names()
+    {
+        using var bundled = new TempDir();
+        bundled.Touch("dreamair_vk_layer.json");
+        bundled.Touch("dreamair_vk_layer.dll");
+        bundled.Touch("dreamair-display-check.exe");
+
+        Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, bundled.Path));
     }
 
     [Fact]

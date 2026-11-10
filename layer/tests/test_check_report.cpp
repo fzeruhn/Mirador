@@ -101,7 +101,7 @@ TEST_CASE("the usage text names every option, the exit codes and the layer's nee
 {
     const std::string usage = dvl::usage_text();
     for (const char* part : {"--vulkan", "--no-heartbeat", "--ignore-holders", "--seconds=20", "VK_IMPLICIT_LAYER_PATH",
-                             "Exit code", "dreamair-display-check"}) {
+                             "Exit code", "mirador-display-check"}) {
         INFO(part);
         CHECK(contains(usage, part));
     }
@@ -114,9 +114,9 @@ TEST_CASE("the usage text names every option, the exit codes and the layer's nee
 
 TEST_CASE("the environment follows design 7 for each mode")
 {
-    dvl_test::ScopedEnv layer(L"DREAMAIR_VK_LAYER", nullptr);
+    dvl_test::ScopedEnv layer(L"MIRADOR_DIRECT_MODE", nullptr);
     dvl_test::ScopedEnv rtss(L"DISABLE_RTSS_LAYER", nullptr);
-    dvl_test::ScopedEnv ignore(L"DREAMAIR_VK_LAYER_IGNORE_HOLDERS", L"1"); // left over from somewhere else
+    dvl_test::ScopedEnv ignore(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS", L"1"); // left over from somewhere else
     auto get = [](const wchar_t* name) {
         wchar_t buffer[8];
         const DWORD n = GetEnvironmentVariableW(name, buffer, 8);
@@ -127,31 +127,31 @@ TEST_CASE("the environment follows design 7 for each mode")
     // session's own check behind the user's back).
     dvl::Options nvapi;
     dvl::apply_environment(nvapi);
-    CHECK(get(L"DREAMAIR_VK_LAYER_IGNORE_HOLDERS") == L"<unset>");
-    CHECK(get(L"DREAMAIR_VK_LAYER") == L"<unset>");
+    CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"<unset>");
+    CHECK(get(L"MIRADOR_DIRECT_MODE") == L"<unset>");
     CHECK(get(L"DISABLE_RTSS_LAYER") == L"<unset>");
 
     dvl::Options nvapi_ignore;
     nvapi_ignore.ignore_holders = true;
     dvl::apply_environment(nvapi_ignore);
-    CHECK(get(L"DREAMAIR_VK_LAYER_IGNORE_HOLDERS") == L"1");
-    CHECK(get(L"DREAMAIR_VK_LAYER") == L"<unset>");
+    CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"1");
+    CHECK(get(L"MIRADOR_DIRECT_MODE") == L"<unset>");
 
     // --vulkan: the layer on and RTSS's layer off, in this process.
     dvl::Options vulkan;
     vulkan.vulkan = true;
     dvl::apply_environment(vulkan);
-    CHECK(get(L"DREAMAIR_VK_LAYER") == L"1");
+    CHECK(get(L"MIRADOR_DIRECT_MODE") == L"1");
     CHECK(get(L"DISABLE_RTSS_LAYER") == L"1");
-    CHECK(get(L"DREAMAIR_VK_LAYER_IGNORE_HOLDERS") == L"<unset>");
+    CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"<unset>");
 
     dvl::Options vulkan_ignore;
     vulkan_ignore.vulkan = true;
     vulkan_ignore.ignore_holders = true;
     dvl::apply_environment(vulkan_ignore);
-    CHECK(get(L"DREAMAIR_VK_LAYER") == L"1");
+    CHECK(get(L"MIRADOR_DIRECT_MODE") == L"1");
     CHECK(get(L"DISABLE_RTSS_LAYER") == L"1");
-    CHECK(get(L"DREAMAIR_VK_LAYER_IGNORE_HOLDERS") == L"1");
+    CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"1");
 }
 
 // --- Holder checks ---------------------------------------------------------------------------------------------------
@@ -289,6 +289,20 @@ TEST_CASE("verdict_passes_1800_presents_and_1800_flips_in_20_seconds")
     CHECK(dvl::expected_flips(20.0) == 1800);
 }
 
+TEST_CASE("verdict_counts_on_the_rate_of_the_mode_that_was_opened")
+{
+    // An untested headset at 64 Hz (its EDID's mode): 1280 flips in 20 s is all of them, not a miss against 90 Hz.
+    dvl::RunCounts c = counts(1280, 1280);
+    c.refresh_hz = 64.0;
+    const dvl::Verdict v = dvl::judge(true, "", c);
+    CHECK(v.pass);
+    CHECK(dvl::expected_flips(20.0, 64.0) == 1280);
+
+    // Without a rate the Dream Air's 90 Hz stands.
+    CHECK(dvl::RunCounts{}.refresh_hz == 90.0);
+    CHECK_FALSE(dvl::judge(true, "", counts(1280, 1280)).pass);
+}
+
 TEST_CASE("verdict_tolerates_the_run_starting_and_ending_between_two_refreshes")
 {
     CHECK(dvl::judge(true, "", counts(1799, 1801)).pass);
@@ -423,10 +437,10 @@ TEST_CASE("a display that cannot be identified is explained: what the line means
     CHECK(contains(lines[1], "maintainer"));
 }
 
-TEST_CASE("a display left unidentified by DREAMAIR_VK_LAYER_TEST_NO_EDID is explained as an unreadable EDID")
+TEST_CASE("a display left unidentified by MIRADOR_DIRECT_MODE_TEST_NO_EDID is explained as an unreadable EDID")
 {
     const std::vector<std::string> lines = dvl::explain_failure(
-        "Product: the display's EDID was not read (DREAMAIR_VK_LAYER_TEST_NO_EDID skips every route), and the Dream "
+        "Product: the display's EDID was not read (MIRADOR_DIRECT_MODE_TEST_NO_EDID skips every route), and the Dream "
         "Air's board (USB 34A4:0044) is not connected, so the display is not taken to be a Dream Air (code -10003)");
     REQUIRE(lines.size() == 2);
     CHECK(contains(lines[0], "which headset"));
@@ -570,7 +584,7 @@ TEST_CASE("a missing layer is explained by what the loader says about it")
     dvl::LayerFacts facts;
     facts.layer_listed = false;
     std::vector<std::string> advice = dvl::diagnose_missing_layer(facts);
-    CHECK(any_line_contains(advice, "VK_LAYER_DREAMAIR_nvapi_direct"));
+    CHECK(any_line_contains(advice, "VK_LAYER_MIRADOR_direct_mode"));
     CHECK(any_line_contains(advice, "VK_IMPLICIT_LAYER_PATH"));
     CHECK_FALSE(any_line_contains(advice, "elevated"));
 
@@ -584,7 +598,7 @@ TEST_CASE("a missing layer is explained by what the loader says about it")
     facts.layer_listed = true;
     facts.disable_var_set = true;
     advice = dvl::diagnose_missing_layer(facts);
-    CHECK(any_line_contains(advice, "DISABLE_DREAMAIR_VK_LAYER"));
+    CHECK(any_line_contains(advice, "DISABLE_MIRADOR_DIRECT_MODE"));
 
     // Listed, not disabled, still no extension: the manifest and the loader disagree.
     facts.disable_var_set = false;

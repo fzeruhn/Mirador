@@ -309,7 +309,7 @@ size_t stats_reads_during(const nvdm::FakeApi& api, int ms)
     return api.count("present_stats") - before;
 }
 
-// A folder for DREAMAIR_VK_LAYER_TRACE that is gone again at the end of the test, and the file the layer makes in it.
+// A folder for MIRADOR_DIRECT_MODE_TRACE that is gone again at the end of the test, and the file the layer makes in it.
 class TraceDir {
 public:
     TraceDir()
@@ -329,7 +329,7 @@ public:
     std::wstring folder() const { return path_.wstring(); }
     std::filesystem::path file() const
     {
-        return path_ / ("dreamair-trace-" + std::to_string(GetCurrentProcessId()) + ".csv");
+        return path_ / ("mirador-trace-" + std::to_string(GetCurrentProcessId()) + ".csv");
     }
     // The file's lines; none while it is not there.
     std::vector<std::string> lines() const
@@ -1303,10 +1303,10 @@ TEST_CASE("destroy_device_while_a_display_event_wait_is_in_progress")
 
 TEST_CASE("the_trace_is_appended_each_time_the_display_thread_stops")
 {
-    // DREAMAIR_VK_LAYER_TRACE=<folder>: nothing is written while the thread runs; the last swapchain's destruction
+    // MIRADOR_DIRECT_MODE_TRACE=<folder>: nothing is written while the thread runs; the last swapchain's destruction
     // writes what it recorded, a later stop adds only what came after (one header, the old lines as they were).
     TraceDir dir;
-    const dvl_test::ScopedEnv trace_on(L"DREAMAIR_VK_LAYER_TRACE", dir.folder().c_str());
+    const dvl_test::ScopedEnv trace_on(L"MIRADOR_DIRECT_MODE_TRACE", dir.folder().c_str());
     Monado m;
     const VkSwapchainKHR a = m.make_swapchain();
     for (uint64_t id = 1; id <= 10; ++id) {
@@ -1340,7 +1340,7 @@ TEST_CASE("ctrl_c_writes_the_trace_before_the_default_handler_ends_the_process")
     // The console control handler runs the stop hook on a helper thread and gives it 100 ms; the process ends right
     // after. The hook stops the display thread and writes the trace in that time, the swapchain still alive.
     TraceDir dir;
-    const dvl_test::ScopedEnv trace_on(L"DREAMAIR_VK_LAYER_TRACE", dir.folder().c_str());
+    const dvl_test::ScopedEnv trace_on(L"MIRADOR_DIRECT_MODE_TRACE", dir.folder().c_str());
     Monado m;
     const VkSwapchainKHR swapchain = m.make_swapchain();
     for (uint64_t id = 1; id <= 10; ++id) {
@@ -1372,7 +1372,7 @@ TEST_CASE("ctrl_c_with_a_full_trace_writes_only_the_newest_65536_records_and_say
     constexpr size_t kHeld = size_t{1} << 20;
     constexpr size_t kHookRecords = size_t{1} << 16;
     TraceDir dir;
-    const dvl_test::ScopedEnv trace_on(L"DREAMAIR_VK_LAYER_TRACE", dir.folder().c_str());
+    const dvl_test::ScopedEnv trace_on(L"MIRADOR_DIRECT_MODE_TRACE", dir.folder().c_str());
     Monado m;
     LogCapture log(m.rig);
     const VkSwapchainKHR swapchain = m.make_swapchain();
@@ -1403,7 +1403,7 @@ TEST_CASE("a_full_trace_says_so_once_and_the_file_gets_what_it_holds")
     // The array of records fills up: one Info line names the file and says later records are dropped, however many are
     // dropped after it; the stop writes what the array holds.
     TraceDir dir;
-    const dvl_test::ScopedEnv trace_on(L"DREAMAIR_VK_LAYER_TRACE", dir.folder().c_str());
+    const dvl_test::ScopedEnv trace_on(L"MIRADOR_DIRECT_MODE_TRACE", dir.folder().c_str());
     Monado m;
     LogCapture log(m.rig);
     const VkSwapchainKHR swapchain = m.make_swapchain();
@@ -1652,7 +1652,7 @@ TEST_CASE("present_at_a_target_time_shows_each_frame_at_the_first_flip_at_or_aft
     // pixel out. An early frame is held for the flip at or after its target (within 1 ms; with NEAREST, the flip
     // nearest it), never one flip later, whatever the target's phase; a frame whose target has passed, or that has
     // none, goes at the first flip it can make. The first pixel out stays the real flip.
-    dvl_test::ScopedEnv present_at_on(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", nullptr);
+    dvl_test::ScopedEnv present_at_on(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", nullptr);
     Monado m;
     LogCapture log(m.rig);
     const VkSwapchainKHR swapchain = make_timed_swapchain(m);
@@ -1711,7 +1711,7 @@ TEST_CASE("a_frame_behind_a_held_one_waits_for_it")
 {
     // Presents are taken in order: an untargeted frame queued behind a held one is not shown before the held one's
     // flip. At that flip the newest queued frame goes, as always (design 6.7), and the held one is retired unshown.
-    dvl_test::ScopedEnv present_at_on(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", nullptr);
+    dvl_test::ScopedEnv present_at_on(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", nullptr);
     Monado m;
     const VkSwapchainKHR swapchain = make_timed_swapchain(m);
     REQUIRE(m.fn<PFN_vkSetSwapchainPresentTimingQueueSizeEXT>("vkSetSwapchainPresentTimingQueueSizeEXT")(
@@ -1743,13 +1743,13 @@ TEST_CASE("a_frame_behind_a_held_one_waits_for_it")
 
 TEST_CASE("present_at_a_time_switched_off_shows_targeted_frames_at_the_first_flip")
 {
-    // DREAMAIR_VK_LAYER_NO_PRESENT_AT=1, read when the swapchain is made, for an A/B of the same build: a target is
+    // MIRADOR_DIRECT_MODE_NO_PRESENT_AT=1, read when the swapchain is made, for an A/B of the same build: a target is
     // ignored (said once) and the timings go on as before. (The surface's caps: test_surface.cpp.)
-    dvl_test::ScopedEnv present_at_off(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", L"1");
+    dvl_test::ScopedEnv present_at_off(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", L"1");
     Monado m;
     LogCapture log(m.rig);
     const VkSwapchainKHR swapchain = make_timed_swapchain(m);
-    CHECK(log.count("present at a time off (DREAMAIR_VK_LAYER_NO_PRESENT_AT)") == 1);
+    CHECK(log.count("present at a time off (MIRADOR_DIRECT_MODE_NO_PRESENT_AT)") == 1);
     REQUIRE(m.fn<PFN_vkSetSwapchainPresentTimingQueueSizeEXT>("vkSetSwapchainPresentTimingQueueSizeEXT")(
                 m.device, swapchain, 4) == VK_SUCCESS);
     const Flips flips(m);

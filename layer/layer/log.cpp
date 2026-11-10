@@ -161,7 +161,10 @@ struct Logger::Impl {
         if (config.dir.empty()) {
             return;
         }
-        // The folder is one level below %LOCALAPPDATA%, which exists.
+        // The folder is two levels below %LOCALAPPDATA%, which exists: Mirador's folder first.
+        if (const size_t slash = config.dir.find_last_of(L'\\'); slash != std::wstring::npos) {
+            CreateDirectoryW(config.dir.substr(0, slash).c_str(), nullptr);
+        }
         CreateDirectoryW(config.dir.c_str(), nullptr);
         if (rotate) {
             rotate_logs(config.dir, config.keep);
@@ -239,9 +242,9 @@ LoggerConfig config_from_environment()
     LoggerConfig c;
     const auto local = env_get(L"LOCALAPPDATA");
     if (local && !local->empty()) {
-        c.dir = from_utf8(*local) + L"\\DreamAirVkLayer";
+        c.dir = from_utf8(*local) + L"\\Mirador\\direct-mode";
     }
-    if (const auto text = env_get(L"DREAMAIR_VK_LAYER_LOG")) {
+    if (const auto text = env_get(L"MIRADOR_DIRECT_MODE_LOG")) {
         if (const auto level = parse_level(*text)) {
             c.threshold = *level;
         }

@@ -70,9 +70,9 @@ ModeResult run_nvapi_check(const NvapiEnv& env, const Options& options, Output& 
 struct VulkanEnv {
     PFN_vkGetInstanceProcAddr gipa = nullptr; // vkGetInstanceProcAddr of the loader
     bool elevated = false;                    // for the advice when the layer is missing
-    bool disable_var_set = false;             // DISABLE_DREAMAIR_VK_LAYER is set
+    bool disable_var_set = false;             // DISABLE_MIRADOR_DIRECT_MODE is set
     std::function<bool()> interrupted;        // unset: never
-    // The layer's log, if it can be had (the real one reads %LOCALAPPDATA%\DreamAirVkLayer\layer.log): the tool prints
+    // The layer's log, if it can be had (the real one reads %LOCALAPPDATA%\Mirador\direct-mode\layer.log): the tool prints
     // the EDID route and the back-buffer import's lines from it at the end, from the lines of process `pid` only.
     std::function<std::optional<std::string>()> layer_log;
     unsigned long pid = GetCurrentProcessId(); // the layer runs in this process
@@ -83,7 +83,7 @@ ModeResult run_vulkan_check(const VulkanEnv& env, const Options& options, Output
 // The whole text of a layer log file, or nullopt if it cannot be read.
 std::optional<std::string> read_layer_log_file(const std::wstring& path);
 
-// The real thing: applies the environment (DREAMAIR_VK_LAYER=1, DISABLE_RTSS_LAYER=1, ...) before loading
+// The real thing: applies the environment (MIRADOR_DIRECT_MODE=1, DISABLE_RTSS_LAYER=1, ...) before loading
 // vulkan-1.dll, then run_vulkan_check on its vkGetInstanceProcAddr. Touches the real layer and so the real NVAPI.
 ModeResult run_vulkan_mode(const Options& options, Output& out);
 

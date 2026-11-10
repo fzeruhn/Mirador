@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// dreamair-display-check, default mode (design 7), run against a display session on a fake NVAPI whose clock runs at
+// mirador-display-check, default mode (design 7), run against a display session on a fake NVAPI whose clock runs at
 // the real rate: the tool's frame loop drives the real frame model, display loop and display thread, and the fake's
 // counter flips every 1/90 s. Nothing here reaches the real NVAPI, the real D3D11 device or the real display session
 // (Pimax runs on this machine).

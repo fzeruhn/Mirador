@@ -13,7 +13,7 @@
       monado\server\                 the real monado-service.exe and its DLLs
       monado\VERSION.txt             git describe of the Monado source
       standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
-      layer\                         dreamair_vk_layer.json, .dll, dreamair-display-check.exe (built from layer\)
+      layer\                         mirador_direct_mode.json, .dll, mirador-display-check.exe (built from layer\)
       tools\                         build-monado.ps1, vcpkg-commit.txt, xr-check.exe; gaze_world.exe, openxr_loader.dll when given
       opencomposite\bin\             vrclient_x64.dll and version.txt (empty; Mirador copies them per user)
       opencomposite\                 SOURCE.txt (line 1: version and commit), OpenComposite's licences and notes
@@ -136,8 +136,8 @@ Need $standin 'The stand-in'
 # The direct-mode layer, from layer\ (a child process, so its developer shell stays out of this one).
 $layerBuild = Join-Path $repo 'artifacts\layer-build'
 Invoke-Checked { & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'layer\build.ps1') -Configure -Build -BuildDir $layerBuild } 'Building the layer'
-$layerFiles = (Join-Path $layerBuild 'layer\dreamair_vk_layer.json'), (Join-Path $layerBuild 'layer\dreamair_vk_layer.dll'),
-    (Join-Path $layerBuild 'check\dreamair-display-check.exe')
+$layerFiles = (Join-Path $layerBuild 'layer\mirador_direct_mode.json'), (Join-Path $layerBuild 'layer\mirador_direct_mode.dll'),
+    (Join-Path $layerBuild 'check\mirador-display-check.exe')
 foreach ($file in $layerFiles) {
     Need $file 'The layer''s build'
 }

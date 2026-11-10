@@ -1659,7 +1659,7 @@ public:
     // waits up to its 100 ms for it: the handler's answer (0), or -1 without the export.
     int console(DWORD event) const { return console_event != nullptr ? console_event(event) : -1; }
 
-    // The presenter's trace filled up to the first record that does not fit (DREAMAIR_VK_LAYER_TRACE set): 1, 0 if
+    // The presenter's trace filled up to the first record that does not fit (MIRADOR_DIRECT_MODE_TRACE set): 1, 0 if
     // there is no trace yet, -1 without the export.
     int fill_trace() const { return fill_trace_fn != nullptr ? fill_trace_fn() : -1; }
 
@@ -1671,8 +1671,8 @@ public:
     std::vector<std::string> session_log; // what the session logged
     std::unique_ptr<nvdm::DisplaySession> session;
 
-    ScopedEnv processes{L"DREAMAIR_VK_LAYER_PROCESSES", L"dvl_tests.exe"};
-    ScopedEnv quiet{L"DREAMAIR_VK_LAYER_LOG", L"off"};
+    ScopedEnv processes{L"MIRADOR_DIRECT_MODE_PROCESSES", L"dvl_tests.exe"};
+    ScopedEnv quiet{L"MIRADOR_DIRECT_MODE_LOG", L"off"};
     LayerDll dll{DVL_LAYER_TEST_DLL};
     bool loaded = false;
     void (*set_session)(nvdm::DisplaySession*) = nullptr;
@@ -1688,7 +1688,7 @@ public:
 };
 
 // The layer's log lines, taken from the test build of the DLL in place of its logger (dvl_test_set_log_sink) for the
-// capture's life, each with the thread that wrote it. Every level is taken; DREAMAIR_VK_LAYER_LOG=off does not stop it.
+// capture's life, each with the thread that wrote it. Every level is taken; MIRADOR_DIRECT_MODE_LOG=off does not stop it.
 class LogCapture {
 public:
     struct Line {

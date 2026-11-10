@@ -14,7 +14,8 @@ namespace {
 
 constexpr std::wstring_view kBuiltInProcesses[] = {
     L"monado-service.exe",
-    L"dreamair-display-check.exe",
+    L"mirador-display-check.exe",
+    L"dreamair-display-check.exe", // its Dream Air name, for one release
 };
 
 bool same_name(std::wstring_view a, std::wstring_view b)
@@ -81,7 +82,7 @@ std::wstring current_process_basename()
 
 bool current_process_allowed()
 {
-    return process_allowed(current_process_basename(), env_get(L"DREAMAIR_VK_LAYER_PROCESSES").value_or(std::string()));
+    return process_allowed(current_process_basename(), env_get(L"MIRADOR_DIRECT_MODE_PROCESSES").value_or(std::string()));
 }
 
 } // namespace dvl

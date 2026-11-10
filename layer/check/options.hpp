@@ -17,7 +17,7 @@ inline constexpr int kExitUsage = 2;
 inline constexpr int kDefaultSeconds = 20;
 inline constexpr int kMaxSeconds = 3600;
 
-// dreamair-display-check [--vulkan] [--no-heartbeat] [--ignore-holders] [--seconds=20]
+// mirador-display-check [--vulkan] [--no-heartbeat] [--ignore-holders] [--seconds=20]
 struct Options {
     bool vulkan = false;         // Through the layer, the way Monado uses it, instead of NVAPI alone.
     bool no_heartbeat = false;   // Do not send the board heartbeat.
@@ -41,9 +41,9 @@ ParsedOptions parse_options(const std::vector<std::string>& args);
 std::string usage_text();
 
 // Sets the variables the mode needs in this process, before anything loads Vulkan or NVAPI:
-//  - DREAMAIR_VK_LAYER_IGNORE_HOLDERS=1 with --ignore-holders (read by the display session in either mode, and by the
+//  - MIRADOR_DIRECT_MODE_IGNORE_HOLDERS=1 with --ignore-holders (read by the display session in either mode, and by the
 //    layer); removed otherwise, so a stray value cannot skip the session's own holder check;
-//  - with --vulkan, DREAMAIR_VK_LAYER=1 (enables the layer) and DISABLE_RTSS_LAYER=1 (keeps RTSS's overlay layer out,
+//  - with --vulkan, MIRADOR_DIRECT_MODE=1 (enables the layer) and DISABLE_RTSS_LAYER=1 (keeps RTSS's overlay layer out,
 //    design 5).
 void apply_environment(const Options& options);
 

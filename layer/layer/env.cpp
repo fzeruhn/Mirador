@@ -39,7 +39,38 @@ std::wstring from_utf8(std::string_view text)
     return out;
 }
 
+namespace {
+
+std::optional<std::string> env_get_one(const wchar_t* name);
+
+// The Dream Air name a renamed variable had (MIRADOR_DIRECT_MODE* was DREAMAIR_VK_LAYER*), or empty.
+std::wstring old_name(std::wstring_view name)
+{
+    constexpr std::wstring_view kNew = L"MIRADOR_DIRECT_MODE";
+    constexpr std::wstring_view kDisableNew = L"DISABLE_MIRADOR_DIRECT_MODE";
+    if (name.substr(0, kDisableNew.size()) == kDisableNew) {
+        return L"DISABLE_DREAMAIR_VK_LAYER" + std::wstring(name.substr(kDisableNew.size()));
+    }
+    if (name.substr(0, kNew.size()) == kNew) {
+        return L"DREAMAIR_VK_LAYER" + std::wstring(name.substr(kNew.size()));
+    }
+    return {};
+}
+
+} // namespace
+
 std::optional<std::string> env_get(const wchar_t* name)
+{
+    if (std::optional<std::string> value = env_get_one(name)) {
+        return value;
+    }
+    const std::wstring old = old_name(name);
+    return old.empty() ? std::nullopt : env_get_one(old.c_str());
+}
+
+namespace {
+
+std::optional<std::string> env_get_one(const wchar_t* name)
 {
     // The size can change between two calls (another thread sets the variable): loop until it fits.
     std::vector<wchar_t> buffer(256);
@@ -58,5 +89,7 @@ std::optional<std::string> env_get(const wchar_t* name)
         buffer.resize(static_cast<size_t>(n) + 1);
     }
 }
+
+} // namespace
 
 } // namespace dvl

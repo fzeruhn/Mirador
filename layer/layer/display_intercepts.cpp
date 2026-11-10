@@ -30,7 +30,7 @@ namespace {
 std::atomic<nvdm::DisplaySession*> g_test_session{nullptr};
 
 // The session's own lines (design 6.3: it names the failing step and its return value itself), into the layer's log:
-// a step's failure at Error, so DREAMAIR_VK_LAYER_LOG=warn still shows it (design 8), warnings at Warn.
+// a step's failure at Error, so MIRADOR_DIRECT_MODE_LOG=warn still shows it (design 8), warnings at Warn.
 void log_session_line(const std::string& line)
 {
     const SessionLine s = session_line(line);

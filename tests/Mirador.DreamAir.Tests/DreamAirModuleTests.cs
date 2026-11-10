@@ -183,9 +183,9 @@ public sealed class DreamAirModuleTests : IDisposable
         var expected = new Dictionary<string, string>
         {
             ["STEAMVR_LH_ENABLE"] = "1",
-            ["DREAMAIR_VK_LAYER"] = "1",
+            ["MIRADOR_DIRECT_MODE"] = "1",
             ["DISABLE_RTSS_LAYER"] = "1",
-            ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_DREAMAIR_nvapi_direct",
+            ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_MIRADOR_direct_mode",
             ["XRT_COMPOSITOR_FORCE_VK_DISPLAY"] = "0",
             ["XRT_COMPOSITOR_USE_PRESENT_WAIT"] = "1",
             ["U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS"] = "8.9",
@@ -322,12 +322,12 @@ public sealed class DreamAirModuleTests : IDisposable
     {
         state.Save(new DreamAirState());
         helper.Replies[HelperCommand.StopPimax] = new HelperReply(true, WasRunning: false);
-        consoles.Refusal = new MiradorException("Couldn't start dreamair-display-check.exe: Access is denied.");
+        consoles.Refusal = new MiradorException("Couldn't start mirador-display-check.exe: Access is denied.");
 
         var e = await Assert.ThrowsAsync<MiradorException>(() => BeforeStart());
 
         Assert.Equal(
-            "Mirador couldn't check direct mode with the new NVIDIA driver 621.01: Couldn't start dreamair-display-check.exe: Access is denied. Try again.",
+            "Mirador couldn't check direct mode with the new NVIDIA driver 621.01: Couldn't start mirador-display-check.exe: Access is denied. Try again.",
             e.Message);
     }
 

@@ -406,22 +406,22 @@ TEST_CASE("present timing: a target time holds its frame for the flip at or afte
     }
 }
 
-TEST_CASE("present timing: DREAMAIR_VK_LAYER_NO_PRESENT_AT switches present at a time off")
+TEST_CASE("present timing: MIRADOR_DIRECT_MODE_NO_PRESENT_AT switches present at a time off")
 {
     {
-        dvl_test::ScopedEnv unset(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", nullptr);
+        dvl_test::ScopedEnv unset(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", nullptr);
         CHECK(dvl::present_at_enabled());
     }
     {
-        dvl_test::ScopedEnv zero(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", L"0");
+        dvl_test::ScopedEnv zero(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", L"0");
         CHECK(dvl::present_at_enabled());
     }
     {
-        dvl_test::ScopedEnv one(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", L"1");
+        dvl_test::ScopedEnv one(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", L"1");
         CHECK_FALSE(dvl::present_at_enabled());
     }
     {
-        dvl_test::ScopedEnv yes(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", L"yes");
+        dvl_test::ScopedEnv yes(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", L"yes");
         CHECK_FALSE(dvl::present_at_enabled());
     }
 }

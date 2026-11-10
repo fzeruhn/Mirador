@@ -12,7 +12,7 @@
 
 namespace dvl {
 
-// What a line is worth. DREAMAIR_VK_LAYER_LOG sets the lowest level that is written: "error", "warn", "info"
+// What a line is worth. MIRADOR_DIRECT_MODE_LOG sets the lowest level that is written: "error", "warn", "info"
 // (the default) or "debug"; "off" writes nothing and makes no file. Off is a setting only, never the level of a line.
 enum class Level { Off, Error, Warn, Info, Debug };
 
@@ -29,7 +29,7 @@ struct SessionLine {
 };
 SessionLine session_line(std::string_view line);
 
-// DREAMAIR_VK_LAYER_TRACE (per-frame timing records, a debugging aid): the folder the trace file goes to, or nullopt
+// MIRADOR_DIRECT_MODE_TRACE (per-frame timing records, a debugging aid): the folder the trace file goes to, or nullopt
 // for off. Unset, empty or "0" is off; "1" is the log's folder (`log_dir`); anything else is that folder. Blanks around
 // the value are ignored. An empty folder (a "1" with no log folder, a value that is not UTF-8) is on, with nowhere to
 // write.
@@ -73,14 +73,14 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-// The process's logger: %LOCALAPPDATA%\DreamAirVkLayer\layer.log, the level from DREAMAIR_VK_LAYER_LOG, read at the
+// The process's logger: %LOCALAPPDATA%\Mirador\direct-mode\layer.log, the level from MIRADOR_DIRECT_MODE_LOG, read at the
 // first line. It is never destroyed (no destructors that take a lock at process exit, design 6.10).
 Logger& process_logger();
 
 // printf-style lines on the process's logger.
 void log(Level level, _Printf_format_string_ const char* format, ...);
 // Like log(), but a process that has not logged yet adds to the newest file instead of starting a new one. For the
-// line of a process that is not ours to log in (the guard's decline): a stray DREAMAIR_VK_LAYER must not push the
+// line of a process that is not ours to log in (the guard's decline): a stray MIRADOR_DIRECT_MODE must not push the
 // real runs' logs out of the last five.
 void log_append(Level level, _Printf_format_string_ const char* format, ...);
 

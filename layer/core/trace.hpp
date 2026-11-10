@@ -43,7 +43,7 @@ inline constexpr int64_t kFenceNotSignalled = 0;
 inline constexpr int64_t kFenceSignalled = 1;
 inline constexpr int64_t kFenceStatusSignalled = 3;
 
-// A per-frame timing trace for debugging frame pacing (the layer's DREAMAIR_VK_LAYER_TRACE; off, no Trace, by
+// A per-frame timing trace for debugging frame pacing (the layer's MIRADOR_DIRECT_MODE_TRACE; off, no Trace, by
 // default). A fixed array of records any thread appends to without a lock and without allocating; once it is full,
 // later records are dropped (counted). append_csv() writes what was added since its last call, while others append.
 class Trace {

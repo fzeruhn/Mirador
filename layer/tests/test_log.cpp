@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// The layer's log (design 8): levels from DREAMAIR_VK_LAYER_LOG, a new file per process with the last five kept.
+// The layer's log (design 8): levels from MIRADOR_DIRECT_MODE_LOG, a new file per process with the last five kept.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -101,7 +101,7 @@ TEST_CASE("a display-session failure line is an error, a warning line a warning,
     CHECK(dvl::session_line("errors: not a prefix").level == dvl::Level::Info);
 }
 
-TEST_CASE("a display-session failure line is written with DREAMAIR_VK_LAYER_LOG=warn, its information lines are not")
+TEST_CASE("a display-session failure line is written with MIRADOR_DIRECT_MODE_LOG=warn, its information lines are not")
 {
     TempDir dir;
     {
@@ -118,8 +118,8 @@ TEST_CASE("a display-session failure line is written with DREAMAIR_VK_LAYER_LOG=
 
 TEST_CASE("trace_folder_is_off_the_log_folder_or_another")
 {
-    // DREAMAIR_VK_LAYER_TRACE: unset, empty or 0 is off; 1 is the log's folder; anything else is a folder.
-    const std::wstring log_dir = L"C:\\Users\\finn\\AppData\\Local\\DreamAirVkLayer";
+    // MIRADOR_DIRECT_MODE_TRACE: unset, empty or 0 is off; 1 is the log's folder; anything else is a folder.
+    const std::wstring log_dir = L"C:\\Users\\finn\\AppData\\Local\\Mirador\\direct-mode";
     const auto folder = [&](std::optional<std::string> setting) { return dvl::trace_folder(setting, log_dir); };
 
     CHECK_FALSE(folder(std::nullopt).has_value());

@@ -36,7 +36,7 @@ constexpr int64_t kOutstandingFenceWaitNs = 100'000'000;
 constexpr int64_t kLeaveSlackNs = 2'000'000;
 // The display thread writes pending lines only before waits at least this long (step 1's, not step 3's polling).
 constexpr int64_t kFlushBeforeWaitNs = 1'000'000;
-// DREAMAIR_VK_LAYER_TRACE keeps this many records (32 MB): about 8 minutes of gaze_world at 90 Hz (~220 000 records per
+// MIRADOR_DIRECT_MODE_TRACE keeps this many records (32 MB): about 8 minutes of gaze_world at 90 Hz (~220 000 records per
 // 100 s); later ones are dropped.
 constexpr size_t kTraceRecords = size_t{1} << 20;
 // The console handler gives its stop hook 100 ms in all (exit.hpp) and the process ends right after, wherever the hook
@@ -344,7 +344,7 @@ VkResult create_our_swapchain(VkDevice device, const VkSwapchainCreateInfoKHR& c
         static_cast<void*>(handle), ull(record->gen), session.product().name, kImageCount,
         format_name(config.format).c_str(), static_cast<unsigned>(config.usage), present_mode_name(ci.presentMode),
         moved ? "images moved from the old swapchain" : "back-buffers imported",
-        record->present_at ? "on" : "off (DREAMAIR_VK_LAYER_NO_PRESENT_AT)", first ? "; display thread started" : "");
+        record->present_at ? "on" : "off (MIRADOR_DIRECT_MODE_NO_PRESENT_AT)", first ? "; display thread started" : "");
     *out = handle;
     return VK_SUCCESS;
 }
@@ -577,12 +577,12 @@ Presenter::Presenter(nvdm::DisplaySession& s)
     model.set_log([this](const std::string& line) { pending.add(Level::Info, line); });
     model.set_report([this](const nvdm::FrameReport& report) { timings.on_report(report); });
     if (const std::optional<std::wstring> folder =
-            trace_folder(env_get(L"DREAMAIR_VK_LAYER_TRACE"), process_logger().dir())) {
+            trace_folder(env_get(L"MIRADOR_DIRECT_MODE_TRACE"), process_logger().dir())) {
         if (folder->empty()) {
-            log(Level::Warn, "trace: DREAMAIR_VK_LAYER_TRACE names no folder to write to (1 is the log's folder, and "
+            log(Level::Warn, "trace: MIRADOR_DIRECT_MODE_TRACE names no folder to write to (1 is the log's folder, and "
                              "there is none: %%LOCALAPPDATA%% is not set); no trace");
         } else {
-            trace_path = *folder + L"\\dreamair-trace-" + std::to_wstring(GetCurrentProcessId()) + L".csv";
+            trace_path = *folder + L"\\mirador-trace-" + std::to_wstring(GetCurrentProcessId()) + L".csv";
             // On any thread, possibly under the display-session lock: the line is written later (PendingLines).
             trace = std::make_unique<nvdm::Trace>(kTraceRecords, [this] {
                 try {

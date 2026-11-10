@@ -101,7 +101,7 @@ void on_first_instance() noexcept
     dvl::install_console_handler();
     try {
         dvl::log(dvl::Level::Info,
-                 "VK_LAYER_DREAMAIR_nvapi_direct %s (implementation 1): loader interface offered %u, negotiated %u, "
+                 "VK_LAYER_MIRADOR_direct_mode %s (implementation 1): loader interface offered %u, negotiated %u, "
                  "process %s (pid %lu)",
                  DVL_LAYER_VERSION, g_loader_offered.load(), kInterfaceVersion, process_name().c_str(),
                  GetCurrentProcessId());
@@ -287,15 +287,15 @@ extern "C" VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion
         }
         const uint32_t offered = negotiate->loaderLayerInterfaceVersion;
 
-        // The process guard (design 5): a safety net for a machine-wide DREAMAIR_VK_LAYER=1. The loader skips a layer
+        // The process guard (design 5): a safety net for a machine-wide MIRADOR_DIRECT_MODE=1. The loader skips a layer
         // that fails here (its DLL stays loaded until vkDestroyInstance, and the layer's extension names stay listed,
         // which is why the guard cannot keep goal 4 by itself). One line, and no new log file: see log_append.
         if (!dvl::current_process_allowed()) {
             if (!g_decline_logged.exchange(true)) {
                 dvl::log_append(dvl::Level::Warn,
-                                "declining in %s (pid %lu): DREAMAIR_VK_LAYER is set, but this program is not one the "
-                                "layer is for (monado-service.exe, dreamair-display-check.exe, or the names in "
-                                "DREAMAIR_VK_LAYER_PROCESSES). Do not set DREAMAIR_VK_LAYER machine-wide.",
+                                "declining in %s (pid %lu): MIRADOR_DIRECT_MODE is set, but this program is not one the "
+                                "layer is for (monado-service.exe, mirador-display-check.exe, or the names in "
+                                "MIRADOR_DIRECT_MODE_PROCESSES). Do not set MIRADOR_DIRECT_MODE machine-wide.",
                                 process_name().c_str(), GetCurrentProcessId());
             }
             return VK_ERROR_INITIALIZATION_FAILED;

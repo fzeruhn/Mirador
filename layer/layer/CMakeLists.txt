@@ -65,11 +65,11 @@ add_library(dvl_layer OBJECT
 target_link_libraries(dvl_layer PRIVATE dvl_pure nvdm)
 target_compile_definitions(dvl_layer PRIVATE "DVL_LAYER_VERSION=\"${PROJECT_VERSION}\"")
 
-# dreamair_vk_layer.dll: the implicit layer VK_LAYER_DREAMAIR_nvapi_direct. The manifest is generated next to it, so
+# mirador_direct_mode.dll: the implicit layer VK_LAYER_MIRADOR_direct_mode. The manifest is generated next to it, so
 # the build folder (layer/ in it) can be given to the loader as it is.
-add_library(dreamair_vk_layer SHARED $<TARGET_OBJECTS:dvl_layer>)
-target_link_libraries(dreamair_vk_layer PRIVATE dvl_pure nvdm)
-set_target_properties(dreamair_vk_layer PROPERTIES
+add_library(mirador_direct_mode SHARED $<TARGET_OBJECTS:dvl_layer>)
+target_link_libraries(mirador_direct_mode PRIVATE dvl_pure nvdm)
+set_target_properties(mirador_direct_mode PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
@@ -89,10 +89,10 @@ set_target_properties(dvl_layer_for_tests PROPERTIES
 # guard, design 5) maps none of them, and the display session's first call loads each from its usual place. d3d11 and
 # dxgi: the session's D3D11 device; avrt: the display thread's MMCSS priority; setupapi: the board check of the last
 # EDID route.
-foreach(target dreamair_vk_layer dvl_layer_for_tests)
+foreach(target mirador_direct_mode dvl_layer_for_tests)
     target_link_libraries(${target} PRIVATE delayimp)
     target_link_options(${target} PRIVATE
         /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:avrt.dll /DELAYLOAD:setupapi.dll)
 endforeach()
 
-configure_file(dreamair_vk_layer.json.in "${CMAKE_CURRENT_BINARY_DIR}/dreamair_vk_layer.json" @ONLY)
+configure_file(mirador_direct_mode.json.in "${CMAKE_CURRENT_BINARY_DIR}/mirador_direct_mode.json" @ONLY)

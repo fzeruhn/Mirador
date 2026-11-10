@@ -25,7 +25,7 @@ public sealed class DirectModeCheckTests : IDisposable
             started.Add(spec.FileName);
             if (startFails)
             {
-                throw new MiradorException("Couldn't start dreamair-display-check.exe: Access is denied.");
+                throw new MiradorException("Couldn't start mirador-display-check.exe: Access is denied.");
             }
 
             var check = new FakeConsole(answer.Lines);
@@ -110,11 +110,46 @@ public sealed class DirectModeCheckTests : IDisposable
     }
 
     [Fact]
+    public void A_layer_folder_with_an_older_build_gets_the_variables_it_was_built_for()
+    {
+        Touch("old", "layer", "dreamair_vk_layer.json");
+        Touch("old", "layer", "dreamair_vk_layer.dll");
+        Touch("old", "check", "dreamair-display-check.exe");
+
+        var env = DirectModeLayer.Environment(WithLayerFolder(dir.File("old")), "unused").ToDictionary(v => v.Name, v => v.Value);
+
+        Assert.Equal("1", env["DREAMAIR_VK_LAYER"]);
+        Assert.Equal("VK_LAYER_DREAMAIR_nvapi_direct", env["VK_LOADER_LAYERS_ALLOW"]);
+        Assert.False(env.ContainsKey("MIRADOR_DIRECT_MODE"));
+        Assert.Equal(dir.File("old", "layer"), env["VK_ADD_IMPLICIT_LAYER_PATH"]);
+    }
+
+    [Fact]
+    public void The_layers_five_variables_are_these()
+    {
+        Assert.Equal(
+            new Dictionary<string, string>
+            {
+                ["MIRADOR_DIRECT_MODE"] = "1",
+                ["DISABLE_RTSS_LAYER"] = "1",
+                ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_MIRADOR_direct_mode",
+                ["XRT_COMPOSITOR_FORCE_VK_DISPLAY"] = "0",
+                ["XRT_COMPOSITOR_USE_PRESENT_WAIT"] = "1",
+            },
+            DirectModeEnvironment.Variables.ToDictionary(p => p.Key, p => p.Value));
+    }
+
+    [Fact]
     public void Variables_a_shell_may_have_left_that_change_the_layer_are_taken_out_of_monados_environment()
     {
         // As start-monado.ps1 did: an empty value removes the variable from what Monado inherits.
+        // Under both names: the layer still reads the Dream Air ones for one release.
         Assert.Equal(
-            ["DISABLE_DREAMAIR_VK_LAYER", "IPC_RELAXED_CONNECTION_SECURITY", "XRT_COMPOSITOR_FORCE_NVAPI_DIRECT", "DREAMAIR_VK_LAYER_TEST_NO_EDID", "DREAMAIR_VK_LAYER_IGNORE_HOLDERS"],
+            [
+                "DISABLE_MIRADOR_DIRECT_MODE", "IPC_RELAXED_CONNECTION_SECURITY", "XRT_COMPOSITOR_FORCE_NVAPI_DIRECT",
+                "MIRADOR_DIRECT_MODE_TEST_NO_EDID", "MIRADOR_DIRECT_MODE_IGNORE_HOLDERS",
+                "DISABLE_DREAMAIR_VK_LAYER", "DREAMAIR_VK_LAYER_TEST_NO_EDID", "DREAMAIR_VK_LAYER_IGNORE_HOLDERS",
+            ],
             DirectModeEnvironment.Cleared);
         var inherited = new Dictionary<string, string> { ["IPC_RELAXED_CONNECTION_SECURITY"] = "1", ["PATH"] = @"C:\Windows" };
         Touch("bundled", DirectModeLayer.ManifestName);
@@ -125,7 +160,7 @@ public sealed class DirectModeCheckTests : IDisposable
         var env = Mirador.Core.Monado.MonadoEnvironment.Build(inherited, new Mirador.Core.Monado.MonadoSettings(), profile, DirectModeLayer.Environment(profile, dir.File("bundled")));
 
         Assert.False(env.ContainsKey("IPC_RELAXED_CONNECTION_SECURITY"));
-        Assert.Equal("1", env["DREAMAIR_VK_LAYER"]);
+        Assert.Equal("1", env["MIRADOR_DIRECT_MODE"]);
         Assert.Equal(@"C:\Windows", env["PATH"]);
     }
 

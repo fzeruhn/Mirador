@@ -282,7 +282,7 @@ public:
         return call.status;
     }
 
-    int bind_device(uint32_t display_id, IUnknown* d3d11) override
+    int bind_device(uint32_t display_id, IUnknown* d3d11, uint32_t /*vendor*/) override
     {
         // A NULL device is refused before the driver (before the queue) and leaves an earlier bind as it is. Any other
         // bind, like the real port's, first undoes the earlier one.

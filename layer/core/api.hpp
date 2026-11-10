@@ -80,7 +80,7 @@ public:
     // The driver version as "621.01", or "" if the call is missing or fails.
     virtual std::string driver_version() = 0;
 
-    // The direct-mode displays of a vendor (kVendorPvr). Empty with status 0 while none is there, which is how the
+    // The direct-mode displays of a vendor (kDirectModeVendors' nvapi_id). Empty with status 0 while none is there, which is how the
     // board looks until its heartbeat has woken the display. Ids that are 0 are left out.
     virtual int enumerate(uint32_t vendor, std::vector<uint32_t>& ids) = 0;
 
@@ -100,7 +100,8 @@ public:
     // QueryInterface(IID_IUnknown), which COM may answer with another pointer than the one the driver expects.
     // The caller keeps the device alive for as long as the display is used. kBadArgument, without a driver call, if
     // `d3d11` is NULL. Fails (a status, or kBadOutput) if NVAPI gives no handle. A failed bind can be retried.
-    virtual int bind_device(uint32_t display_id, IUnknown* d3d11) = 0;
+    // `vendor` is the one whose display it is (the id enumerate() found it under).
+    virtual int bind_device(uint32_t display_id, IUnknown* d3d11, uint32_t vendor) = 0;
 
     // Creates one back-buffer for the mode. kBadOutput if NVAPI returns no shared handle; kNotBound before bind.
     virtual int create_back_buffer(const Mode& mode, BackBuffer& out) = 0;

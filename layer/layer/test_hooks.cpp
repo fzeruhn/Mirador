@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// Built into dvl_layer_for_tests.dll only, never into dreamair_vk_layer.dll: the seam through which the tests put a
+// Built into dvl_layer_for_tests.dll only, never into mirador_direct_mode.dll: the seam through which the tests put a
 // display session on a fake NVAPI in place of the process's (the controller's ruling for Task 9), so that no test
 // reaches the real driver.
 
@@ -46,7 +46,7 @@ extern "C" __declspec(dllexport) int dvl_test_console_event(unsigned long event)
     return dvl::handle_console_event(event) ? 1 : 0;
 }
 
-// Fills the presenter's trace (DREAMAIR_VK_LAYER_TRACE) until a record does not fit, which is when its array-full notice
+// Fills the presenter's trace (MIRADOR_DIRECT_MODE_TRACE) until a record does not fit, which is when its array-full notice
 // is made: 1, or 0 if there is no presenter or it has no trace.
 extern "C" __declspec(dllexport) int dvl_test_fill_trace()
 {

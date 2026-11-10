@@ -204,7 +204,7 @@ TEST_CASE("capabilities_chain_offers_present_ids_and_timing_and_nothing_else_opt
     // A struct the layer does not know stays as it was.
     PresentFlag unknown{static_cast<VkStructureType>(1000999000), &scaling, VK_TRUE};
 
-    dvl_test::ScopedEnv present_at(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", nullptr);
+    dvl_test::ScopedEnv present_at(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", nullptr);
     dvl::fill_surface_capabilities_chain(&unknown, kSpec, VK_PRESENT_MODE_MAILBOX_KHR);
     CHECK(unknown.supported == VK_TRUE);
     CHECK(scaling.supportedPresentScaling == 0);
@@ -238,11 +238,11 @@ TEST_CASE("capabilities_chain_offers_present_ids_and_timing_and_nothing_else_opt
     CHECK(compat.presentModeCount == 1);
 }
 
-TEST_CASE("capabilities_chain_offers_no_present_at_a_time_with_DREAMAIR_VK_LAYER_NO_PRESENT_AT")
+TEST_CASE("capabilities_chain_offers_no_present_at_a_time_with_MIRADOR_DIRECT_MODE_NO_PRESENT_AT")
 {
     VkPresentTimingSurfaceCapabilitiesEXT timing{VK_STRUCTURE_TYPE_PRESENT_TIMING_SURFACE_CAPABILITIES_EXT};
     {
-        dvl_test::ScopedEnv off(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT", L"1");
+        dvl_test::ScopedEnv off(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT", L"1");
         dvl::fill_surface_capabilities_chain(&timing, kSpec, VK_PRESENT_MODE_FIFO_KHR);
     }
     CHECK(timing.presentTimingSupported == VK_TRUE); // timings stay

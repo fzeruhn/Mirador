@@ -145,6 +145,7 @@ private:
     bool nvapi_loaded_ = false;
     bool ids_checked_ = false;
     uint32_t display_id_ = 0; // 0 until enumerate() finds one.
+    const DirectModeVendor* vendor_ = nullptr; // Whose display it is, once found.
     bool luid_known_ = false;
     LUID luid_{};
     size_t display_count_ = 0; // How many direct-mode displays of vendor PVR the enumerate that found one listed.
@@ -159,8 +160,8 @@ private:
     std::string done_message_;
 };
 
-// The layer's variables for the session (design 8): DREAMAIR_VK_LAYER_WAIT_MS (milliseconds, default 10000),
-// DREAMAIR_VK_LAYER_IGNORE_HOLDERS and DREAMAIR_VK_LAYER_TEST_NO_EDID (only "1" counts for these two). Null means not
+// The layer's variables for the session (design 8): MIRADOR_DIRECT_MODE_WAIT_MS (milliseconds, default 10000),
+// MIRADOR_DIRECT_MODE_IGNORE_HOLDERS and MIRADOR_DIRECT_MODE_TEST_NO_EDID (only "1" counts for these two). Null means not
 // set; text that is not a number that fits is the default. Separate from the environment so it can be tested.
 struct SessionSettings {
     uint32_t wait_ms = 10000;

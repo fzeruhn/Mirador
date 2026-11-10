@@ -4,7 +4,7 @@ namespace Mirador.Core.Tests.DirectMode;
 public class DisplayCheckTests
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(10);
-    private const string Exe = "dreamair-display-check.exe";
+    private const string Exe = "mirador-display-check.exe";
 
     private static Task<DisplayCheckResult> Run(int exitCode, params string[] lines)
     {
@@ -69,11 +69,11 @@ public class DisplayCheckTests
     [Fact]
     public async Task A_check_that_wont_start_is_a_fail_with_the_reason()
     {
-        var starter = new FakeConsoleStarter(_ => new FakeConsole()) { Refusal = new Core.MiradorException("Couldn't start dreamair-display-check.exe: not found.") };
+        var starter = new FakeConsoleStarter(_ => new FakeConsole()) { Refusal = new Core.MiradorException("Couldn't start mirador-display-check.exe: not found.") };
 
         var result = await DisplayCheck.RunAsync(Exe, starter.Start, CancellationToken.None).WaitAsync(Limit);
 
-        Assert.Equal(new DisplayCheckResult(false, "Couldn't start dreamair-display-check.exe: not found.", null, "") { Finished = false }, result);
+        Assert.Equal(new DisplayCheckResult(false, "Couldn't start mirador-display-check.exe: not found.", null, "") { Finished = false }, result);
     }
 
     [Fact]

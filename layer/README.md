@@ -1,19 +1,42 @@
-# dreamair-vk-layer
+# Mirador's direct-mode layer
 
-Run the Pimax Dream Air on Windows with [Monado](https://monado.freedesktop.org/), through a Vulkan layer.
+Run an NVIDIA direct-mode headset on Windows with [Monado](https://monado.freedesktop.org/), through a Vulkan layer.
+Built for the Pimax Dream Air; other Pimax headsets get the mode their EDID asks for, untested.
 
 The layer ships inside Mirador (since 2026-11-09): Mirador's installer registers it, and Mirador's Start turns it on for
-a headset that uses NVIDIA direct mode. Until then it was released on its own, with install and start scripts; they are
-gone, and this page says what Mirador does in their place.
+a headset that uses NVIDIA direct mode. Until then it was released on its own as `dreamair-vk-layer`, with install and
+start scripts; they are gone, and this page says what Mirador does in their place.
+
+**Renamed (2026-11-09):** the layer is `VK_LAYER_MIRADOR_direct_mode` (was `VK_LAYER_DREAMAIR_nvapi_direct`), its files
+`mirador_direct_mode.dll`/`.json` and `mirador-display-check.exe`, its variables `MIRADOR_DIRECT_MODE*` (were
+`DREAMAIR_VK_LAYER*`), its log folder `%LOCALAPPDATA%\Mirador\direct-mode`. For one release the layer still reads each
+of its variables under its old name when the new one isn't set, the guard still lets the check tool's old name in, and
+Mirador still finds a profile's layer folder with an older build (and turns it on with `DREAMAIR_VK_LAYER`). The Vulkan
+loader reads one switch per layer: the renamed layer is switched on by `MIRADOR_DIRECT_MODE=1` only.
 
 Status: version 0.1.0. Developed against one machine (RTX 5070 Ti, NVIDIA driver 621.01). Other drivers and GPUs are
 untried; the check tool below tells you whether yours works.
+
+## Which headsets
+
+The layer looks for the direct-mode displays of each vendor in its table: Pimax (`PVR`, NVAPI id `0xd242`) for now.
+Another vendor needs a capture on its headset first.
+
+- **Tested:** the Pimax Dream Air (`PVR 0x1019`), 7104x3840 at 90 Hz.
+- **Untested, from its EDID:** any other headset of a vendor in the table. Its mode is the one its EDID asks for: the
+  DisplayID timing marked preferred (Type I or VII), else the base block's first detailed timing, else the first
+  DisplayID timing. The layer logs that it is untested. Tracking and distortion still need a Monado driver for it.
+- **Left to Windows:** an untested headset whose EDID carries Microsoft's HMD block (OUI `5C-12-CA`), which Windows' own
+  HMD route drives. Never the Dream Air, even when an EDID override adds that block.
+- **No EDID:** with no EDID readable, one display of the vendor and the Dream Air's board on USB, the display is taken to
+  be a Dream Air (the board assumption is the Dream Air's only).
+- The board's heartbeat is Monado's (its Dream Air driver): the layer sends none. The check tool sends the Dream Air's.
 
 ## What it is
 
 On Windows, NVIDIA's driver hides the Dream Air from the desktop ("direct mode"). The only way to show an image on it is
 a set of private NVIDIA driver calls, the ones Pimax and SteamVR use. This project is an **implicit Vulkan layer**,
-`VK_LAYER_DREAMAIR_nvapi_direct`, that makes the headset appear to Monado as an ordinary `VK_KHR_display` display and
+`VK_LAYER_MIRADOR_direct_mode`, that makes the headset appear to Monado as an ordinary `VK_KHR_display` display and
 sends Monado's frames to it through those calls. Monado needs no Dream Air display code of its own for this: it uses its
 generic `vk_display` output.
 
@@ -21,12 +44,12 @@ What Mirador installs, in `{app}\layer` (`C:\Program Files\Mirador\layer`):
 
 | File | What |
 |---|---|
-| `dreamair_vk_layer.dll`, `dreamair_vk_layer.json` | The layer and its manifest |
-| `dreamair-display-check.exe` | Checks your driver and the headset without Monado |
+| `mirador_direct_mode.dll`, `mirador_direct_mode.json` | The layer and its manifest |
+| `mirador-display-check.exe` | Checks your driver and the headset without Monado |
 
 What the layer itself does not do: build or ship Monado, stop Pimax, switch your OpenXR runtime, or upload the eye
 tracker's geometry. Mirador and its headset module do those.
-It works in Monado and the check tool; it is not loaded by any other program (see "Never set `DREAMAIR_VK_LAYER`
+It works in Monado and the check tool; it is not loaded by any other program (see "Never set `MIRADOR_DIRECT_MODE`
 machine-wide").
 
 ## What you need
@@ -46,10 +69,11 @@ machine-wide").
 
 ## Install
 
-Mirador's installer copies the three files to `{app}\layer` and sets the value `{app}\layer\dreamair_vk_layer.json` = 0
+Mirador's installer copies the three files to `{app}\layer` and sets the value `{app}\layer\mirador_direct_mode.json` = 0
 (`REG_DWORD`) under `HKLM\SOFTWARE\Khronos\Vulkan\ImplicitLayers`, which is how the Vulkan loader finds an implicit
 layer. HKLM is needed because Vulkan ignores per-user layers in elevated programs. An older registration of this layer
-under another path (the standalone release's `C:\Program Files\DreamAir Vulkan Layer\`, a moved folder) is removed, so
+under another path or name (the standalone release's `C:\Program Files\DreamAir Vulkan Layer\dreamair_vk_layer.json`,
+an older Mirador's, a moved folder) is removed, so
 the loader finds one copy only. A profile can name a layer build folder instead; Mirador then adds it to Monado's
 `VK_ADD_IMPLICIT_LAYER_PATH`, and that profile's Monado runs as you.
 
@@ -62,15 +86,15 @@ Mirador's Start, for a headset that uses NVIDIA direct mode, sets the environmen
 
 | Variable | Value |
 |---|---|
-| `DREAMAIR_VK_LAYER` | `1` |
+| `MIRADOR_DIRECT_MODE` | `1` |
 | `DISABLE_RTSS_LAYER` | `1` |
-| `VK_LOADER_LAYERS_ALLOW` | `VK_LAYER_DREAMAIR_nvapi_direct` |
+| `VK_LOADER_LAYERS_ALLOW` | `VK_LAYER_MIRADOR_direct_mode` |
 | `XRT_COMPOSITOR_FORCE_VK_DISPLAY` | `0` |
 | `XRT_COMPOSITOR_USE_PRESENT_WAIT` | `1` |
 
 and takes out of what Monado inherits variables your user environment may have left set that would change this:
-`DISABLE_DREAMAIR_VK_LAYER`, `IPC_RELAXED_CONNECTION_SECURITY`, `XRT_COMPOSITOR_FORCE_NVAPI_DIRECT`,
-`DREAMAIR_VK_LAYER_TEST_NO_EDID` and `DREAMAIR_VK_LAYER_IGNORE_HOLDERS`. The headset's module adds its own (for the Dream
+`DISABLE_MIRADOR_DIRECT_MODE`, `IPC_RELAXED_CONNECTION_SECURITY`, `XRT_COMPOSITOR_FORCE_NVAPI_DIRECT`,
+`MIRADOR_DIRECT_MODE_TEST_NO_EDID` and `MIRADOR_DIRECT_MODE_IGNORE_HOLDERS`. The headset's module adds its own (for the Dream
 Air: `STEAMVR_LH_ENABLE=1`, `U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS=8.9`, `DREAMAIR_LOG=info`). When the NVIDIA
 driver changed since direct mode last passed, Start runs the display check first.
 
@@ -79,7 +103,7 @@ it switches off the Vulkan layers of the process it runs in, this one included; 
 display. Naming the layer in this variable exempts it. Other layers, such as RTSS's, stay off in Monado, which does no
 harm.
 
-The layer writes one line to Monado's log and to `%LOCALAPPDATA%\DreamAirVkLayer\layer.log` for each problem it meets
+The layer writes one line to Monado's log and to `%LOCALAPPDATA%\Mirador\direct-mode\layer.log` for each problem it meets
 and says which it is: a Pimax or SteamVR program holding the display, the board asleep, an NVIDIA driver that moved a
 call. Such a line starts `[dvl] error:` and the step's name; "Troubleshooting" below says what to do about each. It also
 prints a statistics line (presents, flips, missed vblanks) after the first 90 presents of an app session and then every
@@ -96,11 +120,11 @@ leaves it alone. The check tool warns when RTSS is running.
 
 ## Check your driver
 
-`dreamair-display-check.exe` tests the NVIDIA side without Monado. It is installed next to the layer. With Pimax,
+`mirador-display-check.exe` tests the NVIDIA side without Monado. It is installed next to the layer. With Pimax,
 SteamVR and Monado stopped, in a normal PowerShell:
 
 ```powershell
-& "$env:ProgramFiles\DreamAir Vulkan Layer\dreamair-display-check.exe"
+& "$env:ProgramFiles\DreamAir Vulkan Layer\mirador-display-check.exe"
 ```
 
 It reports the NVIDIA driver version, checks that every NVAPI call the layer needs is there, finds the headset, binds it,
@@ -117,7 +141,7 @@ you see `board`, the headset works, but please report it with your driver versio
 | Option | |
 |---|---|
 | (none) | NVAPI only |
-| `--vulkan` | The same through the layer, in the order Monado uses it. Needs the layer installed. Sets `DREAMAIR_VK_LAYER=1` and `DISABLE_RTSS_LAYER=1` in its own process |
+| `--vulkan` | The same through the layer, in the order Monado uses it. Needs the layer installed. Sets `MIRADOR_DIRECT_MODE=1` and `DISABLE_RTSS_LAYER=1` in its own process |
 | `--seconds=N` | How long to present, 1 to 3600 (default 20) |
 | `--no-heartbeat` | Do not send the heartbeat |
 | `--help` | The full usage text |
@@ -143,12 +167,12 @@ in the left column.
 | Monado says "No Vulkan displays found" and the layer printed nothing | The layer was not loaded: is Mirador installed, and does the profile's headset module use direct mode? Run the check tool with `--vulkan` |
 | The headset stays black after it was switched off and on or replugged | Quit Monado (key press) and start it again |
 
-Lines start `[dvl] error:` in Monado's console; `DREAMAIR_VK_LAYER_LOG=warn` keeps the errors and warnings and leaves
+Lines start `[dvl] error:` in Monado's console; `MIRADOR_DIRECT_MODE_LOG=warn` keeps the errors and warnings and leaves
 out the information lines.
 
-## Never set `DREAMAIR_VK_LAYER` machine-wide
+## Never set `MIRADOR_DIRECT_MODE` machine-wide
 
-The layer is switched on by the environment variable `DREAMAIR_VK_LAYER=1`, and by nothing else. Mirador's Start (for
+The layer is switched on by the environment variable `MIRADOR_DIRECT_MODE=1`, and by nothing else. Mirador's Start (for
 Monado's process) and the check tool set it for their own process. **Do not set it in your user or system environment.** A machine-wide
 setting would load the layer into every Vulkan program you run, games and anti-cheat included.
 
@@ -166,13 +190,13 @@ If the check tool passes on a driver other than 621.01, or fails on any driver, 
   `this driver has no NVAPI call '...'` means the driver moved a call; the layer then lists no display instead of guessing;
 - your GPU model and Windows version, and whether you ran it with `--vulkan`.
 
-Send it to the maintainer, Finn Zeruhn, where you got this release. The log `%LOCALAPPDATA%\DreamAirVkLayer\layer.log`
+Send it to the maintainer, Finn Zeruhn, where you got this release. The log `%LOCALAPPDATA%\Mirador\direct-mode\layer.log`
 helps for problems in Monado.
 
 ## Uninstall
 
 Mirador's uninstaller removes the registry value and `{app}\layer`. The layer's per-user log folder
-`%LOCALAPPDATA%\DreamAirVkLayer` stays; delete it by hand if you like.
+`%LOCALAPPDATA%\Mirador\direct-mode` stays; delete it by hand if you like.
 
 ## Legal note
 

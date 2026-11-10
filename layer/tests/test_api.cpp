@@ -227,7 +227,7 @@ TEST_CASE("FakeApi records calls in order, with arguments and fake time")
 
     REQUIRE(api.enable_direct_mode(nvdm::kVendorPvr) == 0);
     IUnknown* device = reinterpret_cast<IUnknown*>(0x1000);
-    REQUIRE(api.bind_device(ids[0], device) == 0);
+    REQUIRE(api.bind_device(ids[0], device, nvdm::kVendorPvr) == 0);
     CHECK(api.bound_device == device);
     REQUIRE(api.present(0x11) == 0);
     api.note("custom");
@@ -261,9 +261,9 @@ TEST_CASE("FakeApi returns queued results once each, then its defaults")
 
     api.queue(Fn::BindDevice, -5);
     api.queue(Fn::BindDevice, 0);
-    CHECK(api.bind_device(1, device) == -5);
-    CHECK(api.bind_device(1, device) == 0);
-    CHECK(api.bind_device(1, device) == 0);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == -5);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == 0);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == 0);
     CHECK(api.count("bind_device") == 3);
 
     // SetDisplayMode succeeds with -208; the queue can say otherwise a number of times.
@@ -450,9 +450,9 @@ TEST_CASE("FakeApi strict_bind refuses the calls that need the bound display unt
 
     // A refused bind leaves it unbound; a good one binds.
     api.queue(Fn::BindDevice, -5);
-    CHECK(api.bind_device(1, device) == -5);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == -5);
     CHECK(api.present(1) == nvdm::kNotBound);
-    CHECK(api.bind_device(1, device) == 0);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == 0);
     CHECK(api.present(1) == 9); // The queued result was still there.
     CHECK(api.create_back_buffer(mode, buffer) == 0);
     CHECK(api.set_display_mode(mode) == nvdm::kSetModeOk);
@@ -460,7 +460,7 @@ TEST_CASE("FakeApi strict_bind refuses the calls that need the bound display unt
 
     // As with the real port, a bind that fails after a good one leaves the display unbound.
     api.queue(Fn::BindDevice, -5);
-    CHECK(api.bind_device(1, device) == -5);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == -5);
     CHECK(api.present(1) == nvdm::kNotBound);
     CHECK(api.calls().back().status == nvdm::kNotBound);
 }
@@ -472,15 +472,15 @@ TEST_CASE("bind_device refuses a NULL device without calling the driver")
     IUnknown* const device = reinterpret_cast<IUnknown*>(0x1000);
 
     api.queue(Fn::BindDevice, -5);
-    CHECK(api.bind_device(1, nullptr) == nvdm::kBadArgument);
+    CHECK(api.bind_device(1, nullptr, nvdm::kVendorPvr) == nvdm::kBadArgument);
     CHECK(api.bound_device == nullptr);
     // The refusal did not use up the queued result.
-    CHECK(api.bind_device(1, device) == -5);
+    CHECK(api.bind_device(1, device, nvdm::kVendorPvr) == -5);
 
     // The real port, which has made no NVAPI call yet, says the same: the check comes before any lookup (without it
     // the answer would be kNoEntry).
     const std::unique_ptr<nvdm::Api> real = nvdm::make_nvapi();
-    CHECK(real->bind_device(1, nullptr) == nvdm::kBadArgument);
+    CHECK(real->bind_device(1, nullptr, nvdm::kVendorPvr) == nvdm::kBadArgument);
 }
 
 TEST_CASE("FakeApi read_edid says which route answered")
@@ -510,7 +510,7 @@ namespace {
 class ScratchDisplayKey {
 public:
     ScratchDisplayKey()
-        : path_(L"Software\\DreamAirVkLayerTests\\" + std::to_wstring(GetCurrentProcessId()))
+        : path_(L"Software\\MiradorDirectModeTests\\" + std::to_wstring(GetCurrentProcessId()))
     {
         const LONG status = RegCreateKeyExW(HKEY_CURRENT_USER, path_.c_str(), 0, nullptr, 0, KEY_ALL_ACCESS, nullptr,
                                             &root_, nullptr);
@@ -524,7 +524,7 @@ public:
             RegCloseKey(root_);
         }
         RegDeleteTreeW(HKEY_CURRENT_USER, path_.c_str());
-        RegDeleteKeyW(HKEY_CURRENT_USER, L"Software\\DreamAirVkLayerTests"); // Only if nothing else is in it.
+        RegDeleteKeyW(HKEY_CURRENT_USER, L"Software\\MiradorDirectModeTests"); // Only if nothing else is in it.
     }
 
     HKEY key() const { return root_; }

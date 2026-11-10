@@ -220,7 +220,7 @@ public:
 
     int enable_direct_mode(uint32_t vendor) override { return call(EnableDirectMode, vendor); }
 
-    int bind_device(uint32_t display_id, IUnknown* d3d11) override
+    int bind_device(uint32_t display_id, IUnknown* d3d11, uint32_t vendor) override
     {
         if (d3d11 == nullptr) {
             return kBadArgument; // No driver call, and an earlier bind stays as it is.
@@ -228,7 +228,7 @@ public:
         bound_ = false;
         handle_ = Handle{};
         handle_.display_id = display_id;
-        const int ret = call(BindDevice, kVendorPvr, arg(d3d11), arg(&handle_));
+        const int ret = call(BindDevice, vendor, arg(d3d11), arg(&handle_));
         if (ret != 0) {
             return ret;
         }

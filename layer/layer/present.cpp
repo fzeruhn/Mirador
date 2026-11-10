@@ -249,7 +249,7 @@ void note_target_locked(Presenter& p, const Target& target, uint64_t target_time
     case Target::Use::Off:
         if (!g_target_off_logged.exchange(true)) {
             p.pending.add(Level::Warn, "vkQueuePresentKHR: a present asks for a time to be shown at, but present at a "
-                                       "time is off (DREAMAIR_VK_LAYER_NO_PRESENT_AT; the surface says so); frames are "
+                                       "time is off (MIRADOR_DIRECT_MODE_NO_PRESENT_AT; the surface says so); frames are "
                                        "shown at the first refresh they can make (said once)");
         }
         break;

@@ -16,16 +16,18 @@
 TEST_CASE("guard_allows_monado_and_check_tool")
 {
     CHECK(dvl::process_allowed(L"monado-service.exe", ""));
-    CHECK(dvl::process_allowed(L"dreamair-display-check.exe", ""));
+    CHECK(dvl::process_allowed(L"mirador-display-check.exe", ""));
     // Windows file names ignore case.
     CHECK(dvl::process_allowed(L"MONADO-SERVICE.EXE", ""));
     CHECK(dvl::process_allowed(L"Monado-Service.exe", ""));
-    CHECK(dvl::process_allowed(L"DreamAir-Display-Check.EXE", ""));
+    CHECK(dvl::process_allowed(L"Mirador-Display-Check.EXE", ""));
+    // The check tool's Dream Air name, for one release.
+    CHECK(dvl::process_allowed(L"dreamair-display-check.exe", ""));
 }
 
 TEST_CASE("guard_declines_unlisted_process")
 {
-    // A user sets DREAMAIR_VK_LAYER=1 machine-wide: a game must be declined.
+    // A user sets MIRADOR_DIRECT_MODE=1 machine-wide: a game must be declined.
     CHECK_FALSE(dvl::process_allowed(L"game.exe", ""));
     // Only the whole name counts.
     CHECK_FALSE(dvl::process_allowed(L"monado-service", ""));
@@ -72,23 +74,23 @@ TEST_CASE("guard_current_process_follows_the_environment")
     // This test program is dvl_tests.exe.
     CHECK(dvl::current_process_basename() == L"dvl_tests.exe");
     {
-        dvl_test::ScopedEnv none(L"DREAMAIR_VK_LAYER_PROCESSES", nullptr);
+        dvl_test::ScopedEnv none(L"MIRADOR_DIRECT_MODE_PROCESSES", nullptr);
         CHECK_FALSE(dvl::current_process_allowed());
     }
     {
-        dvl_test::ScopedEnv listed(L"DREAMAIR_VK_LAYER_PROCESSES", L"other.exe;DVL_TESTS.exe");
+        dvl_test::ScopedEnv listed(L"MIRADOR_DIRECT_MODE_PROCESSES", L"other.exe;DVL_TESTS.exe");
         CHECK(dvl::current_process_allowed());
     }
     {
-        dvl_test::ScopedEnv other(L"DREAMAIR_VK_LAYER_PROCESSES", L"other.exe");
+        dvl_test::ScopedEnv other(L"MIRADOR_DIRECT_MODE_PROCESSES", L"other.exe");
         CHECK_FALSE(dvl::current_process_allowed());
     }
 }
 
 TEST_CASE("negotiate_accepts_interface_2_and_up")
 {
-    dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"dvl_tests.exe");
-    dvl_test::ScopedEnv quiet(L"DREAMAIR_VK_LAYER_LOG", L"off");
+    dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"dvl_tests.exe");
+    dvl_test::ScopedEnv quiet(L"MIRADOR_DIRECT_MODE_LOG", L"off");
     dvl_test::LayerDll dll;
     REQUIRE(dll.loaded());
 
@@ -134,32 +136,32 @@ TEST_CASE("negotiation_pins_the_dll")
 {
     // The loader unloads a layer at vkDestroyInstance; the layer's state (log file, start line, console handler) is
     // per process, so an accepted process keeps the DLL mapped.
-    dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"dvl_tests.exe");
-    dvl_test::ScopedEnv quiet(L"DREAMAIR_VK_LAYER_LOG", L"off");
+    dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"dvl_tests.exe");
+    dvl_test::ScopedEnv quiet(L"MIRADOR_DIRECT_MODE_LOG", L"off");
     {
         dvl_test::LayerDll dll;
         REQUIRE(dll.loaded());
         REQUIRE(dvl_test::negotiate(dll, 2).result == VK_SUCCESS);
     } // FreeLibrary
-    CHECK(GetModuleHandleW(L"dreamair_vk_layer.dll") != nullptr);
+    CHECK(GetModuleHandleW(L"mirador_direct_mode.dll") != nullptr);
 }
 
 TEST_CASE("negotiate_declines_process_not_on_the_list")
 {
-    dvl_test::ScopedEnv quiet(L"DREAMAIR_VK_LAYER_LOG", L"off");
+    dvl_test::ScopedEnv quiet(L"MIRADOR_DIRECT_MODE_LOG", L"off");
     dvl_test::LayerDll dll;
     REQUIRE(dll.loaded());
     {
-        dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"game.exe");
+        dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"game.exe");
         CHECK(dvl_test::negotiate(dll, 2).result == VK_ERROR_INITIALIZATION_FAILED);
     }
     {
-        dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", nullptr);
+        dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", nullptr);
         CHECK(dvl_test::negotiate(dll, 2).result == VK_ERROR_INITIALIZATION_FAILED);
     }
     {
         // The guard looks at the environment on every call, not once.
-        dvl_test::ScopedEnv processes(L"DREAMAIR_VK_LAYER_PROCESSES", L"game.exe;dvl_tests.exe");
+        dvl_test::ScopedEnv processes(L"MIRADOR_DIRECT_MODE_PROCESSES", L"game.exe;dvl_tests.exe");
         CHECK(dvl_test::negotiate(dll, 2).result == VK_SUCCESS);
     }
 }
@@ -172,9 +174,9 @@ TEST_CASE("manifest_declares_the_layer")
 
     const char* expected[] = {
         "\"file_format_version\": \"1.2.0\"",
-        "\"name\": \"VK_LAYER_DREAMAIR_nvapi_direct\"",
+        "\"name\": \"VK_LAYER_MIRADOR_direct_mode\"",
         "\"type\": \"GLOBAL\"",
-        "\"library_path\": \".\\\\dreamair_vk_layer.dll\"",
+        "\"library_path\": \".\\\\mirador_direct_mode.dll\"",
         "\"api_version\": \"1.4.309\"",
         "\"implementation_version\": \"1\"",
         "\"vkNegotiateLoaderLayerInterfaceVersion\": \"vkNegotiateLoaderLayerInterfaceVersion\"",
@@ -185,9 +187,9 @@ TEST_CASE("manifest_declares_the_layer")
         "\"vkRegisterDisplayEventEXT\"",
         "\"vkGetSwapchainCounterEXT\"",
         "\"enable_environment\"",
-        "\"DREAMAIR_VK_LAYER\": \"1\"",
+        "\"MIRADOR_DIRECT_MODE\": \"1\"",
         "\"disable_environment\"",
-        "\"DISABLE_DREAMAIR_VK_LAYER\": \"1\"",
+        "\"DISABLE_MIRADOR_DIRECT_MODE\": \"1\"",
     };
     for (const char* text : expected) {
         INFO("manifest lacks " << text);

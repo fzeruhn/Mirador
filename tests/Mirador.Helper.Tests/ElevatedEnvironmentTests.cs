@@ -140,9 +140,9 @@ public class ElevatedEnvironmentTests
         var expected = new Dictionary<string, string>
         {
             ["STEAMVR_LH_ENABLE"] = "1",
-            ["DREAMAIR_VK_LAYER"] = "1",
+            ["MIRADOR_DIRECT_MODE"] = "1",
             ["DISABLE_RTSS_LAYER"] = "1",
-            ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_DREAMAIR_nvapi_direct",
+            ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_MIRADOR_direct_mode",
             ["XRT_COMPOSITOR_FORCE_VK_DISPLAY"] = "0",
             ["XRT_COMPOSITOR_USE_PRESENT_WAIT"] = "1",
             ["U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS"] = "8.9",
@@ -152,7 +152,7 @@ public class ElevatedEnvironmentTests
         Assert.Equal(expected, DreamAirEnvironment.FixedEnvironment.ToDictionary(p => p.Key, p => p.Value));
         Assert.Equal(8, DreamAirEnvironment.FixedEnvironment.Count);
         Assert.Equal(
-            ["DREAMAIR_VK_LAYER", "DISABLE_RTSS_LAYER", "VK_LOADER_LAYERS_ALLOW", "XRT_COMPOSITOR_FORCE_VK_DISPLAY", "XRT_COMPOSITOR_USE_PRESENT_WAIT"],
+            ["MIRADOR_DIRECT_MODE", "DISABLE_RTSS_LAYER", "VK_LOADER_LAYERS_ALLOW", "XRT_COMPOSITOR_FORCE_VK_DISPLAY", "XRT_COMPOSITOR_USE_PRESENT_WAIT"],
             DirectModeEnvironment.Variables.Select(p => p.Key));
     }
 

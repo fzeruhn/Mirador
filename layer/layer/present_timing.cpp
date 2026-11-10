@@ -71,7 +71,7 @@ void fill_result(VkPastPresentationTimingEXT& out, uint64_t present_id, uint64_t
 
 bool present_at_enabled()
 {
-    const std::optional<std::string> off = env_get(L"DREAMAIR_VK_LAYER_NO_PRESENT_AT");
+    const std::optional<std::string> off = env_get(L"MIRADOR_DIRECT_MODE_NO_PRESENT_AT");
     return !off || off->empty() || *off == "0";
 }
 

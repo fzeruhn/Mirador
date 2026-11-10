@@ -128,7 +128,7 @@ void set_display_session_for_tests(nvdm::DisplaySession* session);
 // instance decides it and keeps the answer: not NVIDIA, no LUID, the display session failing to open for its LUID (it
 // logs the line itself), or the import failing (the format queries, or the trial import on a device of the physical
 // device that exists now: import_verdict()) is no. The only place, with vkCreateDisplayPlaneSurfaceKHR, where the
-// layer can fail (design 6.10). May wait for the session's open (DREAMAIR_VK_LAYER_WAIT_MS and the NVAPI calls) and
+// layer can fail (design 6.10). May wait for the session's open (MIRADOR_DIRECT_MODE_WAIT_MS and the NVAPI calls) and
 // the trial import.
 bool display_listed(InstanceData& instance, VkPhysicalDevice physical_device);
 // The decided answer, without deciding: false if not decided yet.

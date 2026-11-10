@@ -68,7 +68,7 @@ HolderFindings holder_findings(const std::vector<std::string>& processes);
 
 // --- The verdict (design 7) -------------------------------------------------------------------------------------
 
-inline constexpr double kRefreshHz = 90.0; // The Dream Air's mode: 90.000 Hz.
+inline constexpr double kRefreshHz = 90.0; // The Dream Air's mode, 90.000 Hz: the rate when none is known.
 
 // What a run counted. Presents and flips are over the same window of `seconds`.
 struct RunCounts {
@@ -77,6 +77,7 @@ struct RunCounts {
     uint64_t failures = 0;   // Presents that failed, frames never confirmed, present-waits that timed out.
     uint64_t link_drops = 0; // Information only: the counter went backwards and recovered.
     double seconds = 0;      // The window, measured.
+    double refresh_hz = kRefreshHz; // The rate of the mode that was opened (an untested headset's is its EDID's).
     double requested_seconds = 0;
     bool have_events = false; // --vulkan: one display event per frame.
     uint64_t events_ok = 0;
@@ -84,7 +85,7 @@ struct RunCounts {
 };
 
 // 90 Hz for `seconds`, rounded: 1800 for 20 s.
-uint64_t expected_flips(double seconds);
+uint64_t expected_flips(double seconds, double refresh_hz = kRefreshHz);
 
 struct Verdict {
     bool pass = false;
@@ -115,7 +116,7 @@ std::optional<std::string> edid_route_from_text(const std::string& log_text);
 // is explained here; any other step points to the README's Troubleshooting table. Empty for a line that names no step.
 std::vector<std::string> explain_failure(const std::string& line);
 
-// What --vulkan reads out of the layer's log (%LOCALAPPDATA%\DreamAirVkLayer\layer.log, a new file per process): the
+// What --vulkan reads out of the layer's log (%LOCALAPPDATA%\Mirador\direct-mode\layer.log, a new file per process): the
 // session's EDID route, and the back-buffer import: the trial import's line, and the memory-type fallback warning if
 // the layer logged one. Only the lines the layer stamped with process `pid` ("[pid N tid M]") count: the file can be an
 // older process's, or hold a line another process added.
@@ -132,11 +133,11 @@ std::string nvidia_driver_text(uint32_t driver_version);
 
 // What --vulkan found out about the layer when instance creation could not have it.
 struct LayerFacts {
-    bool layer_listed = false;   // vkEnumerateInstanceLayerProperties names VK_LAYER_DREAMAIR_nvapi_direct.
+    bool layer_listed = false;   // vkEnumerateInstanceLayerProperties names VK_LAYER_MIRADOR_direct_mode.
     bool elevated = false;       // This process is elevated.
-    bool disable_var_set = false; // DISABLE_DREAMAIR_VK_LAYER is set.
+    bool disable_var_set = false; // DISABLE_MIRADOR_DIRECT_MODE is set.
 };
-inline constexpr const char* kLayerName = "VK_LAYER_DREAMAIR_nvapi_direct";
+inline constexpr const char* kLayerName = "VK_LAYER_MIRADOR_direct_mode";
 
 // Lines saying what to do about it.
 std::vector<std::string> diagnose_missing_layer(const LayerFacts& facts);

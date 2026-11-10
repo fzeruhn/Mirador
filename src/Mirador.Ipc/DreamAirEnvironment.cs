@@ -11,6 +11,19 @@ public static class DirectModeEnvironment
 {
     public static IReadOnlyList<KeyValuePair<string, string>> Variables { get; } =
     [
+        new("MIRADOR_DIRECT_MODE", "1"),
+        new("DISABLE_RTSS_LAYER", "1"),
+        new("VK_LOADER_LAYERS_ALLOW", "VK_LAYER_MIRADOR_direct_mode"),
+        new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
+        new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
+    ];
+
+    /// <summary>
+    /// The same for a layer build from before the rename (a profile's layer folder, for one release): its own enable
+    /// variable and layer name.
+    /// </summary>
+    public static IReadOnlyList<KeyValuePair<string, string>> LegacyVariables { get; } =
+    [
         new("DREAMAIR_VK_LAYER", "1"),
         new("DISABLE_RTSS_LAYER", "1"),
         new("VK_LOADER_LAYERS_ALLOW", "VK_LAYER_DREAMAIR_nvapi_direct"),
@@ -25,9 +38,14 @@ public static class DirectModeEnvironment
     /// </summary>
     public static IReadOnlyList<string> Cleared { get; } =
     [
-        "DISABLE_DREAMAIR_VK_LAYER",
+        "DISABLE_MIRADOR_DIRECT_MODE",
         "IPC_RELAXED_CONNECTION_SECURITY",
         "XRT_COMPOSITOR_FORCE_NVAPI_DIRECT",
+        "MIRADOR_DIRECT_MODE_TEST_NO_EDID",
+        "MIRADOR_DIRECT_MODE_IGNORE_HOLDERS",
+
+        // Their names before the rename, which the layer still reads for one release.
+        "DISABLE_DREAMAIR_VK_LAYER",
         "DREAMAIR_VK_LAYER_TEST_NO_EDID",
         "DREAMAIR_VK_LAYER_IGNORE_HOLDERS",
     ];

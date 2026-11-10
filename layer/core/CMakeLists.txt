@@ -14,6 +14,7 @@ add_library(nvdm STATIC
     holders.cpp
     nvapi_api.cpp
     product_table.cpp
+    edid.cpp
     stats.cpp
     trace.cpp
 )
