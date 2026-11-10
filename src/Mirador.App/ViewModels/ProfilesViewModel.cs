@@ -11,8 +11,9 @@ using Mirador.Pimax;
 
 namespace Mirador.App.ViewModels;
 
-/// <summary>A headset choice in the profile editor; a null id is "None".</summary>
-public sealed record HeadsetItem(string? Id, string Name, bool UsesNvidiaDirectMode = false)
+/// <summary>A headset choice in the profile editor's Windows tools; a null id is "None".</summary>
+/// <param name="WindowsTools">What its module does on Windows around Monado.</param>
+public sealed record HeadsetItem(string? Id, string Name, string WindowsTools = "")
 {
     public override string ToString() => Name;
 }
@@ -50,7 +51,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         Headsets.Add(new HeadsetItem(null, "None"));
         foreach (var module in host.Modules.Values)
         {
-            Headsets.Insert(Headsets.Count - 1, new HeadsetItem(module.Id, module.DisplayName, module.UsesNvidiaDirectMode));
+            Headsets.Insert(Headsets.Count - 1, new HeadsetItem(module.Id, module.DisplayName, module.WindowsTools));
         }
 
         Extra.CollectionChanged += (_, e) =>
@@ -93,7 +94,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public partial string Name { get; set; } = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UsesDirectMode))]
+    [NotifyPropertyChangedFor(nameof(HeadsetDescription))]
     public partial HeadsetItem? Headset { get; set; }
 
     /// <summary>
@@ -132,13 +133,6 @@ public sealed partial class ProfilesViewModel : ObservableObject
     public partial string MonadoFolder { get; set; } = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LayerBundled), nameof(LayerSource))]
-    public partial bool LayerFromFolder { get; set; }
-
-    [ObservableProperty]
-    public partial string LayerFolder { get; set; } = "";
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSwitch))]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand))]
     public partial bool IsDirty { get; set; }
@@ -157,8 +151,10 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasMessage))]
     public partial string? Message { get; set; }
 
-    /// <summary>Whether the profile's headset uses NVIDIA direct mode: the layer's cards show.</summary>
-    public bool UsesDirectMode => Headset?.UsesNvidiaDirectMode == true;
+    /// <summary>The Windows tools card's description: what the picked headset's module does around Monado.</summary>
+    public string HeadsetDescription => Headset?.WindowsTools is { Length: > 0 } tools
+        ? tools
+        : "Mirador's steps for a headset around Monado. With None, Monado runs on its own.";
 
     public bool MonadoFromFolder => MonadoSource == FolderSource;
 
@@ -168,19 +164,6 @@ public sealed partial class ProfilesViewModel : ObservableObject
     private const int UpstreamSource = 1;
     private const int LinkSource = 2;
     private const int FolderSource = 3;
-
-    public bool LayerBundled
-    {
-        get => !LayerFromFolder;
-        set => LayerFromFolder = !value;
-    }
-
-    /// <summary>The "Vulkan layer" drop-down: 0 the one that comes with Mirador, 1 a layer folder.</summary>
-    public int LayerSource
-    {
-        get => LayerFromFolder ? 1 : 0;
-        set => LayerFromFolder = value == 1;
-    }
 
     /// <summary>
     /// The "Lighthouse base stations" toggle: the user's choice, else whether the headset and the variables being edited
@@ -415,10 +398,6 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     partial void OnMonadoFolderChanged(string value) => Changed();
 
-    partial void OnLayerFromFolderChanged(bool value) => Changed();
-
-    partial void OnLayerFolderChanged(string value) => Changed();
-
     private void OnRowChanged(object? sender, PropertyChangedEventArgs e) => Changed();
 
     /// <summary>Applies <paramref name="change"/> to the saved profiles and saves them; a refusal is shown, not thrown.</summary>
@@ -499,9 +478,6 @@ public sealed partial class ProfilesViewModel : ObservableObject
             MonadoLink = p?.Monado.Kind == SourceKind.Branch && !p.Monado.IsUpstreamMain ? p.Monado.Url ?? "" : "";
             MonadoBranch = MonadoLink.Length > 0 ? p!.Monado.Ref ?? "" : "";
             MonadoOptions = MonadoLink.Length > 0 ? string.Join(Environment.NewLine, p!.Monado.Options) : "";
-            var layer = p is null ? null : DirectModeLayer.FolderOf(p);
-            LayerFromFolder = layer is not null;
-            LayerFolder = layer ?? "";
             Extra.Clear();
             foreach (var v in p?.ExtraEnvironment ?? [])
             {
@@ -524,19 +500,10 @@ public sealed partial class ProfilesViewModel : ObservableObject
         OnPropertyChanged(nameof(UsesBaseStations));
     }
 
-    /// <summary>The profile as the editor shows it; options of the module it doesn't touch are kept.</summary>
+    /// <summary>The profile as the editor shows it; the module's options, which the editor doesn't show, are kept.</summary>
     private Profile Edited()
     {
         var options = new Dictionary<string, string>(editing?.ModuleOptions ?? new Dictionary<string, string>());
-        if (UsesDirectMode && LayerFromFolder)
-        {
-            options[DirectModeLayer.OptionKey] = LayerFolder.Trim();
-        }
-        else
-        {
-            options.Remove(DirectModeLayer.OptionKey);
-        }
-
         return new Profile(
             editing?.Id ?? "",
             Name.Trim(),
@@ -618,17 +585,12 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     private bool Validate(Profile p)
     {
-        var problems = ProfileValidation.Problems(p, host.Locator, LayerProblem).ToList();
+        var problems = ProfileValidation.Problems(p, host.Locator, _ => null).ToList();
         if (LinkProblem() is { } linkProblem)
         {
             // Instead of the URL's own problem: the link is what the owner typed.
             problems.RemoveAll(x => x.Contains(MonadoLink.Trim(), StringComparison.Ordinal) && MonadoLink.Trim().Length > 0);
             problems.Insert(0, linkProblem);
-        }
-
-        if (UsesDirectMode && LayerFromFolder && string.IsNullOrWhiteSpace(LayerFolder))
-        {
-            problems.Add("Pick the layer folder, or choose the layer that comes with Mirador.");
         }
 
         Problems.Clear();
@@ -640,25 +602,6 @@ public sealed partial class ProfilesViewModel : ObservableObject
         HasProblems = problems.Count > 0;
         OnPropertyChanged(nameof(ProblemsText));
         return !HasProblems;
-    }
-
-    /// <summary>The Dream Air layer folder's problem; the layer that comes with Mirador is checked when Monado starts.</summary>
-    private string? LayerProblem(Profile p)
-    {
-        if (p.ModuleId != PimaxModule.ModuleId || DirectModeLayer.FolderOf(p) is not { } folder)
-        {
-            return null;
-        }
-
-        try
-        {
-            DirectModeLayer.Locate(folder, Path.Combine(host.AppDir, "layer"));
-            return null;
-        }
-        catch (MiradorException e)
-        {
-            return e.Message;
-        }
     }
 
     private void OnSessionChanged() =>

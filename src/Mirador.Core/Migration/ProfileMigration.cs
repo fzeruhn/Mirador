@@ -25,6 +25,31 @@ public static class ProfileMigration
         }, true);
     }
 
+    /// <summary>The module option a profile named its own direct-mode layer folder with, before the layer came with Mirador.</summary>
+    public const string FormerLayerFolderOption = "layerFolder";
+
+    /// <summary>
+    /// Drops the layer folder a profile could name until Mirador's own layer was the only one (2026-11-09): every profile
+    /// that uses direct mode now gets the layer that comes with Mirador.
+    /// </summary>
+    public static (ProfileSet Set, bool Changed) DropLayerFolders(ProfileSet set)
+    {
+        if (!set.Profiles.Any(p => p.ModuleOptions.ContainsKey(FormerLayerFolderOption)))
+        {
+            return (set, false);
+        }
+
+        return (set with
+        {
+            Profiles =
+            [
+                .. set.Profiles.Select(p => p.ModuleOptions.ContainsKey(FormerLayerFolderOption)
+                    ? p with { ModuleOptions = p.ModuleOptions.Where(o => o.Key != FormerLayerFolderOption).ToDictionary(o => o.Key, o => o.Value) }
+                    : p),
+            ],
+        }, true);
+    }
+
     /// <summary>
     /// Profiles under a module's former id get its current one (a renamed module, Mirador_Plan.md Task 67), so the
     /// Profiles page shows their headset and saving keeps it.

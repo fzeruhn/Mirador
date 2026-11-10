@@ -731,7 +731,7 @@ public sealed class SessionController(SessionDeps deps)
         {
             // The layer, turned on by the core for a headset that uses NVIDIA direct mode (Mirador.md §4.11 item 52);
             // the module's own variables come after it.
-            moduleEnvironment = [.. DirectModeLayer.Environment(profile, deps.BundledLayerDir ?? ""), .. moduleEnvironment];
+            moduleEnvironment = [.. DirectModeLayer.Environment(deps.BundledLayerDir ?? ""), .. moduleEnvironment];
         }
 
         var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);

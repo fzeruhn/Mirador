@@ -60,6 +60,10 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
 
     public string DisplayName => "Pimax";
 
+    public string WindowsTools =>
+        "Mirador stops Pimax's software while Monado runs, drives the headset's display through NVIDIA direct mode with Mirador's Vulkan layer, " +
+        "and for the Dream Air uploads the eye geometry and keeps backups of the eye calibration.";
+
     /// <summary>The plugged-in model's tracking: SteamVR's Lighthouse driver for the Dream Airs, not for the Crystals.</summary>
     public bool UsesSteamVrLighthouse => Model().Lighthouse;
 
@@ -90,9 +94,6 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
         : model.Lighthouse ? [new EnvVar("STEAMVR_LH_ENABLE", "1")]
         : [];
 
-    /// <summary>A profile with a layer folder keeps Monado running as the user: the elevated environment has no layer path.</summary>
-    public bool UsesExtraFolder(Profile profile) => DirectModeLayer.FolderOf(profile) is not null;
-
     public bool IsPresent(IReadOnlySet<UsbId> devices) =>
         PimaxModels.Detect(devices) is not null || devices.Contains(DreamAirIds.EyeTracker);
 
@@ -110,7 +111,7 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
 
                 var state = LoadState();
                 var variant = deps.BlobVariant(state);
-                List<CheckResult> results = [.. Checks(ctx).Run(variant, model), LayerCheck(profile)];
+                List<CheckResult> results = [.. Checks(ctx).Run(variant, model), LayerCheck()];
                 if (!model.Tested)
                 {
                     results.Add(new CheckResult(
@@ -157,7 +158,7 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
             throw new MiradorException(failed.Fix is null ? failed.Text : $"{failed.Text} {failed.Fix}");
         }
 
-        var layer = DirectModeLayer.Locate(DirectModeLayer.FolderOf(profile), deps.BundledLayerDir);
+        var layer = DirectModeLayer.Locate(deps.BundledLayerDir);
         var pimax = PimaxInstall.Locate(deps.Registry);
         if (pimax is null && model.EyeSteps)
         {
@@ -249,7 +250,7 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
         var pimax = Safe(() => PimaxInstall.Locate(deps.Registry));
         text.Append("Pimax Play: ").AppendLine(pimax is null ? "not found" : $"{pimax.Version ?? "unknown version"} in {pimax.RuntimeDir}");
         text.Append("SteamVR: ").AppendLine(Safe(deps.SteamVrDir) ?? "not found");
-        text.Append("Vulkan layer: ").AppendLine(LayerFolder(profile) ?? $"comes with Mirador ({deps.BundledLayerDir})");
+        text.Append("Vulkan layer: ").AppendLine($"comes with Mirador ({deps.BundledLayerDir})");
         var state = LoadState();
         text.Append("Last good driver: ").AppendLine(state.LastGoodDriver ?? "none yet");
         text.Append("Eye geometry variant: ").AppendLine(deps.BlobVariant(state));
@@ -272,7 +273,7 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
         LayerFiles layer;
         try
         {
-            layer = DirectModeLayer.Locate(LayerFolder(profile), deps.BundledLayerDir);
+            layer = DirectModeLayer.Locate(deps.BundledLayerDir);
         }
         catch (MiradorException e)
         {
@@ -454,9 +455,6 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
     /// <summary>Where the last display check's output is kept, for the diagnostics.</summary>
     public static string DisplayCheckFile(AppPaths paths) => Path.Combine(paths.LogsDir, "display-check.txt");
 
-    /// <summary>The profile's layer folder; null for the layer that comes with Mirador (<see cref="DirectModeLayer.FolderOf"/>).</summary>
-    public static string? LayerFolder(Profile profile) => DirectModeLayer.FolderOf(profile);
-
     /// <summary>Keeps the driver direct mode last passed with; a failure to save only costs a display check next time.</summary>
     private void RememberDriver(string? driver)
     {
@@ -472,14 +470,13 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
     private DreamAirChecks Checks(ModuleContext ctx) =>
         new(deps.Registry, ctx.Usb, File.Exists, deps.NvidiaWindowsVersion, deps.SteamVrDir);
 
-    private CheckResult LayerCheck(Profile profile)
+    private CheckResult LayerCheck()
     {
         const string Label = "Vulkan layer";
-        var folder = LayerFolder(profile);
         try
         {
-            DirectModeLayer.Locate(folder, deps.BundledLayerDir);
-            return new CheckResult(Label, StatusLevel.Ok, folder is null ? "Comes with Mirador" : $"From {folder}");
+            DirectModeLayer.Locate(deps.BundledLayerDir);
+            return new CheckResult(Label, StatusLevel.Ok, "Comes with Mirador");
         }
         catch (MiradorException e)
         {

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using Mirador.Core;
+using Mirador.Core.Elevation;
 using Mirador.Core.Lighthouse;
 using Mirador.Core.Monado;
 using Mirador.Core.Modules;
@@ -98,7 +99,7 @@ public sealed class PimaxModuleTests : IDisposable
 
     private static Profile DreamAirProfile(string? layerFolder = null) => new(
         "p1", "Dream Air", PimaxModule.ModuleId, BuildSource.Bundled, [],
-        layerFolder is null ? new Dictionary<string, string>() : new Dictionary<string, string> { [DirectModeLayer.OptionKey] = layerFolder });
+        layerFolder is null ? new Dictionary<string, string>() : new Dictionary<string, string> { ["layerFolder"] = layerFolder });
 
     private Task<ModuleSession> BeforeStart(Profile? profile = null, CancellationToken ct = default) =>
         Module().BeforeStartAsync(Context, profile ?? DreamAirProfile(), new Progress(steps), Save, ct).WaitAsync(Limit);
@@ -185,7 +186,7 @@ public sealed class PimaxModuleTests : IDisposable
             new Dictionary<string, string> { ["IPC_RELAXED_CONNECTION_SECURITY"] = "1" },
             new MonadoSettings(),
             profile,
-            [.. DirectModeLayer.Environment(profile, bundledLayer), .. session.Environment]);
+            [.. DirectModeLayer.Environment(bundledLayer), .. session.Environment]);
 
         var expected = new Dictionary<string, string>
         {
@@ -208,17 +209,15 @@ public sealed class PimaxModuleTests : IDisposable
     }
 
     [Fact]
-    public async Task A_layer_folder_is_checked_but_its_path_is_left_to_the_session()
+    public async Task A_layer_folder_left_in_a_profile_is_ignored()
     {
-        dir.Touch("vk-layer", "build", "layer", DirectModeLayer.ManifestName);
-        dir.Touch("vk-layer", "build", "layer", DirectModeLayer.DllName);
-        dir.Touch("vk-layer", "build", "check", DirectModeLayer.CheckExeName);
-        var build = Path.Combine(dir.Path, "vk-layer", "build");
+        // Profiles could name a layer folder until the layer came with Mirador; such a folder may be gone.
+        var profile = DreamAirProfile(Path.Combine(dir.Path, "gone", "layer-build"));
 
-        using var session = (DreamAirSession)await BeforeStart(DreamAirProfile(build));
+        using var session = (DreamAirSession)await BeforeStart(profile);
 
         Assert.Equal(PimaxModule.FixedEnvironment, session.Environment);
-        Assert.True(Module().UsesExtraFolder(DreamAirProfile(build)));
+        Assert.Null(ElevatedChoice.RunsAsYouReason(profile, Module(), installedCopy: true));
     }
 
     [Fact]

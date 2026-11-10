@@ -4,8 +4,8 @@ namespace Mirador.Ipc;
 /// The Monado variables that turn the direct-mode layer on for a headset that uses NVIDIA direct mode (Mirador.md §4.11
 /// item 52), whichever module it has: the layer itself, RivaTuner's overlay layer kept out of the way, Monado's
 /// compositor on the layer's display with its present wait. Kept here so the unelevated path (the session) and the
-/// elevated one (the helper) write the same table. The layer's own folder variable (<c>VK_ADD_IMPLICIT_LAYER_PATH</c>)
-/// is not here: a profile that needs it runs unelevated, so the elevated environment never carries a path.
+/// elevated one (the helper) write the same table. No layer path: the installer registers the layer that comes with
+/// Mirador, the only one Mirador uses.
 /// </summary>
 public static class DirectModeEnvironment
 {
@@ -14,19 +14,6 @@ public static class DirectModeEnvironment
         new("MIRADOR_DIRECT_MODE", "1"),
         new("DISABLE_RTSS_LAYER", "1"),
         new("VK_LOADER_LAYERS_ALLOW", "VK_LAYER_MIRADOR_direct_mode"),
-        new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
-        new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
-    ];
-
-    /// <summary>
-    /// The same for a layer build from before the rename (a profile's layer folder, for one release): its own enable
-    /// variable and layer name.
-    /// </summary>
-    public static IReadOnlyList<KeyValuePair<string, string>> LegacyVariables { get; } =
-    [
-        new("DREAMAIR_VK_LAYER", "1"),
-        new("DISABLE_RTSS_LAYER", "1"),
-        new("VK_LOADER_LAYERS_ALLOW", "VK_LAYER_DREAMAIR_nvapi_direct"),
         new("XRT_COMPOSITOR_FORCE_VK_DISPLAY", "0"),
         new("XRT_COMPOSITOR_USE_PRESENT_WAIT", "1"),
     ];

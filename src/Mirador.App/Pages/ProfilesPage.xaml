@@ -126,12 +126,6 @@
                 <toolkit:SettingsCard Header="Name">
                     <TextBox MinWidth="200" Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </toolkit:SettingsCard>
-                <toolkit:SettingsCard Description="Mirador's steps for this headset run with Monado." Header="Headset">
-                    <ComboBox
-                        MinWidth="200"
-                        ItemsSource="{x:Bind ViewModel.Headsets}"
-                        SelectedItem="{x:Bind ViewModel.Headset, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
-                </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Builds" />
                 <toolkit:SettingsCard Description="Mirador's Monado is upstream's nightly build. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
@@ -265,31 +259,13 @@
                     </toolkit:SettingsExpander.Items>
                 </toolkit:SettingsExpander>
 
-                <toolkit:SettingsCard
-                    Description="The direct-mode layer: the one that comes with Mirador, or its build folder."
-                    Header="Vulkan layer"
-                    Visibility="{x:Bind ViewModel.UsesDirectMode, Mode=OneWay}">
-                    <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.LayerSource, Mode=TwoWay}">
-                        <ComboBoxItem Content="Comes with Mirador" />
-                        <ComboBoxItem Content="A layer folder" />
-                    </ComboBox>
-                </toolkit:SettingsCard>
-                <toolkit:SettingsCard
-                    ContentAlignment="Vertical"
-                    Header="Layer folder"
-                    HorizontalContentAlignment="Stretch"
-                    Visibility="{x:Bind ShowLayerFolder(ViewModel.UsesDirectMode, ViewModel.LayerFromFolder), Mode=OneWay}">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox PlaceholderText="C:\Users\you\Projects\mirador\artifacts\layer-build" Text="{x:Bind ViewModel.LayerFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button
-                            Grid.Column="1"
-                            Click="OnBrowseLayer"
-                            Content="Browse…" />
-                    </Grid>
+                <!-- What Mirador does on Windows for the headset: one choice turns all of it on, the layer included. -->
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Windows tools" />
+                <toolkit:SettingsCard Description="{x:Bind ViewModel.HeadsetDescription, Mode=OneWay}" Header="Headset">
+                    <ComboBox
+                        MinWidth="200"
+                        ItemsSource="{x:Bind ViewModel.Headsets}"
+                        SelectedItem="{x:Bind ViewModel.Headset, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Lighthouse" />

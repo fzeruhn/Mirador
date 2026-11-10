@@ -19,7 +19,8 @@ public static class ElevatedChoice
     /// Why this profile runs as the user although the user allowed Monado as administrator, as Home's line; null when
     /// it may run as administrator. In order: this Mirador isn't the installed one (the helper starts Monado only for
     /// <c>Mirador.exe</c> in its own install folder: <see cref="Mirador.Ipc.InstalledMirador"/>), the profile uses a
-    /// build folder or a branch built here (anything but Mirador's Monado), it sets extra environment variables, or its module points at a folder of its own.
+    /// build folder or a branch built here (anything but Mirador's Monado), it sets extra environment variables, or its
+    /// module has no administrator settings for the headset.
     /// </summary>
     /// <param name="installedCopy">Whether this Mirador is the installed one, as the helper judges it.</param>
     /// <param name="approvedBuild">Whether the profile's current build is the one approved to run as administrator.</param>
@@ -42,11 +43,6 @@ public static class ElevatedChoice
             return ExtraVariables;
         }
 
-        if (module is not null && module.ElevatedModuleId is null)
-        {
-            return NoElevatedTable;
-        }
-
-        return module?.UsesExtraFolder(profile) == true ? BuildFolder : null;
+        return module is not null && module.ElevatedModuleId is null ? NoElevatedTable : null;
     }
 }

@@ -536,6 +536,13 @@ public sealed class AppHost : IAsyncDisposable
                 Profiles.Save(renamed);
             }
 
+            // The layer comes with Mirador: a layer folder a profile named before is dropped.
+            var (withoutFolders, foldersDropped) = Core.Migration.ProfileMigration.DropLayerFolders(Profiles.Load());
+            if (foldersDropped)
+            {
+                Profiles.Save(withoutFolders);
+            }
+
             var bundleGone = !File.Exists(Path.Combine(AppDir, "monado", "runtime", "openxr_monado.json"));
             var (set, changed) = Core.Migration.ProfileMigration.Migrate(Profiles.Load(), bundleGone);
             if (changed)

@@ -10,217 +10,94 @@ public class DirectModeLayerTests
     private const string Check = "mirador-display-check.exe";
 
     [Fact]
-    public void A_build_folder_has_the_layer_and_the_check_in_their_own_folders()
+    public void The_layer_that_comes_with_mirador_has_everything_side_by_side()
     {
-        // artifacts\layer-build, as layer\build.ps1 makes it.
-        using var dir = new TempDir();
-        dir.Touch("layer", Json);
-        dir.Touch("layer", Dll);
-        dir.Touch("check", Check);
+        using var bundled = new TempDir();
+        bundled.Touch(Json);
+        bundled.Touch(Dll);
+        bundled.Touch(Check);
 
-        var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
-
-        Assert.Equal(new LayerFiles(Path.Combine(dir.Path, "layer"), Path.Combine(dir.Path, "check", Check)), files);
+        Assert.Equal(new LayerFiles(bundled.Path, Path.Combine(bundled.Path, Check)), DirectModeLayer.Locate(bundled.Path));
     }
 
     [Fact]
-    public void A_folder_with_the_layer_under_its_dream_air_names_is_found_for_one_release()
+    public void A_trailing_separator_on_the_folder_is_fine()
     {
-        using var dir = new TempDir();
-        dir.Touch("layer", "dreamair_vk_layer.json");
-        dir.Touch("layer", "dreamair_vk_layer.dll");
-        dir.Touch("check", "dreamair-display-check.exe");
+        using var bundled = new TempDir();
+        bundled.Touch(Json);
+        bundled.Touch(Dll);
+        bundled.Touch(Check);
 
-        var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
-
-        Assert.Equal(new LayerFiles(Path.Combine(dir.Path, "layer"), Path.Combine(dir.Path, "check", "dreamair-display-check.exe"), Legacy: true), files);
+        Assert.Equal(bundled.Path, DirectModeLayer.Locate(bundled.Path + Path.DirectorySeparatorChar).ManifestDir);
     }
 
     [Fact]
-    public void The_layer_that_comes_with_mirador_is_only_found_under_its_new_names()
+    public void The_layer_is_only_found_under_its_new_names()
     {
         using var bundled = new TempDir();
         bundled.Touch("dreamair_vk_layer.json");
         bundled.Touch("dreamair_vk_layer.dll");
         bundled.Touch("dreamair-display-check.exe");
 
-        Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, bundled.Path));
+        Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(bundled.Path));
     }
 
     [Fact]
-    public void A_release_folder_has_everything_side_by_side()
-    {
-        using var dir = new TempDir();
-        dir.Touch(Json);
-        dir.Touch(Dll);
-        dir.Touch(Check);
-
-        var files = DirectModeLayer.Locate(dir.Path, bundledDir: "unused");
-
-        Assert.Equal(new LayerFiles(dir.Path, Path.Combine(dir.Path, Check)), files);
-    }
-
-    [Fact]
-    public void Files_in_the_folder_itself_win_over_its_layer_and_check_folders()
-    {
-        using var dir = new TempDir();
-        foreach (var name in new[] { Json, Dll, Check })
-        {
-            dir.Touch(name);
-        }
-
-        dir.Touch("layer", Json);
-        dir.Touch("layer", Dll);
-        dir.Touch("check", Check);
-
-        Assert.Equal(new LayerFiles(dir.Path, Path.Combine(dir.Path, Check)), DirectModeLayer.Locate(dir.Path, "unused"));
-    }
-
-    [Fact]
-    public void A_trailing_separator_on_the_folder_is_fine()
-    {
-        using var dir = new TempDir();
-        dir.Touch(Json);
-        dir.Touch(Dll);
-        dir.Touch(Check);
-
-        var files = DirectModeLayer.Locate(dir.Path + Path.DirectorySeparatorChar, "unused");
-
-        Assert.Equal(dir.Path, files.ManifestDir);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("  ")]
-    public void Without_a_folder_the_bundled_layer_is_used(string? folder)
-    {
-        using var bundled = new TempDir();
-        bundled.Touch(Json);
-        bundled.Touch(Dll);
-        bundled.Touch(Check);
-
-        var files = DirectModeLayer.Locate(folder, bundled.Path);
-
-        Assert.Equal(new LayerFiles(bundled.Path, Path.Combine(bundled.Path, Check)), files);
-    }
-
-    [Theory]
-    [InlineData(Dll, Dll)]
-    [InlineData(Json, Json)]
-    public void A_missing_layer_file_is_named(string missing, string named)
-    {
-        using var dir = new TempDir();
-        foreach (var name in new[] { Json, Dll }.Where(name => name != missing))
-        {
-            dir.Touch("layer", name);
-        }
-
-        dir.Touch("check", Check);
-
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
-
-        Assert.Equal(
-            $"The folder {dir.Path} has no {named}, in it or in its layer folder: is it the direct-mode layer's build or release folder? Pick another folder in the profile.",
-            e.Message);
-    }
-
-    [Fact]
-    public void An_empty_folder_names_both_layer_files()
-    {
-        using var dir = new TempDir();
-
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
-
-        Assert.Contains($"has no {Json} or {Dll}, in it or in its layer folder", e.Message);
-    }
-
-    [Fact]
-    public void Layer_files_split_across_two_folders_dont_count()
-    {
-        using var dir = new TempDir();
-        dir.Touch(Json);
-        dir.Touch("layer", Dll);
-        dir.Touch(Check);
-
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
-
-        Assert.Contains($"has no {Json} and {Dll} side by side", e.Message);
-    }
-
-    [Fact]
-    public void A_missing_check_tool_is_named()
-    {
-        using var dir = new TempDir();
-        dir.Touch("layer", Json);
-        dir.Touch("layer", Dll);
-
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(dir.Path, "unused"));
-
-        Assert.Equal(
-            $"The folder {dir.Path} has no {Check}, in it or in its check folder: is it the direct-mode layer's build or release folder? Pick another folder in the profile.",
-            e.Message);
-    }
-
-    [Fact]
-    public void A_folder_that_isnt_there_says_so()
-    {
-        using var dir = new TempDir();
-        var gone = Path.Combine(dir.Path, "gone");
-
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(gone, "unused"));
-
-        Assert.Equal(
-            $"The direct-mode layer folder {gone} doesn't exist. Pick another folder in the profile, or clear it to use the layer that comes with Mirador.",
-            e.Message);
-    }
-
-    [Fact]
-    public void A_folder_that_isnt_a_full_path_is_refused()
-    {
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate("build", "unused"));
-
-        Assert.Equal("The direct-mode layer folder \"build\" isn't a full path. Pick the folder again in the profile.", e.Message);
-    }
-
-    [Fact]
-    public void An_incomplete_bundled_layer_asks_for_a_reinstall()
+    public void An_incomplete_layer_asks_for_a_reinstall()
     {
         using var bundled = new TempDir();
         bundled.Touch(Json);
         bundled.Touch(Check);
 
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, bundled.Path));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(bundled.Path));
 
         Assert.Equal(
-            $"The direct-mode layer that comes with Mirador is incomplete: {Dll} is missing from {bundled.Path}. Reinstall Mirador, or pick a layer folder in the profile.",
+            $"The direct-mode layer that comes with Mirador is incomplete: {Dll} is missing from {bundled.Path}. Reinstall Mirador.",
             e.Message);
     }
 
     [Fact]
-    public void A_bundled_layer_without_its_check_tool_asks_for_a_reinstall()
+    public void A_layer_without_its_check_tool_asks_for_a_reinstall()
     {
         using var bundled = new TempDir();
         bundled.Touch(Json);
         bundled.Touch(Dll);
 
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, bundled.Path));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(bundled.Path));
 
         Assert.Equal(
-            $"The direct-mode layer that comes with Mirador is incomplete: {Check} is missing from {bundled.Path}. Reinstall Mirador, or pick a layer folder in the profile.",
+            $"The direct-mode layer that comes with Mirador is incomplete: {Check} is missing from {bundled.Path}. Reinstall Mirador.",
             e.Message);
     }
 
     [Fact]
-    public void No_bundled_layer_at_all_asks_for_a_reinstall()
+    public void An_empty_layer_folder_names_every_file()
+    {
+        using var bundled = new TempDir();
+
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(bundled.Path));
+
+        Assert.Contains($"{Json} and {Dll} and {Check} are missing", e.Message);
+    }
+
+    [Fact]
+    public void No_layer_folder_at_all_asks_for_a_reinstall()
     {
         using var dir = new TempDir();
         var gone = Path.Combine(dir.Path, "layer");
 
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(null, gone));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(gone));
 
-        Assert.Equal(
-            $"The direct-mode layer that comes with Mirador is missing ({gone}). Reinstall Mirador, or pick a layer folder in the profile.",
-            e.Message);
+        Assert.Equal($"The direct-mode layer that comes with Mirador is missing ({gone}). Reinstall Mirador.", e.Message);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void Without_a_folder_for_it_the_layer_asks_for_a_reinstall(string bundledDir)
+    {
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Locate(bundledDir));
+
+        Assert.Equal("This Mirador doesn't know where the direct-mode layer that comes with it is. Reinstall Mirador.", e.Message);
     }
 }

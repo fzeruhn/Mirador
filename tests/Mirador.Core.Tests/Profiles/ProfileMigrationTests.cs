@@ -35,6 +35,30 @@ public class ProfileMigrationTests
         var set = ProfileSet.Defaults();
         Assert.Same(set, ProfileMigration.Migrate(set, bundleGone: true).Set);
     }
+
+    [Fact]
+    public void A_layer_folder_from_before_the_layer_came_with_mirador_is_dropped()
+    {
+        var old = new ProfileSet(
+            [
+                new Profile("dev", "Dev", "pimax", BuildSource.Mirador, [], new Dictionary<string, string> { ["layerFolder"] = @"C:\layer\build", ["other"] = "x" }),
+                Old.Profiles[1],
+            ],
+            "dev");
+
+        var (set, changed) = ProfileMigration.DropLayerFolders(old);
+
+        Assert.True(changed);
+        Assert.Equal(new Dictionary<string, string> { ["other"] = "x" }, set.Profiles[0].ModuleOptions);
+        Assert.Same(Old.Profiles[1], set.Profiles[1]);
+        Assert.Equal("dev", set.SelectedId);
+    }
+
+    [Fact]
+    public void A_set_without_layer_folders_is_unchanged()
+    {
+        Assert.Same(Old, ProfileMigration.DropLayerFolders(Old).Set);
+    }
 }
 
 public class ApprovedBuildChoiceTests

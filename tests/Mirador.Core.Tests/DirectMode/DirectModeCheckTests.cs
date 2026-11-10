@@ -81,9 +81,7 @@ public sealed class DirectModeCheckTests : IDisposable
 
     // --- turning the layer on ---
 
-    private static Profile WithLayerFolder(string? folder) => new(
-        "p1", "P", null, BuildSource.Mirador, [],
-        folder is null ? new Dictionary<string, string>() : new Dictionary<string, string> { [DirectModeLayer.OptionKey] = folder });
+    private static Profile Profile() => new("p1", "P", null, BuildSource.Mirador, [], new Dictionary<string, string>());
 
     private void Touch(params string[] parts)
     {
@@ -99,7 +97,7 @@ public sealed class DirectModeCheckTests : IDisposable
         Touch("bundled", DirectModeLayer.DllName);
         Touch("bundled", DirectModeLayer.CheckExeName);
 
-        var env = DirectModeLayer.Environment(WithLayerFolder(null), dir.File("bundled"));
+        var env = DirectModeLayer.Environment(dir.File("bundled"));
 
         Assert.Equal(
             [
@@ -107,21 +105,6 @@ public sealed class DirectModeCheckTests : IDisposable
                 .. DirectModeEnvironment.Cleared.Select(name => new EnvVar(name, "")),
             ],
             env);
-    }
-
-    [Fact]
-    public void A_layer_folder_with_an_older_build_gets_the_variables_it_was_built_for()
-    {
-        Touch("old", "layer", "dreamair_vk_layer.json");
-        Touch("old", "layer", "dreamair_vk_layer.dll");
-        Touch("old", "check", "dreamair-display-check.exe");
-
-        var env = DirectModeLayer.Environment(WithLayerFolder(dir.File("old")), "unused").ToDictionary(v => v.Name, v => v.Value);
-
-        Assert.Equal("1", env["DREAMAIR_VK_LAYER"]);
-        Assert.Equal("VK_LAYER_DREAMAIR_nvapi_direct", env["VK_LOADER_LAYERS_ALLOW"]);
-        Assert.False(env.ContainsKey("MIRADOR_DIRECT_MODE"));
-        Assert.Equal(dir.File("old", "layer"), env["VK_ADD_IMPLICIT_LAYER_PATH"]);
     }
 
     [Fact]
@@ -155,9 +138,7 @@ public sealed class DirectModeCheckTests : IDisposable
         Touch("bundled", DirectModeLayer.ManifestName);
         Touch("bundled", DirectModeLayer.DllName);
         Touch("bundled", DirectModeLayer.CheckExeName);
-        var profile = WithLayerFolder(null);
-
-        var env = Mirador.Core.Monado.MonadoEnvironment.Build(inherited, new Mirador.Core.Monado.MonadoSettings(), profile, DirectModeLayer.Environment(profile, dir.File("bundled")));
+        var env = Mirador.Core.Monado.MonadoEnvironment.Build(inherited, new Mirador.Core.Monado.MonadoSettings(), Profile(), DirectModeLayer.Environment(dir.File("bundled")));
 
         Assert.False(env.ContainsKey("IPC_RELAXED_CONNECTION_SECURITY"));
         Assert.Equal("1", env["MIRADOR_DIRECT_MODE"]);
@@ -165,34 +146,11 @@ public sealed class DirectModeCheckTests : IDisposable
     }
 
     [Fact]
-    public void A_layer_folder_adds_the_implicit_layer_path()
-    {
-        Touch("build", "layer", DirectModeLayer.ManifestName);
-        Touch("build", "layer", DirectModeLayer.DllName);
-        Touch("build", "check", DirectModeLayer.CheckExeName);
-
-        var env = DirectModeLayer.Environment(WithLayerFolder(dir.File("build")), "unused");
-
-        Assert.Equal(new EnvVar("VK_ADD_IMPLICIT_LAYER_PATH", dir.File("build", "layer")), env[^1]);
-        Assert.Equal(DirectModeEnvironment.Variables.Count + DirectModeEnvironment.Cleared.Count + 1, env.Count);
-    }
-
-    [Fact]
     public void Without_a_bundled_layer_folder_the_layer_isnt_found_and_says_so()
     {
-        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Environment(WithLayerFolder(null), ""));
+        var e = Assert.Throws<MiradorException>(() => DirectModeLayer.Environment(""));
 
         Assert.Contains("direct-mode layer", e.Message);
-    }
-
-    [Theory]
-    [InlineData(null, null)]
-    [InlineData("", null)]
-    [InlineData("  ", null)]
-    [InlineData(@"C:\layer", @"C:\layer")]
-    public void A_profiles_layer_folder_is_its_option_when_not_blank(string? option, string? expected)
-    {
-        Assert.Equal(expected, DirectModeLayer.FolderOf(WithLayerFolder(option)));
     }
 
     private sealed class Progress(List<string> lines) : IProgress<string>

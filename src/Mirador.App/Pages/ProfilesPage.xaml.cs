@@ -16,10 +16,6 @@ public sealed partial class ProfilesPage : Page
 
     public ProfilesViewModel ViewModel { get; }
 
-    // An instance method: x:Bind calls functions on the page instance.
-    public Visibility ShowLayerFolder(bool usesDirectMode, bool fromFolder) =>
-        usesDirectMode && fromFolder ? Visibility.Visible : Visibility.Collapsed;
-
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -41,14 +37,6 @@ public sealed partial class ProfilesPage : Page
         if (await Pickers.FolderAsync() is { } folder)
         {
             ViewModel.MonadoFolder = folder;
-        }
-    }
-
-    private async void OnBrowseLayer(object sender, RoutedEventArgs e)
-    {
-        if (await Pickers.FolderAsync() is { } folder)
-        {
-            ViewModel.LayerFolder = folder;
         }
     }
 

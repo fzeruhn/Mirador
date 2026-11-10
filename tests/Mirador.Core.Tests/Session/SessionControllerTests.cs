@@ -60,6 +60,21 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task A_layer_folder_left_in_a_profile_is_ignored_for_the_layer_that_comes_with_mirador()
+    {
+        await using var h = new Harness();
+        h.Module.UsesNvidiaDirectMode = true;
+        h.UseProfile(Harness.DreamAir with { ModuleOptions = new Dictionary<string, string> { ["layerFolder"] = @"C:\gone\layer-build" } });
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        var env = h.Launcher.Spec.Environment;
+        Assert.Equal("1", env["MIRADOR_DIRECT_MODE"]);
+        Assert.False(env.ContainsKey("VK_ADD_IMPLICIT_LAYER_PATH"));
+    }
+
+    [Fact]
     public async Task A_headset_without_direct_mode_gets_no_layer()
     {
         await using var h = new Harness();

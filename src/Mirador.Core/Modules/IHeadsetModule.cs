@@ -15,15 +15,11 @@ public interface IHeadsetModule
     /// <summary>The headset's name for the user.</summary>
     string DisplayName { get; }
 
+    /// <summary>What the module does on Windows around Monado, in a sentence or two for the profile editor.</summary>
+    string WindowsTools => "";
+
     /// <summary>Whether Monado tracks this headset through SteamVR's Lighthouse driver, which can't share the receiver with SteamVR.</summary>
     bool UsesSteamVrLighthouse { get; }
-
-    /// <summary>
-    /// Whether this profile points the module at a folder of its own (such as a Dream Air layer folder): that keeps
-    /// Monado running as the user, since the elevated environment the helper builds carries no such path. The core
-    /// asks this without naming the layer.
-    /// </summary>
-    bool UsesExtraFolder(Profile profile) => false;
 
     /// <summary>
     /// Whether this headset's display goes through NVIDIA direct mode (Mirador.md §4.11 item 52): the session then turns
