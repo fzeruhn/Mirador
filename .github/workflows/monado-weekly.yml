@@ -18,6 +18,10 @@ on:
         description: Build and publish even when upstream has no new commit
         type: boolean
         default: false
+      publish:
+        description: Publish the build when its checks pass (off to try the checks only)
+        type: boolean
+        default: true
   push:
     paths:
       - tools/build-monado.ps1
@@ -166,16 +170,19 @@ jobs:
             ${{ runner.temp }}/monado-build/vcpkg-manifest-install.log
 
   # The last check: the zip just built starts headless and an OpenXR app connects to it (tools\check-monado-session.ps1).
-  # GitHub's runners have no GPU, and Monado's compositor needs a Vulkan device with Windows' sharing extensions, so no
-  # session runs here: rendering is checked by "Verify build for Windows" on a PC (Mirador_Plan.md). It tests the zip as
-  # uploaded, on a machine of its own, and can't write anything.
+  # A scheduled or started run takes Finn's GPU runner (a Windows Server VM with a GTX 750 Ti, started for the week's
+  # run; vr-docs Mirador_GPU_Runner.md): there Monado's null compositor runs whole Vulkan and D3D11 sessions. A push
+  # stays on GitHub's runners, which have no GPU (Monado's compositor needs a Vulkan device with Windows' sharing
+  # extensions), so only an instance is checked and the push never waits for the VM. It tests the zip as uploaded, on
+  # a machine of its own, and can't write anything.
   session:
     needs: build
     if: needs.build.outputs.skip != 'true'
-    runs-on: windows-2025
+    runs-on: ${{ github.event_name == 'push' && 'windows-2025' || fromJSON('["self-hosted", "gpu"]') }}
     timeout-minutes: 15
     env:
       TAG: ${{ needs.build.outputs.tag }}
+      APIS: ${{ github.event_name == 'push' && 'none' || 'none,vulkan,d3d11' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -206,7 +213,7 @@ jobs:
 
       - name: Monado starts and takes an app
         shell: pwsh
-        run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe"
+        run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe" -Api ($env:APIS -split ',')
 
       - name: The session's logs
         if: failure()
@@ -218,7 +225,7 @@ jobs:
   # Only a scheduled or started run publishes, and only this job may write.
   publish:
     needs: [build, session]
-    if: needs.build.outputs.skip != 'true' && github.event_name != 'push'
+    if: needs.build.outputs.skip != 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish))
     runs-on: ubuntu-latest
     permissions:
       contents: write
