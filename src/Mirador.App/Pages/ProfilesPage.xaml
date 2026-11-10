@@ -8,21 +8,19 @@
     NavigationCacheMode="Required">
 
     <!--
-        The profile picked at the top (its drop-down ends with "Add a profile…"), its settings below, and Save and
-        Revert under them, always in view.
+        The profile picked at the top (its drop-down ends with "Add a profile…"), its settings below, in the same centred
+        column as the other pages; Save and Revert under them in that column, always in view.
     -->
-    <Grid Padding="36,24,36,24" RowSpacing="8">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Style="{StaticResource PageTitle}" Text="Profiles" />
-
-        <ScrollViewer Grid.Row="1">
-            <c:PageColumn IsCentered="False" MaxColumnWidth="700">
-            <StackPanel Spacing="4">
+        <ScrollViewer>
+            <c:PageColumn>
+            <StackPanel Padding="36,24,36,12" Spacing="4">
+                <TextBlock Style="{StaticResource PageTitle}" Text="Profiles" />
                 <InfoBar
                     IsClosable="False"
                     IsOpen="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
@@ -265,19 +263,21 @@
             </c:PageColumn>
         </ScrollViewer>
 
-        <StackPanel
-            Grid.Row="2"
-            Orientation="Horizontal"
-            Spacing="8">
-            <Button
-                MinWidth="96"
-                Command="{x:Bind ViewModel.SaveCommand}"
-                Content="Save"
-                Style="{StaticResource AccentButtonStyle}" />
-            <Button
-                MinWidth="96"
-                Command="{x:Bind ViewModel.RevertCommand}"
-                Content="Revert" />
-        </StackPanel>
+        <c:PageColumn Grid.Row="1">
+            <StackPanel
+                Padding="36,8,36,24"
+                Orientation="Horizontal"
+                Spacing="8">
+                <Button
+                    MinWidth="96"
+                    Command="{x:Bind ViewModel.SaveCommand}"
+                    Content="Save"
+                    Style="{StaticResource AccentButtonStyle}" />
+                <Button
+                    MinWidth="96"
+                    Command="{x:Bind ViewModel.RevertCommand}"
+                    Content="Revert" />
+            </StackPanel>
+        </c:PageColumn>
     </Grid>
 </Page>
