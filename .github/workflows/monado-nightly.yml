@@ -210,6 +210,9 @@ jobs:
           New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null
           New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name $icd.FullName -Value 0 -PropertyType DWord -Force | Out-Null
           Write-Host "Registered $($icd.FullName)"
+          Write-Host "Beside it: $((Get-ChildItem -LiteralPath $icd.DirectoryName -Filter '*.dll').Name -join ', ')"
+          # Dozen loads dxil.dll (and its other DLLs) by name: Windows looks on PATH, not in the driver's own folder.
+          $icd.DirectoryName >> $env:GITHUB_PATH
 
       # The runner runs elevated, where the OpenXR loader ignores XR_RUNTIME_JSON: the build is made the machine's runtime.
       - name: The build as the OpenXR runtime
@@ -222,7 +225,7 @@ jobs:
         shell: pwsh
         env:
           DZN_DEBUG: warp # Dozen on WARP, the only D3D12 device here
-          VK_LOADER_DEBUG: error,warn,driver # why a driver isn't loaded
+          VK_LOADER_DEBUG: all # why a driver isn't loaded
         run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe"
 
       - name: The session's logs
