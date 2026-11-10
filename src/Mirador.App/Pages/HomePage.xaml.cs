@@ -34,6 +34,22 @@ public sealed partial class HomePage : Page
         ViewModel.Refresh();
     }
 
+    /// <summary>Windows' graphics settings, where hardware-accelerated GPU scheduling is turned on.</summary>
+    private async void OnGraphicsSettings(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:display-advancedgraphics")))
+            {
+                Services.AppLog.Write("Windows didn't open its graphics settings");
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.AppLog.Write("Windows couldn't open its graphics settings", ex);
+        }
+    }
+
     /// <summary>
     /// Home listens to the base stations while it is the current page (in the frame) and the window is on screen. The
     /// window is looked up here, not in OnNavigatedTo: the first navigation happens while the window is being made.

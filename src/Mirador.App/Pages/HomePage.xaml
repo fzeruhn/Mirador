@@ -297,6 +297,18 @@
                 </InfoBar>
 
                 <InfoBar
+                    Title="GPU scheduling"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasGpuSchedulingNotice, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.GpuSchedulingNotice, Mode=OneWay}"
+                    Severity="Warning"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
+                    <InfoBar.ActionButton>
+                        <Button Click="OnGraphicsSettings" Content="Open graphics settings" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
+                <InfoBar
                     Title="OpenVR runtime"
                     IsClosable="False"
                     IsOpen="{x:Bind ViewModel.HasOpenVrProblem, Mode=OneWay}"

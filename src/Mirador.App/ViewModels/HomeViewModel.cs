@@ -227,8 +227,19 @@ public sealed partial class HomeViewModel : ObservableObject
         LoadProfiles();
         RefreshRuntime();
         RefreshStations();
+        GpuSchedulingNotice = Core.Gpu.GpuScheduling.Notice(Core.Gpu.GpuScheduling.Now());
         _ = RunChecksAsync();
     }
+
+    /// <summary>
+    /// The warning while hardware-accelerated GPU scheduling is off (or the driver doesn't offer it): Monado as
+    /// administrator needs it for the GPU's realtime priority. Asked each time Home shows; it changes only with a restart.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasGpuSchedulingNotice))]
+    public partial string? GpuSchedulingNotice { get; set; }
+
+    public bool HasGpuSchedulingNotice => GpuSchedulingNotice is not null;
 
     /// <summary>
     /// Home listens to the base stations while it is the current page, the base stations card shows and the window is on
