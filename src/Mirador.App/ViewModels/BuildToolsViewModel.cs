@@ -103,12 +103,18 @@ public sealed partial class BuildToolsViewModel(AppHost host, Microsoft.UI.Dispa
                     failures.Count == 0 ? "Mirador can build Monado branches now." : failures[0]);
             }
         }
-        catch (MiradorException e)
+        catch (Exception e)
         {
-            Show(InfoBarSeverity.Error, e.Message);
+            if (e is not MiradorException)
+            {
+                AppLog.Write("Installing the build tools failed", e);
+            }
+
+            var text = e is MiradorException ? e.Message : $"Installing the build tools stopped: {e.Message} Mirador's log has the details.";
+            Show(InfoBarSeverity.Error, text);
             if (!IsShown)
             {
-                Notifications.Show("The build tools weren't installed", e.Message);
+                Notifications.Show("The build tools weren't installed", text);
             }
         }
         finally
@@ -125,9 +131,14 @@ public sealed partial class BuildToolsViewModel(AppHost host, Microsoft.UI.Dispa
         {
             report = await Task.Run(() => host.BuildToolsSetup.CheckAsync(CancellationToken.None));
         }
-        catch (MiradorException e)
+        catch (Exception e)
         {
-            Show(InfoBarSeverity.Error, e.Message);
+            if (e is not MiradorException)
+            {
+                AppLog.Write("Checking the build tools failed", e);
+            }
+
+            Show(InfoBarSeverity.Error, e is MiradorException ? e.Message : $"Mirador couldn't check the build tools: {e.Message}");
             return;
         }
 

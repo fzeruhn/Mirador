@@ -76,8 +76,9 @@ public sealed record XrCheckReport(string Api, bool Ok, int Frames, string Runti
     }
 }
 
-/// <summary>An elevated, headless Monado for the verify run, or why there can't be one.</summary>
-public sealed record ElevatedVerify(IAsyncDisposable? Running, string? WhyNot);
+/// <summary>An elevated, headless Monado for the verify run, or why there isn't one.</summary>
+/// <param name="Failed">Whether it was tried and failed (the step fails), rather than not possible here (skipped).</param>
+public sealed record ElevatedVerify(IAsyncDisposable? Running, string? WhyNot, bool Failed = false);
 
 /// <summary>What a verify run needs from Mirador: Monado started headless three ways. Disposing stops each.</summary>
 public interface IVerifyServices
@@ -261,7 +262,8 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
         bool? hasFix = null;
         if (elevated.Running is null)
         {
-            steps.Add(new VerifyStep(ElevatedStep, VerifyOutcome.Skipped, elevated.WhyNot ?? "Monado can't run as administrator here."));
+            steps.Add(new VerifyStep(
+                ElevatedStep, elevated.Failed ? VerifyOutcome.Failed : VerifyOutcome.Skipped, elevated.WhyNot ?? "Monado can't run as administrator here."));
         }
         else
         {

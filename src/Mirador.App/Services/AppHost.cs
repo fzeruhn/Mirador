@@ -91,7 +91,7 @@ public sealed class AppHost : IAsyncDisposable
 
         launcher = new JobProcessLauncher();
         ElevatedConsent = new ElevatedConsent(new RegistryConsentValues());
-        var elevatedLogPath = Path.Combine(
+        var elevatedLogPath = ElevatedLogPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado", CurrentSid() + ".log");
         Pipe = new MonadoPipe();
         InheritedEnvironment = UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e));
@@ -148,6 +148,9 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>"Verify build for Windows" (Mirador_Plan.md Task 63).</summary>
     public VerifyBuild Verify { get; }
+
+    /// <summary>Where the helper writes an elevated Monado's output for this user (the session and Verify follow it).</summary>
+    public string ElevatedLogPath { get; }
 
     /// <summary>Monado's pipe, as the session watches it.</summary>
     public IMonadoPipe Pipe { get; }

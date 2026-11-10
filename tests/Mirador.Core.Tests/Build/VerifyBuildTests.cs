@@ -200,6 +200,20 @@ public sealed class VerifyBuildTests : IDisposable
     }
 
     [Fact]
+    public async Task An_elevated_start_that_was_tried_and_failed_fails_the_step()
+    {
+        services.ElevatedFailed = "Mirador's helper didn't start Monado as administrator: the helper isn't running.";
+
+        var result = await Run();
+
+        var elevated = result.Steps.Single(s => s.Name == VerifyBuild.ElevatedStep);
+        Assert.Equal(VerifyOutcome.Failed, elevated.Outcome);
+        Assert.Contains("the helper isn't running", elevated.Detail);
+        Assert.Null(result.HasElevationFix);
+        Assert.StartsWith("Failed:", result.Summary(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_game_that_cant_connect_to_an_elevated_monado_means_no_elevation_fix()
     {
         var calls = 0;
@@ -287,6 +301,8 @@ public sealed class VerifyBuildTests : IDisposable
 
         public string? StandInFails { get; set; }
 
+        public string? ElevatedFailed { get; set; }
+
         public StandInWait? Waiting { get; private set; }
 
         public Task<IAsyncDisposable> StartHeadlessAsync(MonadoInstall install, CancellationToken ct)
@@ -324,6 +340,11 @@ public sealed class VerifyBuildTests : IDisposable
             if (ElevatedWhyNot is { } why)
             {
                 return Task.FromResult(new ElevatedVerify(null, why));
+            }
+
+            if (ElevatedFailed is { } failed)
+            {
+                return Task.FromResult(new ElevatedVerify(null, failed, Failed: true));
             }
 
             Events.Add("elevated started");

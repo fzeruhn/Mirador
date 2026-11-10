@@ -163,16 +163,15 @@ public sealed class VerifyServices(AppHost host, Profile profile, Action<string>
             return new ElevatedVerify(null, "Another Monado is running (its pipe is open), so this was skipped.");
         }
 
-        var logPath = NewLog("verify-monado-elevated");
         IRunningProcess process;
         try
         {
-            process = await Task.Run(() => new HelperProcessLauncher(host.Helper, start, logPath, host.Launcher)
+            process = await Task.Run(() => new HelperProcessLauncher(host.Helper, start, host.ElevatedLogPath, host.Launcher)
                 .Start(new ProcessSpec(install.ServiceExe, "", Path.GetDirectoryName(install.ServiceExe)!, env)), ct);
         }
         catch (MiradorException e)
         {
-            return new ElevatedVerify(null, "Mirador's helper didn't start Monado as administrator: " + e.Message);
+            return new ElevatedVerify(null, "Mirador's helper didn't start Monado as administrator: " + e.Message, Failed: true);
         }
 
         var running = new Running(process, null);
@@ -185,7 +184,7 @@ public sealed class VerifyServices(AppHost host, Profile profile, Action<string>
         catch (MiradorException e)
         {
             await running.DisposeAsync();
-            return new ElevatedVerify(null, "Monado as administrator didn't come up: " + e.Message);
+            return new ElevatedVerify(null, $"Monado as administrator didn't come up: {e.Message} Its log: {host.ElevatedLogPath}", Failed: true);
         }
         catch
         {

@@ -131,10 +131,10 @@ public sealed partial class VerifyViewModel(AppHost host, Microsoft.UI.Dispatchi
             Status = e.Message;
             return;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e)
         {
             AppLog.Write("Verify failed", e);
-            Status = $"Verify stopped: {e.Message}";
+            Status = $"Verify stopped: {e.Message} Mirador's log has the details.";
             return;
         }
         finally
