@@ -165,8 +165,9 @@ jobs:
             ${{ runner.temp }}/monado-build/vcpkg-manifest-install.log
 
   # The last check: the zip just built starts and serves an OpenXR session on Windows, headless. The runner has no GPU,
-  # so a software Vulkan driver (Mesa's lavapipe) stands in; it runs on a machine of its own, never beside the zip
-  # that gets published, and this job can't write anything.
+  # so Mesa's Dozen (Vulkan on Direct3D 12) on Windows' software renderer, WARP, stands in: it has the Win32 sharing
+  # extensions Monado needs (lavapipe doesn't), and D3D11 clients find WARP's adapter. It runs on a machine of its own,
+  # never beside the zip that gets published, and this job can't write anything.
   session:
     needs: build
     if: needs.build.outputs.skip != 'true'
@@ -203,8 +204,9 @@ jobs:
           Write-Host "mesa-dist-win $($release.tagName): $($asset.name), SHA-256 $((Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()) (GitHub's digest: $($asset.digest))"
           7z x -y -bso0 "-o$env:RUNNER_TEMP\mesa" $file
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $icd = Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\mesa\x64" -Filter 'lvp_icd*.json' | Select-Object -First 1
-          if (-not $icd) { throw 'No lavapipe driver manifest in the archive.' }
+          Write-Host "Driver manifests: $((Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\mesa\x64" -Filter '*_icd*.json').Name -join ', ')"
+          $icd = Get-ChildItem -LiteralPath "$env:RUNNER_TEMP\mesa\x64" -Filter 'dzn_icd*.json' | Select-Object -First 1
+          if (-not $icd) { throw 'No Dozen driver manifest in the archive.' }
           New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null
           New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name $icd.FullName -Value 0 -PropertyType DWord -Force | Out-Null
           Write-Host "Registered $($icd.FullName)"
@@ -218,6 +220,8 @@ jobs:
 
       - name: A session
         shell: pwsh
+        env:
+          DZN_DEBUG: warp # Dozen on WARP, the only D3D12 device here
         run: tools\check-monado-session.ps1 -Install "$env:RUNNER_TEMP\monado-install" -XrCheck "$env:RUNNER_TEMP\xr-check\xr-check.exe"
 
       - name: The session's logs
