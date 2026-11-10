@@ -380,9 +380,10 @@ public sealed class AppHost : IAsyncDisposable
 
     /// <summary>
     /// Home's Monado card line while the selected profile has "Run as administrator" on but still runs as the user:
-    /// because the user's consent isn't recorded (<see cref="NotAllowedReason"/>), this copy of Mirador isn't the
-    /// installed one, the profile uses a build that isn't approved or sets extra environment variables
-    /// (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own test), or because SteamVR's Lighthouse driver
+    /// because this copy of Mirador isn't the installed one (before the consent: allowing it there wouldn't help), the
+    /// user's consent isn't recorded (<see cref="NotAllowedReason"/>), the profile uses a build that isn't approved or
+    /// sets extra environment variables (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own test), or
+    /// because SteamVR's Lighthouse driver
     /// changed since the user allowed it (<see cref="SteamVrChangedReason"/>). Null when the profile runs as
     /// administrator, or doesn't ask to (Mirador.md §4.10 items 45 and 46).
     /// </summary>
@@ -398,7 +399,8 @@ public sealed class AppHost : IAsyncDisposable
 
             if (!ElevatedMonadoAllowed())
             {
-                return NotAllowedReason;
+                // "Allow" only where allowing helps: the helper starts Monado as administrator for the installed copy alone.
+                return IsInstalledCopy(askHelper: false) ? NotAllowedReason : ElevatedChoice.NotInstalledCopy;
             }
 
             var module = profile.ModuleId is { } id ? Modules.GetValueOrDefault(id) : null;
