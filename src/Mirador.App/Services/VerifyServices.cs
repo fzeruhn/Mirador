@@ -144,9 +144,9 @@ public sealed class VerifyServices(AppHost host, Profile profile, Action<string>
         }
         else
         {
-            if (!host.ElevatedMonadoAllowed())
+            if (!profile.RunAsAdministrator || !host.ElevatedMonadoAllowed())
             {
-                return new ElevatedVerify(null, "Allow Monado as administrator in App settings to check it as administrator.");
+                return new ElevatedVerify(null, "Turn on Run as administrator for this profile and save it to check it as administrator.");
             }
 
             build = "";

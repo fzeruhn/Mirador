@@ -59,6 +59,33 @@ public class ProfileMigrationTests
     {
         Assert.Same(Old, ProfileMigration.DropLayerFolders(Old).Set);
     }
+
+    [Fact]
+    public void The_app_wide_consent_turns_on_run_as_administrator_for_the_profiles_it_covered()
+    {
+        // It covered Mirador's Monado (and the bundled one): a branch or a build folder needed its own approval.
+        var old = new ProfileSet(
+            [
+                Old.Profiles[0],
+                new Profile("mirador", "Mirador's", null, BuildSource.Mirador, [], new Dictionary<string, string>()),
+                Old.Profiles[1],
+            ],
+            "dreamair");
+
+        var (set, changed) = ProfileMigration.RunAsAdministratorFromConsent(old);
+
+        Assert.True(changed);
+        Assert.True(set.Profiles[0].RunAsAdministrator);
+        Assert.True(set.Profiles[1].RunAsAdministrator);
+        Assert.Same(Old.Profiles[1], set.Profiles[2]);
+    }
+
+    [Fact]
+    public void Without_a_profile_the_consent_covered_nothing_changes()
+    {
+        var set = new ProfileSet([Old.Profiles[1]], "dev");
+        Assert.Same(set, ProfileMigration.RunAsAdministratorFromConsent(set).Set);
+    }
 }
 
 public class ApprovedBuildChoiceTests

@@ -286,11 +286,11 @@
                     Message="{x:Bind ViewModel.RunsAsYouNotice, Mode=OneWay}"
                     Severity="Informational"
                     Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
-                    <!-- Only when SteamVR's Lighthouse driver changed since the consent: the same UAC step, with today's files. -->
+                    <!-- When the consent isn't recorded, or SteamVR's Lighthouse driver changed since it was: the consent's UAC step, with today's files. -->
                     <InfoBar.ActionButton>
                         <Button
                             Command="{x:Bind ViewModel.AllowAgainCommand}"
-                            Content="Allow again"
+                            Content="{x:Bind ViewModel.AllowLabel, Mode=OneWay}"
                             IsEnabled="{x:Bind ViewModel.CanAllowAgain, Mode=OneWay}"
                             Visibility="{x:Bind ViewModel.OffersAllowAgain, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
                     </InfoBar.ActionButton>

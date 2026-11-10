@@ -1118,10 +1118,11 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>
-    /// Which launcher starts this Start: the helper's elevated one when the user allowed it and
-    /// <see cref="Elevation.ElevatedChoice.RunsAsYouReason"/> (shared with Home's line) finds no reason against it: this
-    /// is the installed Mirador, the profile runs the bundled Monado, it sets no extra environment variables and its
-    /// module points at no folder of its own; otherwise the job launcher, which runs Monado as the user. The elevated
+    /// Which launcher starts this Start: the helper's elevated one when the profile has "Run as administrator" on, the
+    /// user allowed it, and <see cref="Elevation.ElevatedChoice.RunsAsYouReason"/> (shared with Home's line) finds no
+    /// reason against it: this is the installed Mirador, the profile runs Mirador's Monado (or an approved build), it
+    /// sets no extra environment variables and its module has administrator settings for the headset; otherwise the job
+    /// launcher, which runs Monado as the user. The elevated
     /// launcher itself runs the Start through the job launcher when the helper says SteamVR's Lighthouse driver changed
     /// since the consent (<see cref="HelperProcessLauncher"/>).
     /// Whatever the choice, the rest of the session is the same.
@@ -1132,6 +1133,7 @@ public sealed class SessionController(SessionDeps deps)
         // (MonadoLocator). A branch or build folder runs elevated only as its approved copy, which the helper checks.
         var approvedBuild = !install.IsBundled && profile.RunAsAdministrator && deps.ApprovedBuildCurrent?.Invoke(profile) == true;
         var eligible = deps.ElevatedLauncher is not null
+            && profile.RunAsAdministrator
             && deps.ElevatedConsented?.Invoke() == true
             && (install.IsBundled || approvedBuild)
             && Elevation.ElevatedChoice.RunsAsYouReason(profile, module, deps.ElevatedInstalledCopy?.Invoke() == true, approvedBuild) is null;

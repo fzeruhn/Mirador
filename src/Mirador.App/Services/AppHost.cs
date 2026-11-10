@@ -121,6 +121,10 @@ public sealed class AppHost : IAsyncDisposable
     public const string SteamVrChangedReason =
         "Runs as you: SteamVR's Lighthouse driver changed since you allowed Monado as administrator.";
 
+    /// <summary>Home's line when the profile has "Run as administrator" on but the user's consent isn't recorded (any more).</summary>
+    public const string NotAllowedReason =
+        "Runs as you: Windows hasn't been asked yet for Monado to run as administrator.";
+
     /// <summary>The folder Mirador.exe is in.</summary>
     public string AppDir { get; }
 
@@ -293,6 +297,30 @@ public sealed class AppHost : IAsyncDisposable
     public void SteamVrAllowedAgain() => steamVrChanged = false;
 
     /// <summary>
+    /// Takes the user's consent for Monado as administrator back through the helper (no prompt) once no profile has
+    /// "Run as administrator" on (<see cref="ElevatedChoice.ConsentNeeded"/>), so it never outlives the profiles that
+    /// asked for it. Returns what went wrong, or null.
+    /// </summary>
+    public async Task<string?> TakeBackUnneededConsentAsync()
+    {
+        try
+        {
+            if (!ElevatedMonadoAllowed() || ElevatedChoice.ConsentNeeded(Profiles.Load()))
+            {
+                return null;
+            }
+
+            var reply = await Helper.SendAsync(HelperCommand.RevokeElevatedMonado, CancellationToken.None);
+            return reply.Ok ? null : $"Mirador couldn't take back the consent for Monado to run as administrator: {reply.Error}";
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Taking back the consent for Monado as administrator failed", e);
+            return $"Mirador couldn't take back the consent for Monado to run as administrator ({e.Message.Trim().TrimEnd('.')}).";
+        }
+    }
+
+    /// <summary>
     /// Whether this Mirador is the installed one, the only caller the helper starts Monado as administrator for: its
     /// path against the running helper's install folder (<see cref="HelperCommand.GetInstallFolder"/>), through the
     /// helper's own test (<see cref="InstalledMirador.IsInstalledCopy"/>). Until the helper has answered (it isn't
@@ -351,22 +379,28 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Home's Monado card line while consent is on and the selected profile still runs as the user: because this copy
-    /// of Mirador isn't the installed one, the profile uses a build folder (or a module folder such as the Dream Air
-    /// layer) or sets extra environment variables (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own
-    /// test), or because SteamVR's Lighthouse driver changed since the user allowed it (<see cref="SteamVrChangedReason"/>).
-    /// Null when the profile would run as administrator, or consent is off (Mirador.md §4.10 items 45 and 46).
+    /// Home's Monado card line while the selected profile has "Run as administrator" on but still runs as the user:
+    /// because the user's consent isn't recorded (<see cref="NotAllowedReason"/>), this copy of Mirador isn't the
+    /// installed one, the profile uses a build that isn't approved or sets extra environment variables
+    /// (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own test), or because SteamVR's Lighthouse driver
+    /// changed since the user allowed it (<see cref="SteamVrChangedReason"/>). Null when the profile runs as
+    /// administrator, or doesn't ask to (Mirador.md §4.10 items 45 and 46).
     /// </summary>
     public string? RunsAsYouReason()
     {
-        if (!ElevatedMonadoAllowed())
-        {
-            return null;
-        }
-
         try
         {
             var profile = Profiles.Load().Selected;
+            if (!profile.RunAsAdministrator)
+            {
+                return null;
+            }
+
+            if (!ElevatedMonadoAllowed())
+            {
+                return NotAllowedReason;
+            }
+
             var module = profile.ModuleId is { } id ? Modules.GetValueOrDefault(id) : null;
             return ElevatedChoice.RunsAsYouReason(profile, module, IsInstalledCopy(askHelper: false), ApprovedBuildCurrent(profile))
                 ?? (steamVrChanged ? SteamVrChangedReason : null);
@@ -541,6 +575,23 @@ public sealed class AppHost : IAsyncDisposable
             if (foldersDropped)
             {
                 Profiles.Save(withoutFolders);
+            }
+
+            // App settings' "Run Monado as administrator" became each profile's own toggle: once, the profiles it
+            // covered get theirs on while the user's consent is on.
+            var app = Settings.Load();
+            if (!app.RunAsAdministratorPerProfile)
+            {
+                if (ElevatedMonadoAllowed())
+                {
+                    var (elevated, moved) = Core.Migration.ProfileMigration.RunAsAdministratorFromConsent(Profiles.Load());
+                    if (moved)
+                    {
+                        Profiles.Save(elevated);
+                    }
+                }
+
+                Settings.Save(app with { RunAsAdministratorPerProfile = true });
             }
 
             var bundleGone = !File.Exists(Path.Combine(AppDir, "monado", "runtime", "openxr_monado.json"));

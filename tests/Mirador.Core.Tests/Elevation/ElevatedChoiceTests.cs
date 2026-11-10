@@ -29,4 +29,11 @@ public class ElevatedChoiceTests
             ElevatedChoice.ExtraVariables,
             ElevatedChoice.RunsAsYouReason(Custom(null, new EnvVar("XRT_LOG", "debug")), null, installedCopy: true));
     }
+
+    [Fact]
+    public void The_consent_is_kept_only_while_a_profile_runs_as_administrator()
+    {
+        Assert.False(ElevatedChoice.ConsentNeeded(new ProfileSet([Custom()], "p")));
+        Assert.True(ElevatedChoice.ConsentNeeded(new ProfileSet([Custom(), Custom() with { Id = "q", RunAsAdministrator = true }], "p")));
+    }
 }

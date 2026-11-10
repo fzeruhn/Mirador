@@ -34,12 +34,25 @@ public class SessionControllerTests
     public async Task Consent_runs_elevated_only_from_the_installed_copy(bool installedCopy)
     {
         await using var h = new Harness(installedCopy: installedCopy);
+        h.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
 
         var outcome = await h.StartRunningAsync();
 
         // A copy the helper would refuse (a portable or dev bundle) runs as the user instead of failing.
         Assert.True(outcome.Ok);
         Assert.Equal(installedCopy ? 1 : 0, h.ElevatedStarts.Count);
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task A_profile_without_run_as_administrator_runs_as_you_whatever_the_consent()
+    {
+        await using var h = new Harness(installedCopy: true);
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        Assert.Empty(h.ElevatedStarts);
         Assert.Equal(1, h.Launcher.Starts);
     }
 

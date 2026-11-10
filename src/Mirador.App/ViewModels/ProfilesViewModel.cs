@@ -102,7 +102,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// link, 3 a build folder.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(MonadoFromFolder), nameof(MonadoFromLink))]
+    [NotifyPropertyChangedFor(nameof(MonadoFromFolder), nameof(MonadoFromLink), nameof(RunAsAdministratorDescription))]
     public partial int MonadoSource { get; set; }
 
     /// <summary>The pasted link of a branch or merge request (or the repository's URL).</summary>
@@ -113,9 +113,39 @@ public sealed partial class ProfilesViewModel : ObservableObject
     [ObservableProperty]
     public partial string MonadoBranch { get; set; } = "";
 
-    /// <summary>"Run as administrator" for a branch or build folder (Mirador.md §4.11 item 51).</summary>
+    /// <summary>
+    /// The profile's "Run as administrator" (Mirador.md §4.10 item 44, §4.11 item 51): for Mirador's Monado the user's
+    /// consent (one UAC prompt, at Save) is enough; a branch or build folder also needs its build approved.
+    /// </summary>
     [ObservableProperty]
     public partial bool RunAsAdministrator { get; set; }
+
+    /// <summary>False for a standard account, which has no administrator token to run Monado with.</summary>
+    public bool CanRunAsAdministrator { get; } = !SafeIsStandardAccount();
+
+    /// <summary>The toggle's description, for the Monado the profile runs.</summary>
+    public string RunAsAdministratorDescription
+    {
+        get
+        {
+            var text = MonadoSource == MiradorSource
+                ? "Gives Monado the GPU's realtime priority (with hardware-accelerated GPU scheduling on). Games still run as you. Windows asks once, when you save. Programs running as you could use it to get administrator rights."
+                : "Only turn this on if you trust this Monado branch: it gets full control of your PC while it runs. Approving copies the build where only administrators can change it; each new build runs as you until you approve it again. Monado as administrator also needs the elevation fix, which upstream doesn't have yet.";
+            return CanRunAsAdministrator ? text : $"{text} Needs an administrator account.";
+        }
+    }
+
+    private static bool SafeIsStandardAccount()
+    {
+        try
+        {
+            return ElevatedMonado.IsStandardAccount();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>Whether the approval card shows: the saved profile builds a branch or uses a build folder.</summary>
     [ObservableProperty]
@@ -236,8 +266,14 @@ public sealed partial class ProfilesViewModel : ObservableObject
     /// <summary>Renames the selected profile; the page asked for the name.</summary>
     public void Rename(string name) => Change(set => set.Rename(Selected!.Id, name), Selected?.Id);
 
-    /// <summary>Deletes the selected profile; the page asked first.</summary>
-    public void Delete() => Change(set => set.Delete(Selected!.Id), keep: null);
+    /// <summary>Deletes the selected profile; the page asked first. The consent goes with the last profile that needed it.</summary>
+    public async Task DeleteAsync()
+    {
+        if (Change(set => set.Delete(Selected!.Id), keep: null))
+        {
+            Message = await host.TakeBackUnneededConsentAsync();
+        }
+    }
 
     [RelayCommand]
     private void Add()
@@ -285,7 +321,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
     private void RemoveVariable(EnvRow row) => Extra.Remove(row);
 
     [RelayCommand(CanExecute = nameof(CanSave))]
-    private void Save()
+    private async Task SaveAsync()
     {
         if (editing is null)
         {
@@ -298,9 +334,28 @@ public sealed partial class ProfilesViewModel : ObservableObject
             return;
         }
 
+        // "Run as administrator" needs the user's consent: Windows asks once, here. Without it the profile runs as you.
+        string? problem = null;
+        if (profile.RunAsAdministrator && !host.ElevatedMonadoAllowed())
+        {
+            var code = await ElevatedMonado.AllowAsync();
+            if (code == 0)
+            {
+                // The consent step recorded SteamVR's Lighthouse files as they are now.
+                host.SteamVrAllowedAgain();
+            }
+            else
+            {
+                profile = profile with { RunAsAdministrator = false };
+                problem = code == ElevatedRuntime.PromptCancelled
+                    ? "Saved to run as you: Windows' administrator prompt was cancelled."
+                    : "Saved to run as you: Mirador couldn't record the consent for Monado to run as administrator. The reason is in mirador.log.";
+            }
+        }
+
         if (Change(set => set.Replace(profile), profile.Id))
         {
-            Message = null;
+            Message = problem ?? await host.TakeBackUnneededConsentAsync();
         }
     }
 
@@ -512,7 +567,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
             [.. Extra.Select(r => new EnvVar(r.Name.Trim(), r.Value))],
             options,
             lighthouse,
-            RunAsAdministrator && MonadoSource is LinkSource or UpstreamSource or FolderSource);
+            RunAsAdministrator && CanRunAsAdministrator);
     }
 
     /// <summary>

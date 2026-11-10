@@ -133,15 +133,19 @@ public sealed partial class HomeViewModel : ObservableObject
     public partial string? RuntimeNotice { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRunsAsYouNotice))]
+    [NotifyPropertyChangedFor(nameof(HasRunsAsYouNotice), nameof(AllowLabel))]
     public partial string? RunsAsYouNotice { get; set; }
 
     /// <summary>
-    /// Whether the "Runs as you" line offers "Allow again": the last Start ran as the user because SteamVR's Lighthouse
-    /// driver changed since the user allowed Monado as administrator (Mirador.md §4.10 item 46).
+    /// Whether the "Runs as you" line offers "Allow" (again): the profile has "Run as administrator" on but the consent
+    /// isn't recorded, or the last Start ran as the user because SteamVR's Lighthouse driver changed since the user
+    /// allowed Monado as administrator (Mirador.md §4.10 item 46).
     /// </summary>
     [ObservableProperty]
     public partial bool OffersAllowAgain { get; set; }
+
+    /// <summary>The button's label: "Allow" when the consent was never recorded, else "Allow again".</summary>
+    public string AllowLabel => RunsAsYouNotice == AppHost.NotAllowedReason ? "Allow" : "Allow again";
 
     /// <summary>False while "Allow again" waits for its UAC prompt.</summary>
     [ObservableProperty]
@@ -614,7 +618,7 @@ public sealed partial class HomeViewModel : ObservableObject
 
         RuntimeNotice = host.Session.RuntimeNotice;
         RunsAsYouNotice = host.RunsAsYouReason();
-        OffersAllowAgain = RunsAsYouNotice == AppHost.SteamVrChangedReason;
+        OffersAllowAgain = RunsAsYouNotice is AppHost.SteamVrChangedReason or AppHost.NotAllowedReason;
         RefreshOpenVr(isActive, active);
     }
 

@@ -51,6 +51,22 @@ public static class ProfileMigration
     }
 
     /// <summary>
+    /// "Run as administrator" on for the profiles the app-wide consent covered (App settings' "Run Monado as
+    /// administrator" until it became a per-profile toggle, 2026-11-09): those on Mirador's or the bundled Monado. A
+    /// branch or a build folder needed its own approval, so it keeps its toggle as it was. Run once, while consent is on.
+    /// </summary>
+    public static (ProfileSet Set, bool Changed) RunAsAdministratorFromConsent(ProfileSet set)
+    {
+        static bool Covered(Profile p) => p.Monado.Kind is SourceKind.Mirador or SourceKind.Bundled && !p.RunAsAdministrator;
+        if (!set.Profiles.Any(Covered))
+        {
+            return (set, false);
+        }
+
+        return (set with { Profiles = [.. set.Profiles.Select(p => Covered(p) ? p with { RunAsAdministrator = true } : p)] }, true);
+    }
+
+    /// <summary>
     /// Profiles under a module's former id get its current one (a renamed module, Mirador_Plan.md Task 67), so the
     /// Profiles page shows their headset and saving keeps it.
     /// </summary>

@@ -40,6 +40,7 @@ public class ModuleIdTests
     public async Task The_helper_gets_the_modules_elevated_table_id()
     {
         await using var h = new Harness(installedCopy: true);
+        h.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
         h.Module.ElevatedModuleId = "fake-table";
 
         await h.StartRunningAsync();
@@ -51,6 +52,7 @@ public class ModuleIdTests
     public async Task A_module_with_no_elevated_table_for_this_headset_runs_as_you()
     {
         await using var h = new Harness(installedCopy: true);
+        h.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
         h.Module.ElevatedModuleId = null;
 
         var outcome = await h.StartRunningAsync();

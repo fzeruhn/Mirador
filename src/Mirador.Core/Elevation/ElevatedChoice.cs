@@ -16,7 +16,13 @@ public static class ElevatedChoice
     public const string NotApproved = "Runs as you: the new build runs as you until you approve it on the Profiles page.";
 
     /// <summary>
-    /// Why this profile runs as the user although the user allowed Monado as administrator, as Home's line; null when
+    /// Whether the user's consent for Monado as administrator is still needed: while a profile has "Run as administrator"
+    /// on. Without one it is taken back, so it never outlives the profiles that asked for it.
+    /// </summary>
+    public static bool ConsentNeeded(ProfileSet set) => set.Profiles.Any(p => p.RunAsAdministrator);
+
+    /// <summary>
+    /// Why this profile runs as the user although it has "Run as administrator" on and the user allowed it, as Home's line; null when
     /// it may run as administrator. In order: this Mirador isn't the installed one (the helper starts Monado only for
     /// <c>Mirador.exe</c> in its own install folder: <see cref="Mirador.Ipc.InstalledMirador"/>), the profile uses a
     /// build folder or a branch built here (anything but Mirador's Monado), it sets extra environment variables, or its

@@ -89,7 +89,7 @@ public sealed partial class ProfilesPage : Page
         };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            ViewModel.Delete();
+            await ViewModel.DeleteAsync();
         }
     }
 }
