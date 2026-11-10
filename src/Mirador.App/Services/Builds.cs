@@ -53,7 +53,10 @@ public sealed class Builds(MonadoBuilder builder)
 
     private readonly Dictionary<string, BuildRun> runs = [];
 
-    /// <summary>A build started, wrote a line or ended: the profile's id.</summary>
+    /// <summary>How long a build's new lines wait to be told, so that a burst of them is one change, not hundreds.</summary>
+    private static readonly TimeSpan LinesDelay = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>A build started, wrote lines (at most four times a second) or ended: the profile's id.</summary>
     public event Action<string>? Changed;
 
     /// <summary>The profile's running or last build in this Mirador's run, or null.</summary>
@@ -96,6 +99,14 @@ public sealed class Builds(MonadoBuilder builder)
         }
 
         Changed?.Invoke(profile.Id);
+        var linesPending = 0; // 1 while a change for new lines is on its way
+        async Task TellLinesAsync()
+        {
+            await Task.Delay(LinesDelay).ConfigureAwait(false);
+            Volatile.Write(ref linesPending, 0);
+            Changed?.Invoke(profile.Id);
+        }
+
         _ = Task.Run(async () =>
         {
             try
@@ -103,7 +114,10 @@ public sealed class Builds(MonadoBuilder builder)
                 run.Outcome = await builder.BuildAsync(profile, line =>
                 {
                     run.Add(line);
-                    Changed?.Invoke(profile.Id);
+                    if (Interlocked.Exchange(ref linesPending, 1) == 0)
+                    {
+                        _ = TellLinesAsync();
+                    }
                 }, run.Cancel.Token);
             }
             catch (OperationCanceledException)
