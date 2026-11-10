@@ -104,5 +104,5 @@ int main(int argc, char** argv)
     }
     const Verdict verdict = judge(mode.steps_ok, mode.failed_step, mode.counts);
     say(out, "%s", verdict.line.c_str());
-    return verdict.pass ? kExitPass : kExitFail;
+    return verdict.pass ? kExitPass : verdict.not_used ? kExitNotUsed : kExitFail;
 }

@@ -15,9 +15,12 @@ public sealed class DirectModeCheck(Func<string?> driverNow, Func<ProcessSpec, I
     /// <summary>
     /// Runs the display check when the driver changed since <paramref name="lastGoodDriver"/>; on a pass hands the
     /// driver to <paramref name="remember"/>. The check's output, pass or fail, goes to <paramref name="saveOutput"/>.
+    /// Returns null, or Home's warning when the layer leaves the headset to Windows (<see cref="DisplayCheckResult.NotUsed"/>):
+    /// the Start goes on, since a Monado with Windows' own headset route may drive it, and the driver isn't kept as
+    /// passed, since nothing showed that direct mode works with it.
     /// </summary>
     /// <exception cref="MiradorException">Direct mode doesn't work with this driver, or couldn't be checked.</exception>
-    public async Task EnsureAsync(
+    public async Task<string?> EnsureAsync(
         LayerFiles layer,
         string? lastGoodDriver,
         Action<string?> remember,
@@ -28,12 +31,17 @@ public sealed class DirectModeCheck(Func<string?> driverNow, Func<ProcessSpec, I
         var driver = driverNow();
         if (driver == lastGoodDriver)
         {
-            return;
+            return null;
         }
 
         progress.Report("Checking direct mode with the new NVIDIA driver…");
         var check = await DisplayCheck.RunAsync(layer.CheckExe, startConsole, ct).ConfigureAwait(false);
         saveOutput?.Invoke(check);
+        if (check.NotUsed)
+        {
+            return NotUsedWarning(check.Message);
+        }
+
         if (!check.Pass)
         {
             throw new MiradorException(check.Finished
@@ -42,7 +50,13 @@ public sealed class DirectModeCheck(Func<string?> driverNow, Func<ProcessSpec, I
         }
 
         remember(driver);
+        return null;
     }
+
+    /// <summary>Home's warning for a headset the layer leaves to Windows.</summary>
+    internal static string NotUsedWarning(string checkMessage) =>
+        $"Direct mode isn't used for this headset: {Sentence(checkMessage)} Monado shows an image on it only through " +
+        "Windows' own headset route (WinRT/WDDC, upstream merge request !2811), which upstream Monado doesn't have yet.";
 
     internal static string Sentence(string s) => s.EndsWith('.') || s.EndsWith('!') || s.EndsWith('?') ? s : s + ".";
 

@@ -10,6 +10,7 @@
 #include <cstdarg>
 #include <cstdio>
 
+#include "core/edid.hpp"
 #include "core/holders.hpp"
 
 namespace dvl {
@@ -149,6 +150,12 @@ uint64_t expected_flips(double seconds, double refresh_hz)
 Verdict judge(bool steps_ok, const std::string& failed_step, const RunCounts& c)
 {
     Verdict verdict;
+    if (!steps_ok && failed_step.find(nvdm::kWindowsDrivesIt) != std::string::npos) {
+        // The step-aside: Windows drives this headset, so this driver's direct mode is neither shown working nor broken.
+        verdict.not_used = true;
+        verdict.line = "NOT USED: " + failed_step;
+        return verdict;
+    }
     if (!steps_ok) {
         verdict.line = "FAIL: " + failed_step;
         return verdict;
@@ -263,7 +270,7 @@ std::vector<std::string> explain_failure(const std::string& line)
         return {};
     }
     if (step == nvdm::step_name(nvdm::OpenStep::Product)) {
-        if (line.find("carries Microsoft's HMD block") != std::string::npos) {
+        if (line.find(nvdm::kWindowsDrivesIt) != std::string::npos) {
             return {"what it means: Windows drives this headset itself, through its own route for headsets (its EDID "
                     "says so), so the layer leaves it alone and direct mode is not used for it",
                     "what to do: nothing for direct mode; if the headset should run in direct mode instead, send this "

@@ -27,4 +27,8 @@ std::optional<EdidMode> preferred_mode(const std::vector<uint8_t>& edid);
 // Windows drives a headset itself (its Windows Display Driver Model route for HMDs, "WDDC").
 bool has_microsoft_hmd_block(const std::vector<uint8_t>& edid);
 
+// The words of the session's Product failure when it leaves a headset with Microsoft's HMD block to Windows. The check
+// tool finds its step-aside by them, and gives it its own verdict: direct mode isn't used, nothing failed.
+inline constexpr const char kWindowsDrivesIt[] = "carries Microsoft's HMD block, so Windows drives it";
+
 } // namespace nvdm

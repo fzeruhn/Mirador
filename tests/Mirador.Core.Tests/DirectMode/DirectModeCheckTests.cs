@@ -18,7 +18,7 @@ public sealed class DirectModeCheckTests : IDisposable
 
     private LayerFiles Layer() => new(dir.Path, Path.Combine(dir.Path, DirectModeLayer.CheckExeName));
 
-    private Task Ensure(string? driver, string? lastGood)
+    private Task<string?> Ensure(string? driver, string? lastGood)
     {
         var starter = new FakeConsoleStarter(spec =>
         {
@@ -48,7 +48,7 @@ public sealed class DirectModeCheckTests : IDisposable
     [Fact]
     public async Task A_new_driver_that_passes_is_remembered()
     {
-        await Ensure("621.01", "620.00");
+        Assert.Null(await Ensure("621.01", "620.00"));
 
         Assert.Equal([Path.Combine(dir.Path, DirectModeLayer.CheckExeName)], started);
         Assert.Equal("621.01", remembered);
@@ -66,6 +66,28 @@ public sealed class DirectModeCheckTests : IDisposable
         Assert.Equal("Direct mode doesn't work with NVIDIA driver 621.01: NVAPI call 0x1F2E3D4C is missing in this driver. Go back to driver 620.00.", e.Message);
         Assert.Equal("unset", remembered);
         Assert.False(saved!.Pass);
+    }
+
+    [Fact]
+    public async Task A_headset_left_to_windows_doesnt_refuse_the_start_and_isnt_remembered()
+    {
+        // The layer stepped aside (the EDID's HMD block): nothing about the driver failed, nor did anything pass.
+        answer = (
+            [
+                "Product FAILED: the Pimax headset (PVR 0x1030)'s EDID carries Microsoft's HMD block, so Windows drives it through its own HMD route and this layer leaves it alone",
+                "NOT USED: Product: the Pimax headset (PVR 0x1030)'s EDID carries Microsoft's HMD block, so Windows drives it through its own HMD route and this layer leaves it alone (code 0)",
+                "what to do: nothing for direct mode",
+            ],
+            3);
+
+        var warning = await Ensure("621.01", "620.00");
+
+        Assert.NotNull(warning);
+        Assert.StartsWith("Direct mode isn't used for this headset:", warning, StringComparison.Ordinal);
+        Assert.Contains("!2811", warning);
+        Assert.Equal("unset", remembered);
+        Assert.True(saved!.NotUsed);
+        Assert.False(saved.Pass);
     }
 
     [Fact]

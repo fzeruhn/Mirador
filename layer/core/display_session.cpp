@@ -382,8 +382,8 @@ OpenResult DisplaySession::identify_product()
             // it to Windows.
             if (has_microsoft_hmd_block(edid)) {
                 return fail(OpenStep::Product, 0,
-                            std::string("the ") + product->name + "'s EDID carries Microsoft's HMD block, so Windows "
-                                "drives it through its own HMD route and this layer leaves it alone");
+                            std::string("the ") + product->name + "'s EDID " + kWindowsDrivesIt +
+                                " through its own HMD route and this layer leaves it alone");
             }
             log(std::string("warning: the ") + product->name + " is not tested with this layer: it gets the mode its "
                 "EDID asks for, " + std::to_string(product->width) + "x" + std::to_string(product->height) + " at " +

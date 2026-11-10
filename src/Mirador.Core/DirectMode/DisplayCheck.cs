@@ -12,6 +12,12 @@ public sealed record DisplayCheckResult(bool Pass, string Message, string? WhatT
 {
     /// <summary>Whether the check ran to its end; false when it couldn't start or ran out of time (no verdict).</summary>
     public bool Finished { get; init; } = true;
+
+    /// <summary>
+    /// Whether the layer left the headset to Windows (its EDID carries Microsoft's HMD block: <c>NOT USED: …</c>):
+    /// direct mode isn't used for it, so the check says nothing about the driver. Not a pass, not a fail.
+    /// </summary>
+    public bool NotUsed { get; init; }
 }
 
 /// <summary>
@@ -68,12 +74,13 @@ public static class DisplayCheck
             output = [.. lines];
         }
 
-        var verdict = output.LastOrDefault(l => After(l, "PASS:") is not null || After(l, "FAIL:") is not null);
-        var message = verdict is null ? null : After(verdict, "PASS:") ?? After(verdict, "FAIL:");
+        var verdict = output.LastOrDefault(l => After(l, "PASS:") is not null || After(l, "FAIL:") is not null || After(l, "NOT USED:") is not null);
+        var notUsed = verdict is not null && After(verdict, "NOT USED:") is not null;
+        var message = verdict is null ? null : After(verdict, "PASS:") ?? After(verdict, "FAIL:") ?? After(verdict, "NOT USED:");
         var whatToDo = output.Select(l => After(l, "what to do:")).LastOrDefault(t => t is not null);
         var pass = exitCode == 0;
         message ??= pass ? "Direct mode works." : $"The display check failed (exit code {exitCode}).";
-        return Result(pass, message, whatToDo, output);
+        return Result(pass && !notUsed, message, whatToDo, output) with { NotUsed = notUsed };
     }
 
     /// <summary>Ends the check and waits a moment for it to let go of the display.</summary>

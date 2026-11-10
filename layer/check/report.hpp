@@ -89,7 +89,8 @@ uint64_t expected_flips(double seconds, double refresh_hz = kRefreshHz);
 
 struct Verdict {
     bool pass = false;
-    std::string line; // "PASS: 1800 presents, 1800 flips in 20.0 s (90.0 Hz)" or "FAIL: <why>[; <why>]"
+    bool not_used = false; // The layer left the headset to Windows (its HMD block): neither a pass nor a fail.
+    std::string line;      // "PASS: 1800 presents, …", "FAIL: <why>[; <why>]" or "NOT USED: <why>"
 };
 
 // Judges a run. `steps_ok` false: a step failed first, named by `failed_step`; the counts are not looked at. Otherwise

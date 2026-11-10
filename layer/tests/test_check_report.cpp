@@ -15,6 +15,7 @@
 #include "check/options.hpp"
 #include "check/report.hpp"
 #include "core/display_session.hpp"
+#include "core/edid.hpp"
 #include "fakes/layer_dll.hpp"
 
 namespace {
@@ -346,6 +347,21 @@ TEST_CASE("verdict_names_the_step_that_failed_and_nothing_else")
     CHECK(v.line.rfind("FAIL", 0) == 0);
     CHECK(contains(v.line, "BindDevice"));
     CHECK(contains(v.line, "code -5"));
+}
+
+TEST_CASE("verdict_of_a_headset_left_to_windows_is_neither_a_pass_nor_a_fail")
+{
+    const dvl::Verdict v = dvl::judge(
+        false,
+        std::string("Product: the Pimax headset (PVR 0x1030)'s EDID ") + nvdm::kWindowsDrivesIt +
+            " through its own HMD route and this layer leaves it alone (code 0)",
+        counts(0, 0));
+    CHECK_FALSE(v.pass);
+    CHECK(v.not_used);
+    CHECK(v.line.rfind("NOT USED: ", 0) == 0);
+
+    // Any other failing step is a fail.
+    CHECK_FALSE(dvl::judge(false, "Product: unknown display product PVR 0x1020", counts(0, 0)).not_used);
 }
 
 TEST_CASE("verdict_fails_a_run_that_stopped_early")

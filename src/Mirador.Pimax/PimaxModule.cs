@@ -198,10 +198,14 @@ public sealed class PimaxModule(PimaxDeps deps) : IHeadsetModule
             ct.ThrowIfCancellationRequested();
 
             // Pimax's software is stopped: the headset is free for the core's re-check after a driver update.
-            await new DirectModeCheck(NvidiaDriverNow, deps.StartConsole).EnsureAsync(
+            var notUsed = await new DirectModeCheck(NvidiaDriverNow, deps.StartConsole).EnsureAsync(
                 layer, state.LastGoodDriver, RememberDriver, check => SaveCheckOutput(ctx, check), progress, ct).ConfigureAwait(false);
 
             var warnings = new List<SessionWarning>();
+            if (notUsed is not null)
+            {
+                warnings.Add(new SessionWarning("direct-mode", notUsed));
+            }
             GeometryResult? upload = null;
             if (model.EyeSteps)
             {

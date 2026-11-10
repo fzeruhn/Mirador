@@ -31,7 +31,9 @@ Another vendor needs a capture on its headset first.
   Only an EDID read from the display through NVAPI counts: the registry keeps every Pimax display Windows ever saw, so
   an untested headset's EDID from there is refused. Tracking and distortion still need a Monado driver for it.
 - **Left to Windows:** an untested headset whose EDID carries Microsoft's HMD block (OUI `5C-12-CA`), which Windows' own
-  HMD route drives. Never the Dream Air, even when an EDID override adds that block.
+  HMD route drives. Never the Dream Air, even when an EDID override adds that block. The check tool's verdict for it is
+  `NOT USED: …` (exit code 3), neither a pass nor a fail; Mirador then starts Monado anyway and warns that only a
+  Monado with Windows' own headset route (upstream !2811) can show an image on it.
 - **No EDID:** with no EDID readable, one display of the vendor and the Dream Air's board on USB, the display is taken to
   be a Dream Air (the board assumption is the Dream Air's only).
 - The board's heartbeat is Monado's (its Dream Air driver): the layer sends none. The check tool sends the Dream Air's.

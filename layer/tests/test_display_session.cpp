@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "core/display_session.hpp"
+#include "core/edid.hpp"
 #include "fakes/edids.hpp"
 #include "fakes/fake_api.hpp"
 #include "fakes/fake_clock.hpp"
@@ -657,6 +658,7 @@ TEST_CASE("an untested headset that carries Microsoft's HMD block is left to Win
     CHECK_FALSE(result.ok);
     CHECK(result.step == OpenStep::Product);
     CHECK(contains(result.message, "Microsoft"));
+    CHECK(contains(result.message, nvdm::kWindowsDrivesIt)); // the check tool's NOT USED verdict keys on these words
     CHECK(contains(result.message, "Windows"));
     CHECK(rig.api.count("enable_direct_mode") == 0);
 }

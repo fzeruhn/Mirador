@@ -9,10 +9,12 @@
 namespace dvl {
 
 // The check tool's exit codes (design 7): 0 only for a passing verdict, 1 when a check failed, 2 for a usage error
-// (and for --help, which gives no verdict).
+// (and for --help, which gives no verdict), 3 when direct mode isn't used for this headset (its EDID hands it to
+// Windows, which drives it itself: nothing about the driver failed).
 inline constexpr int kExitPass = 0;
 inline constexpr int kExitFail = 1;
 inline constexpr int kExitUsage = 2;
+inline constexpr int kExitNotUsed = 3;
 
 inline constexpr int kDefaultSeconds = 20;
 inline constexpr int kMaxSeconds = 3600;
