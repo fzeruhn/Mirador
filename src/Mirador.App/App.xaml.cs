@@ -174,14 +174,15 @@ public partial class App : Application
     {
         try
         {
-            if (await Host.InstallMiradorsMonadoIfNeededAsync() is { } installed)
+            // On the first run, only once the user said where Monado comes from, and only for "Bundled Monado".
+            if (await Host.FirstRunAnswered && await Host.InstallMiradorsMonadoIfNeededAsync() is { } installed)
             {
                 Ui.TryEnqueue(() => Home.ShowMonadoNotice(installed.Message, installed.Ok));
             }
         }
         catch (Exception ex)
         {
-            AppLog.Write("Installing Mirador's Monado at launch failed", ex);
+            AppLog.Write("Installing the bundled Monado at launch failed", ex);
         }
 
         try

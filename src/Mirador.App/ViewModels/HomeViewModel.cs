@@ -363,7 +363,7 @@ public sealed partial class HomeViewModel : ObservableObject
         {
             var profile = SelectedSet().Selected;
             RuntimeProblem = await RuntimeSwitch.SetAsync(
-                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null);
+                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null, profile.RunAsAdministrator);
         }
         catch (Exception e)
         {
@@ -618,7 +618,7 @@ public sealed partial class HomeViewModel : ObservableObject
         }
 
         var active = host.Runtime.Active();
-        var isActive = install is not null && host.Runtime.IsActive(install.Manifest);
+        var isActive = install is not null && host.Runtime.IsActive(install);
         OpenXrRow = new StatusItem("OpenXR runtime", RuntimeLine.Describe(active, install, isActive), isActive ? StatusLevel.Ok : StatusLevel.Info);
         CanSetRuntime = install is not null && !isActive;
         if (isActive)
@@ -826,7 +826,7 @@ public sealed partial class HomeViewModel : ObservableObject
     /// <summary>How installing Mirador's Monado at launch went.</summary>
     public void ShowMonadoNotice(string message, bool ok)
     {
-        ShowNotice("miradors-monado", "Mirador's Monado", message, ok ? InfoBarSeverity.Success : InfoBarSeverity.Warning);
+        ShowNotice("miradors-monado", "Bundled Monado", message, ok ? InfoBarSeverity.Success : InfoBarSeverity.Warning);
         RefreshRuntime();
     }
 

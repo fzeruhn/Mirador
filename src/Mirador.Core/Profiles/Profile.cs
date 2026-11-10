@@ -71,7 +71,7 @@ public sealed record BuildSource(
     /// <summary>What it is, in a few words, for the profile and the diagnostics.</summary>
     public string Describe() => Kind switch
     {
-        SourceKind.Mirador => "Mirador's Monado",
+        SourceKind.Mirador => "the bundled Monado",
         SourceKind.Bundled => "the Monado an older Mirador installed",
         SourceKind.Folder => $"build folder {Folder}",
         SourceKind.Branch when IsUpstreamMain => "upstream main, built here",

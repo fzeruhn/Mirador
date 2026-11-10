@@ -61,9 +61,9 @@
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Builds" />
-                <toolkit:SettingsCard Description="Mirador's Monado is upstream's weekly build. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
+                <toolkit:SettingsCard Description="The bundled Monado is upstream's weekly build, which Mirador downloads. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
                     <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.MonadoSource, Mode=TwoWay}">
-                        <ComboBoxItem Content="Mirador's Monado" />
+                        <ComboBoxItem Content="Bundled Monado" />
                         <ComboBoxItem Content="Build upstream main" />
                         <ComboBoxItem Content="Build from a link" />
                         <ComboBoxItem Content="A build folder" />
@@ -93,7 +93,7 @@
                 </toolkit:SettingsCard>
                 <toolkit:SettingsCard
                     Description="{x:Bind ViewModel.MiradorMonado.Status, Mode=OneWay}"
-                    Header="Mirador's Monado"
+                    Header="Bundled Monado"
                     Visibility="{x:Bind ViewModel.MiradorMonado.IsVisible, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ProgressRing

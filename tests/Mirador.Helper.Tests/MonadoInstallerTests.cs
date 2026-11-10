@@ -116,6 +116,70 @@ public class MonadoInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_version_with_a_file_held_open_stays_whole_and_listed_and_goes_at_a_later_install()
+    {
+        Publish(V1);
+        Publish(V2);
+        Publish(V3);
+        await installer.InstallAsync(V1, CancellationToken.None);
+        await installer.InstallAsync(V2, CancellationToken.None);
+        var held = Path.Combine(Root, V1, "bin", "openxr_monado.dll");
+
+        using (new FileStream(held, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.True((await installer.InstallAsync(V3, CancellationToken.None)).Ok);
+
+            Assert.Equal(V1, File.ReadAllText(Path.Combine(Root, V1, "bin", "monado-service.exe")));
+            Assert.True(File.Exists(Path.Combine(Root, V1, "openxr_monado.json")));
+            Assert.Contains(Path.Combine(Root, V1, "openxr_monado.json"), registry.Available);
+        }
+
+        const string V4 = "monado-2026.11.13-4444444444";
+        Publish(V4);
+        Assert.True((await installer.InstallAsync(V4, CancellationToken.None)).Ok);
+        Assert.False(Directory.Exists(Path.Combine(Root, V1)));
+        Assert.DoesNotContain(Path.Combine(Root, V1, "openxr_monado.json"), registry.Available);
+        Assert.Empty(Directory.GetDirectories(Path.Combine(Root, ".download"), "*.pruned-*"));
+    }
+
+    [Theory]
+    [InlineData("""{"runtime":{"library_path":"D:\\a\\_temp\\monado-install\\bin\\openxr_monado.dll"}}""")]
+    [InlineData("""{"runtime":{"library_path":"bin\\other.dll"}}""")]
+    [InlineData("""{"runtime":{"library_path":"bin\\openxr_monado.dll","MND_libmonado_path":"..\\..\\libmonado.dll"}}""")]
+    [InlineData("""{"runtime":{}}""")]
+    [InlineData("not json")]
+    public async Task A_download_whose_manifest_names_files_elsewhere_is_not_used(string manifest)
+    {
+        Publish(V1, new()
+        {
+            ["openxr_monado.json"] = manifest,
+            ["bin/openxr_monado.dll"] = V1,
+            ["bin/monado-service.exe"] = V1,
+        });
+
+        var reply = await installer.InstallAsync(V1, CancellationToken.None);
+
+        Assert.False(reply.Ok);
+        Assert.Contains("manifest", reply.Error);
+        Assert.Null(MiradorMonado.Read(Root).Current);
+    }
+
+    [Fact]
+    public async Task A_manifest_with_monados_own_relative_paths_is_fine()
+    {
+        Publish(V1, new()
+        {
+            ["openxr_monado.json"] = """{"file_format_version":"1.0.0","runtime":{"name":"Monado","library_path":"./bin/openxr_monado.dll","MND_libmonado_path":"./bin/monado.dll"}}""",
+            ["bin/openxr_monado.dll"] = V1,
+            ["bin/monado-service.exe"] = V1,
+        });
+
+        var reply = await installer.InstallAsync(V1, CancellationToken.None);
+
+        Assert.True(reply.Ok, reply.Error);
+    }
+
+    [Fact]
     public async Task An_older_installs_bundled_runtime_that_is_gone_moves_to_miradors_monado()
     {
         Publish(V1);
@@ -207,7 +271,7 @@ public class MonadoInstallerTests : IDisposable
         var reply = await installer.InstallAsync(V2, CancellationToken.None);
 
         Assert.False(reply.Ok);
-        Assert.Contains("isn't one of Mirador's Monado builds", reply.Error);
+        Assert.Contains("isn't one of the bundled Monado's builds", reply.Error);
         Assert.DoesNotContain(github.Asked, u => u.EndsWith(".zip", StringComparison.Ordinal));
     }
 

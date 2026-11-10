@@ -53,8 +53,8 @@ public interface IRuntimeRegistry
     /// <summary>The OpenXR <c>ActiveRuntime</c> manifest path, or null when there is none.</summary>
     string? GetActive();
 
-    /// <summary>Makes <paramref name="path"/> the OpenXR active runtime.</summary>
-    void SetActive(string path);
+    /// <summary>Makes <paramref name="path"/> the OpenXR active runtime; null leaves no runtime set.</summary>
+    void SetActive(string? path);
 
     /// <summary>The runtime Mirador replaced (<c>PreviousActiveRuntime</c>), or null when nothing is recorded.</summary>
     string? GetRecorded();
@@ -80,11 +80,11 @@ public sealed record CallerInfo(SecurityIdentifier Sid, int SessionId, int Proce
 /// </summary>
 public sealed class HelperHandler
 {
-    private const string BundledMissing = "Mirador's Monado isn't installed yet. Install it on the Profiles page.";
-    private const string NoMiradorsMonado = "This helper can't install Mirador's Monado.";
+    private const string BundledMissing = "The bundled Monado isn't installed yet. Install it on the Profiles page.";
+    private const string NoMiradorsMonado = "This helper can't install the bundled Monado.";
     private const string NotApproved = "This profile's build isn't approved. Turn on \"Run as administrator\" on the profile to approve it.";
     private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
-    private const string NotInstalledMirador = "Only the installed Mirador may change which version of Mirador's Monado is current.";
+    private const string NotInstalledMirador = "Only the installed Mirador may change which version of the bundled Monado is current.";
     private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
     private const string NoElevated = "Mirador's helper service can't start Monado as administrator.";
     private const string NoStart = "Mirador's helper service was asked to start Monado as administrator without any settings.";
@@ -203,7 +203,7 @@ public sealed class HelperHandler
             }
             catch (Exception e)
             {
-                return new HelperReply(false, Shorten($"Mirador's Monado couldn't be installed ({e.Message.TrimEnd('.')})."));
+                return new HelperReply(false, Shorten($"The bundled Monado couldn't be installed ({e.Message.TrimEnd('.')})."));
             }
         }
 
@@ -334,7 +334,9 @@ public sealed class HelperHandler
             return;
         }
 
-        // The machine's runtime never points at a copy that is going: Mirador's Monado takes over, when there is one.
+        // The machine's runtime never points at a copy that is going (or that stays, unrecorded, while a program holds
+        // it): the bundled Monado takes over when there is one, else the runtime Mirador replaced if it is still there,
+        // else none.
         var owner = caller.Sid.Value;
         if (approved.Get(owner, profileId) is { } build && registry.GetActive() is { } active
             && string.Equals(Path.GetFullPath(active), Path.GetFullPath(build.Manifest), StringComparison.OrdinalIgnoreCase))
@@ -343,6 +345,11 @@ public sealed class HelperHandler
             if (File.Exists(miradors))
             {
                 registry.SetActive(miradors);
+            }
+            else
+            {
+                registry.SetActive(registry.GetRecorded() is { } recorded && File.Exists(recorded) ? recorded : null);
+                registry.SetRecorded(null);
             }
         }
 

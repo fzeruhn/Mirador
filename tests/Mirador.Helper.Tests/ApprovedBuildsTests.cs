@@ -54,6 +54,84 @@ public sealed class ApprovedBuildsTests : IDisposable
     }
 
     [Fact]
+    public void The_copy_gets_miradors_own_stand_in_whatever_the_build_had_there()
+    {
+        var source = MakeInstall();
+        Directory.CreateDirectory(Path.Combine(source, "bin", "service"));
+        File.WriteAllText(Path.Combine(source, "bin", "service", "monado-service.exe"), "the build's own");
+        Directory.CreateDirectory(Path.Combine(App, "standin"));
+        File.WriteAllText(Path.Combine(App, "standin", "monado-service.exe"), "mirador's stand-in");
+
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, source, App, store);
+
+        Assert.Equal(Path.Combine(build.ServerDir, "service"), build.StandInDir);
+        Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "monado-service.exe")));
+        Assert.Null(ApprovedBuilds.Verify(build, App));
+    }
+
+    [Fact]
+    public void A_build_without_a_stand_in_gets_one_in_its_copy()
+    {
+        Directory.CreateDirectory(Path.Combine(App, "standin"));
+        File.WriteAllText(Path.Combine(App, "standin", "monado-service.exe"), "mirador's stand-in");
+
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, MakeInstall(), App, store);
+
+        Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "monado-service.exe")));
+        Assert.Equal(4, build.Files.Count);
+    }
+
+    [Fact]
+    public void Matches_takes_its_hashes_from_the_function_given()
+    {
+        var source = MakeInstall();
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, source, App, store);
+        var asked = new List<string>();
+
+        Assert.True(ApprovedBuilds.Matches(build, source, f => { asked.Add(f); return ApprovedBuilds.HashOf(f); }));
+        Assert.Equal(2, asked.Count);
+        Assert.False(ApprovedBuilds.Matches(build, source, _ => "0"));
+    }
+
+    [Fact]
+    public void A_copy_with_a_file_held_open_is_left_whole_when_forgotten_and_goes_at_the_next_approval()
+    {
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, MakeInstall(), App, store);
+
+        using (new FileStream(Path.Combine(build.ServerDir, "monado-service.exe"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            ApprovedBuilds.Forget(Finn, "p1", App, store);
+
+            Assert.Null(store.Get(Finn, "p1"));
+            Assert.True(File.Exists(build.Manifest));
+            Assert.True(File.Exists(Path.Combine(build.ServerDir, "openxr_monado.dll")));
+        }
+
+        var again = ApprovedBuilds.Approve(Finn, "p1", "abcdef1234", MakeInstall("install2"), App, store);
+
+        Assert.False(Directory.Exists(build.Folder));
+        Assert.True(Directory.Exists(again.Folder));
+        Assert.Empty(Directory.GetDirectories(Path.Combine(App, "builds"), ".old-*"));
+    }
+
+    [Fact]
+    public void A_held_copy_of_a_profile_forgotten_for_good_goes_at_another_profiles_approval()
+    {
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, MakeInstall(), App, store);
+        using (new FileStream(Path.Combine(build.ServerDir, "monado-service.exe"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            ApprovedBuilds.Forget(Finn, "p1", App, store);
+        }
+
+        Assert.True(Directory.Exists(build.Folder));
+
+        ApprovedBuilds.Approve(Other, "p2", Commit, MakeInstall("install2"), App, store);
+
+        Assert.False(Directory.Exists(Path.Combine(App, "builds", Finn, "p1")));
+        Assert.NotNull(store.Get(Other, "p2"));
+    }
+
+    [Fact]
     public void A_rebuild_no_longer_matches_and_a_new_approval_replaces_the_old_copy()
     {
         var source = MakeInstall();

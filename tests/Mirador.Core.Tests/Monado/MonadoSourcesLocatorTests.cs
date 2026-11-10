@@ -36,6 +36,61 @@ public class MonadoSourcesLocatorTests
     }
 
     [Fact]
+    public void A_profile_running_as_administrator_gets_its_builds_approved_copy()
+    {
+        using var dir = new TempDir();
+        var folder = dir.File("my-build");
+        MakeInstall(folder);
+        var approved = new ApprovedBuild(
+            "S-1-5-21-1", "p1", "folder", dir.File("app", "builds", "S-1-5-21-1", "p1", "folder"), new Dictionary<string, string>());
+        var asked = new List<string>();
+        var locator = new MonadoLocator(dir.File("monado"), approvedCopy: (p, install) =>
+        {
+            asked.Add($"{p.Id} {install.Manifest}");
+            return approved;
+        });
+        var profile = new Profile(
+            "p1", "Mine", null, new BuildSource(SourceKind.Folder, folder), [], new Dictionary<string, string>(), RunAsAdministrator: true);
+
+        Assert.Same(approved, locator.Locate(profile).Approved);
+        Assert.Equal([$"p1 {Path.Combine(folder, "openxr_monado.json")}"], asked);
+        Assert.Null(locator.Locate(profile with { RunAsAdministrator = false }).Approved);
+        Assert.Single(asked);
+    }
+
+    [Fact]
+    public void A_branch_profile_gets_its_approved_copy_and_none_when_its_build_isnt_the_approved_one()
+    {
+        using var dir = new TempDir();
+        var approved = new ApprovedBuild(
+            "S-1-5-21-1", "p1", "abc1234", dir.File("app", "builds", "S-1-5-21-1", "p1", "abc1234"), new Dictionary<string, string>());
+        var matches = true;
+        var locator = new MonadoLocator(dir.File("monado"), dir.File("Builds"), (_, _) => matches ? approved : null);
+        MakeInstall(locator.BranchInstallDir("p1"));
+        var profile = new Profile("p1", "Mine", null, BuildSource.UpstreamMain, [], new Dictionary<string, string>(), RunAsAdministrator: true);
+
+        var install = locator.Locate(profile);
+        Assert.Same(approved, install.Approved);
+        Assert.Equal(Path.Combine(locator.BranchInstallDir("p1"), "openxr_monado.json"), install.Manifest);
+
+        matches = false;
+        Assert.Null(locator.Locate(profile).Approved);
+    }
+
+    [Fact]
+    public void Miradors_monado_has_no_approved_copy_to_look_up()
+    {
+        using var dir = new TempDir();
+        var root = dir.File("monado");
+        MakeInstall(Path.Combine(root, Version));
+        MiradorMonado.Write(root, new MiradorMonadoVersions(Version, null));
+        var locator = new MonadoLocator(root, approvedCopy: (_, _) => throw new InvalidOperationException("not asked"));
+        var profile = new Profile("p1", "Mine", null, BuildSource.Mirador, [], new Dictionary<string, string>(), RunAsAdministrator: true);
+
+        Assert.Null(locator.Locate(profile).Approved);
+    }
+
+    [Fact]
     public void Miradors_monado_not_installed_says_where_to_install_it()
     {
         using var dir = new TempDir();

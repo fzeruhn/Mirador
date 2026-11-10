@@ -49,7 +49,7 @@ public sealed record UpdateReport(
 
         if (NewerMonado is { } monado)
         {
-            parts.Add($"Mirador's Monado {monado} is out: update it on the Profiles page.");
+            parts.Add($"The bundled Monado {monado} is out: update it on the Profiles page.");
         }
 
         parts.Add($"Checked at {At.ToLocalTime():HH:mm}.");

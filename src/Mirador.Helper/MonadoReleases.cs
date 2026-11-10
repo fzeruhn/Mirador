@@ -77,7 +77,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
     {
         if (!MiradorMonado.IsVersion(version))
         {
-            return new HelperReply(false, "That isn't a version of Mirador's Monado.");
+            return new HelperReply(false, "That isn't a version of the bundled Monado.");
         }
 
         await installing.WaitAsync(ct).ConfigureAwait(false);
@@ -111,12 +111,12 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         var releases = await MonadoReleaseList.FetchAsync(http, userAgentVersion, ct).ConfigureAwait(false);
         if (releases is null)
         {
-            return new HelperReply(false, "GitHub didn't answer, so Mirador's Monado wasn't installed. Try again later.");
+            return new HelperReply(false, "GitHub didn't answer, so the bundled Monado wasn't installed. Try again later.");
         }
 
         if (releases.FirstOrDefault(r => r.Version == version) is not { } release)
         {
-            return new HelperReply(false, $"{version} isn't one of Mirador's Monado builds on GitHub (any more), so it wasn't installed.");
+            return new HelperReply(false, $"{version} isn't one of the bundled Monado's builds on GitHub (any more), so it wasn't installed.");
         }
 
         if (!File.Exists(standInExe))
@@ -144,7 +144,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         }
         catch (Exception e) when (e is MiradorInstallException or IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            return new HelperReply(false, e is MiradorInstallException ? e.Message : $"Mirador's Monado couldn't be installed ({e.Message.TrimEnd('.')}).");
+            return new HelperReply(false, e is MiradorInstallException ? e.Message : $"The bundled Monado couldn't be installed ({e.Message.TrimEnd('.')}).");
         }
         finally
         {
@@ -160,7 +160,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             var versions = MiradorMonado.Read(monadoRoot);
             if (versions.Previous is not { } previous || !File.Exists(MiradorMonado.ManifestOf(monadoRoot, previous)))
             {
-                return new HelperReply(false, "There is no earlier version of Mirador's Monado to go back to.");
+                return new HelperReply(false, "There is no earlier version of the bundled Monado to go back to.");
             }
 
             MiradorMonado.Write(monadoRoot, new MiradorMonadoVersions(previous, versions.Current));
@@ -219,9 +219,23 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         }
     }
 
-    /// <summary>Every version but the current and the previous goes, with its runtime entry; one in use stays for now.</summary>
+    /// <summary>
+    /// Every version but the current and the previous goes, with its runtime entry. Each is moved aside whole before it
+    /// is deleted: a Monado running from it (its working folder is inside) or a file held open there keeps it whole and
+    /// listed until a later install, never half deleted where it is listed. A game that has only loaded its DLL doesn't
+    /// stop the move; that DLL stays behind in the folder moved aside, and goes at a later install.
+    /// </summary>
     private void Prune(string current, string? previous)
     {
+        var work = Path.Combine(monadoRoot, ".download");
+        if (Directory.Exists(work))
+        {
+            foreach (var left in Directory.GetDirectories(work, "*.pruned-*").Concat(Directory.GetDirectories(work, "*.old")))
+            {
+                TryDeleteDirectory(left);
+            }
+        }
+
         foreach (var folder in Directory.GetDirectories(monadoRoot))
         {
             var name = Path.GetFileName(folder);
@@ -230,8 +244,19 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
                 continue;
             }
 
+            var aside = Path.Combine(work, name + ".pruned-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(work);
+                Directory.Move(folder, aside);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                continue; // held: it stays whole, and listed, until a later install
+            }
+
             registry.SetAvailable(MiradorMonado.ManifestOf(monadoRoot, name), available: false);
-            TryDeleteDirectory(folder);
+            TryDeleteDirectory(aside);
         }
     }
 
@@ -245,12 +270,12 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             using var response = await http.GetAsync(new Uri(release.ZipUrl), HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                throw new MiradorInstallException($"GitHub didn't give Mirador's Monado ({(int)response.StatusCode} {response.ReasonPhrase}).");
+                throw new MiradorInstallException($"GitHub didn't give the bundled Monado ({(int)response.StatusCode} {response.ReasonPhrase}).");
             }
 
             if (response.Content.Headers.ContentLength > MaxZipBytes)
             {
-                throw new MiradorInstallException("Mirador's Monado download is larger than Mirador allows, so it was not fetched.");
+                throw new MiradorInstallException("The bundled Monado's download is larger than Mirador allows, so it was not fetched.");
             }
 
             using var hash = SHA256.Create();
@@ -265,7 +290,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
                     total += read;
                     if (total > MaxZipBytes)
                     {
-                        throw new MiradorInstallException("Mirador's Monado download is larger than Mirador allows, so it was stopped.");
+                        throw new MiradorInstallException("The bundled Monado's download is larger than Mirador allows, so it was stopped.");
                     }
 
                     linked.CancelAfter(IdleTimeout);
@@ -277,7 +302,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             hash.TransformFinalBlock([], 0, 0);
             if (!string.Equals(Convert.ToHexString(hash.Hash!), release.ZipSha256, StringComparison.OrdinalIgnoreCase))
             {
-                throw new MiradorInstallException("Mirador's Monado download doesn't match the SHA-256 GitHub lists for it, so it was not used.");
+                throw new MiradorInstallException("The bundled Monado's download doesn't match the SHA-256 GitHub lists for it, so it was not used.");
             }
         }
         catch (Exception e) when (e is HttpRequestException || (e is OperationCanceledException && !userCt.IsCancellationRequested))
@@ -300,13 +325,13 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
             if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             {
-                throw new MiradorInstallException($"Mirador's Monado download has a file (\"{entry.FullName}\") that would land outside its folder, so it was not used.");
+                throw new MiradorInstallException($"The bundled Monado's download has a file (\"{entry.FullName}\") that would land outside its folder, so it was not used.");
             }
 
             size += entry.Length;
             if (size > MaxUnpackedBytes)
             {
-                throw new MiradorInstallException("Mirador's Monado download unpacks to more than Mirador allows, so it was not used.");
+                throw new MiradorInstallException("The bundled Monado's download unpacks to more than Mirador allows, so it was not used.");
             }
 
             targets.Add((entry, target));
@@ -332,8 +357,50 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
         {
             if (!File.Exists(Path.Combine(folder, file)))
             {
-                throw new MiradorInstallException($"Mirador's Monado download has no {file}, so it was not used.");
+                throw new MiradorInstallException($"The bundled Monado's download has no {file}, so it was not used.");
             }
+        }
+
+        if (ManifestProblem(folder) is { } problem)
+        {
+            throw new MiradorInstallException($"The bundled Monado's download has a manifest that {problem}, so it was not used.");
+        }
+    }
+
+    /// <summary>
+    /// Why the download's runtime manifest can't be the machine's runtime, or null: every OpenXR program loads what it
+    /// names, so it must name the download's own <c>bin\openxr_monado.dll</c>, and any other path in it (Monado's
+    /// <c>MND_libmonado_path</c>) must stay inside the download's folder, relative as CI builds it.
+    /// </summary>
+    internal static string? ManifestProblem(string folder)
+    {
+        var root = Path.GetFullPath(folder) + Path.DirectorySeparatorChar;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "openxr_monado.json")));
+            var runtime = doc.RootElement.GetProperty("runtime");
+            var library = runtime.GetProperty("library_path").GetString();
+            if (library is null || Path.IsPathRooted(library)
+                || !string.Equals(Path.GetFullPath(library, root), Path.Combine(root, "bin", "openxr_monado.dll"), StringComparison.OrdinalIgnoreCase))
+            {
+                return "doesn't name its own bin\\openxr_monado.dll";
+            }
+
+            foreach (var property in runtime.EnumerateObject())
+            {
+                if (property.Name.EndsWith("_path", StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                    && (property.Value.GetString() is not { } path || Path.IsPathRooted(path)
+                        || !Path.GetFullPath(path, root).StartsWith(root, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return $"names a file outside its folder ({property.Name})";
+                }
+            }
+
+            return null;
+        }
+        catch (Exception e) when (e is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or IOException or ArgumentException)
+        {
+            return "can't be read";
         }
     }
 

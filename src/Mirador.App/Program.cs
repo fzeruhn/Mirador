@@ -26,10 +26,6 @@ public static partial class Program
     private static int Main(string[] args)
     {
         var parsed = AppArgs.Parse(args);
-        if (parsed.SetRuntime is { } manifest)
-        {
-            return SetRuntimeCommand.Run(manifest, ActiveRuntimeWriter.Write);
-        }
 
         // The elevated step of "Run Monado as administrator": records this user's consent, and SteamVR's Lighthouse DLLs
         // that Valve didn't sign as they are now. No window, no app.

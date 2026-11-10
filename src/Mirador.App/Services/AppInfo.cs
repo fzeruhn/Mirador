@@ -55,18 +55,18 @@ public static class AppInfo
             case SourceKind.Folder:
                 return $"build folder {profile.Monado.Folder}";
             case SourceKind.Mirador:
-                return $"Mirador's Monado {MiradorMonado.Read(Path.Combine(appDir, "monado")).Current ?? "(not installed)"}";
+                return $"the bundled Monado {MiradorMonado.Read(Path.Combine(appDir, "monado")).Current ?? "(not installed)"}";
             case SourceKind.Branch:
                 return $"{profile.Monado.Describe()}{BuiltCommit(profile)}";
         }
 
         try
         {
-            return "bundled " + File.ReadAllText(Path.Combine(appDir, "monado", "VERSION.txt")).Trim();
+            return "the Monado an older Mirador installed, " + File.ReadAllText(Path.Combine(appDir, "monado", "VERSION.txt")).Trim();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return "bundled (no VERSION.txt: a development build without a bundled Monado)";
+            return "the Monado an older Mirador installed (no VERSION.txt: a development build without one)";
         }
     }
 

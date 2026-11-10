@@ -71,11 +71,12 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private async Task AskWhereMonadoComesFromAsync()
     {
+        var bundled = true;
         try
         {
             var root = await LoadedRootAsync();
             var choices = new RadioButtons { SelectedIndex = 0 };
-            choices.Items.Add("Mirador's Monado (recommended): upstream's weekly build, ready to run");
+            choices.Items.Add("Bundled Monado (recommended): upstream's weekly build, ready to run");
             choices.Items.Add("Build upstream main here (needs the build tools)");
             choices.Items.Add("Build a branch or merge request from its link");
             choices.Items.Add("A Monado I built myself (a build folder)");
@@ -98,6 +99,7 @@ public sealed partial class MainWindow : Window
             await dialog.ShowAsync();
 
             var host = App.Current.Host;
+            bundled = choices.SelectedIndex == 0;
             var source = choices.SelectedIndex == 1 ? Core.Profiles.BuildSource.UpstreamMain : Core.Profiles.BuildSource.Mirador;
             var set = host.Profiles.Load();
             set = set with { Profiles = [.. set.Profiles.Select(p => p with { Monado = source })] };
@@ -111,6 +113,10 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             Services.AppLog.Write("The first run's question failed", ex);
+        }
+        finally
+        {
+            App.Current.Host.AnswerFirstRun(bundled);
         }
     }
 

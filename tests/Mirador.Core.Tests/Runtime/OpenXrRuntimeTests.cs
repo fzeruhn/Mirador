@@ -31,6 +31,21 @@ public class OpenXrRuntimeTests
     }
 
     [Fact]
+    public void A_builds_approved_copy_as_the_runtime_makes_that_build_active()
+    {
+        var install = new Mirador.Core.Monado.MonadoInstall(
+            @"C:\Users\u\Builds\p1\install\openxr_monado.json", @"C:\Users\u\Builds\p1\install\bin\openxr_monado.dll",
+            @"C:\Users\u\Builds\p1\install\bin\monado-service.exe", @"C:\Users\u\Builds\p1\install\bin\service", IsBundled: false);
+        var approved = new Mirador.Ipc.ApprovedBuild(
+            "S-1-5-21-1", "p1", "abc1234", @"C:\Program Files\Mirador\builds\S-1-5-21-1\p1\abc1234", new Dictionary<string, string>());
+        var runtime = With(@"C:\Program Files\Mirador\builds\S-1-5-21-1\p1\abc1234\openxr_monado.json");
+
+        Assert.False(runtime.IsActive(install));
+        Assert.True(runtime.IsActive(install with { Approved = approved }));
+        Assert.True(With(install.Manifest).IsActive(install with { Approved = approved }));
+    }
+
+    [Fact]
     public void The_same_path_is_active()
     {
         Assert.True(With(@"C:\Monado\openxr_monado.json").IsActive(@"C:\Monado\openxr_monado.json"));

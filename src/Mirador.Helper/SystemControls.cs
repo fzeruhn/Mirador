@@ -284,7 +284,18 @@ public sealed class SystemRuntimeRegistry : IRuntimeRegistry
 
     public string? GetActive() => Read(activeKey, ActiveValue);
 
-    public void SetActive(string path) => Write(activeKey, ActiveValue, path);
+    public void SetActive(string? path)
+    {
+        if (path is not null)
+        {
+            Write(activeKey, ActiveValue, path);
+            return;
+        }
+
+        using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+        using var key = root.OpenSubKey(activeKey, writable: true);
+        key?.DeleteValue(ActiveValue, throwOnMissingValue: false);
+    }
 
     public string? GetRecorded() => Read(recordedKey, RecordedValue);
 

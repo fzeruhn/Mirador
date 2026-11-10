@@ -41,9 +41,18 @@ try {
     $library = (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).runtime.library_path
     $libraryPath = [IO.Path]::GetFullPath($library, $Install)
     if (-not $library) { Add-Check 'Runtime manifest' 'Failed' "The file $manifest has no runtime.library_path." }
+    elseif ([IO.Path]::IsPathRooted($library)) { Add-Check 'Runtime manifest' 'Failed' "It names $library by its full path: once unpacked elsewhere it must name its DLL relative to itself (the helper refuses it)." }
     elseif ($libraryPath -ne (Join-Path $Install 'bin\openxr_monado.dll')) { Add-Check 'Runtime manifest' 'Failed' "It names $libraryPath, not the install's bin\openxr_monado.dll." }
     elseif (-not (Test-Path -LiteralPath $libraryPath)) { Add-Check 'Runtime manifest' 'Failed' "The file $manifest points to $libraryPath, which doesn't exist." }
-    else { Add-Check 'Runtime manifest' 'Passed' 'It names bin\openxr_monado.dll.' }
+    else {
+        # Any other path in it (Monado's MND_libmonado_path) must stay inside the install, relative, as the helper requires.
+        $runtime = (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).runtime
+        $outside = $runtime.PSObject.Properties | Where-Object { $_.Name -like '*_path' -and $_.Value -is [string] } | Where-Object {
+            [IO.Path]::IsPathRooted($_.Value) -or -not [IO.Path]::GetFullPath($_.Value, $Install).StartsWith((Join-Path $Install ''), [StringComparison]::OrdinalIgnoreCase)
+        }
+        if ($outside) { Add-Check 'Runtime manifest' 'Failed' "It names files outside the install, or by their full path: $(($outside | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', ')." }
+        else { Add-Check 'Runtime manifest' 'Passed' 'It names bin\openxr_monado.dll, and nothing outside the install.' }
+    }
 }
 catch {
     Add-Check 'Runtime manifest' 'Failed' "The file $manifest can't be read as JSON: $($_.Exception.Message)"

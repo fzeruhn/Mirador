@@ -186,7 +186,7 @@ public sealed class SessionController(SessionDeps deps)
     /// it; else null. Read fresh from the registry each time, so it goes once the runtime is set.
     /// </summary>
     public string? RuntimeNotice =>
-        CurrentInstall is { } install && !deps.Runtime.IsActive(install.Manifest) ? NotActiveNotice : null;
+        CurrentInstall is { } install && !deps.Runtime.IsActive(install) ? NotActiveNotice : null;
 
     /// <summary>
     /// The profile and headset module of the session that is starting (once the Start has read the profile), running or
@@ -1130,7 +1130,8 @@ public sealed class SessionController(SessionDeps deps)
     {
         // install is in Mirador's admin-only folder exactly when the profile runs Mirador's (or the bundled) Monado
         // (MonadoLocator). A branch or build folder runs elevated only as its approved copy, which the helper checks.
-        var approvedBuild = !install.IsBundled && profile.RunAsAdministrator && deps.ApprovedBuildCurrent?.Invoke(profile) == true;
+        var approvedBuild = !install.IsBundled && profile.RunAsAdministrator
+            && (install.Approved is not null || deps.ApprovedBuildCurrent?.Invoke(profile) == true);
         var eligible = deps.ElevatedLauncher is not null
             && profile.RunAsAdministrator
             && deps.ElevatedConsented?.Invoke() == true

@@ -43,6 +43,9 @@ public sealed class AppHost : IAsyncDisposable
     // answered. Asked at start and again at each elevated Start; Home only reads it.
     private volatile string? helperInstallDir;
 
+    // A profile's build is hashed to tell whether it is the approved one; kept while its files don't change.
+    private readonly FileHashCache buildHashes = new(Ipc.ApprovedBuilds.HashOf);
+
     private AppHost(string appDir, AppPaths paths)
     {
         AppDir = appDir;
@@ -52,7 +55,7 @@ public sealed class AppHost : IAsyncDisposable
         Settings = new AppSettingsStore(paths.SettingsFile);
         Helper = new HelperClient();
         Runtime = new OpenXrRuntime(new RegistryRuntimeReader());
-        Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir);
+        Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir, ApprovedCopyOf);
         Builds = new Builds(new MonadoBuilder(
             new CommandRunner(), Locator, BuildTools.For(appDir, paths),
             new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System));
@@ -130,6 +133,18 @@ public sealed class AppHost : IAsyncDisposable
     /// comes from (Mirador.md §4.11 item 55). Taken before the launch's migrations, which may save the file.
     /// </summary>
     public bool FirstRun { get; private set; }
+
+    private readonly TaskCompletionSource<bool> firstRunAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Done once the first run's question is answered (or failed to show), true when the answer was the bundled Monado:
+    /// nothing is downloaded for the profiles before the user said where their Monado comes from, nor after they picked
+    /// another. True at once when this isn't a first run.
+    /// </summary>
+    public Task<bool> FirstRunAnswered => FirstRun ? firstRunAnswered.Task : Task.FromResult(true);
+
+    /// <summary>The first run's question was answered (<see cref="FirstRunAnswered"/>): <paramref name="bundled"/> when with the bundled Monado.</summary>
+    public void AnswerFirstRun(bool bundled) => firstRunAnswered.TrySetResult(bundled);
 
     /// <summary>The folder Mirador.exe is in.</summary>
     public string AppDir { get; }
@@ -568,13 +583,31 @@ public sealed class AppHost : IAsyncDisposable
 
         try
         {
-            return AllowElevatedCommand.CurrentUser()?.Value is { } owner
-                && new RegistryApprovedBuildStore().Get(owner, profile.Id) is { } approved
-                && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(Locator.Locate(profile).Manifest)!);
+            return Locator.Locate(profile).Approved is not null;
         }
-        catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The approved copy of <paramref name="install"/>, <paramref name="profile"/>'s build as it is now, or null when it
+    /// isn't the approved one (the locator's lookup). The build's DLL and service are hashed only when they changed.
+    /// </summary>
+    private ApprovedBuild? ApprovedCopyOf(Profile profile, MonadoInstall install)
+    {
+        try
+        {
+            return AllowElevatedCommand.CurrentUser()?.Value is { } owner
+                && new RegistryApprovedBuildStore().Get(owner, profile.Id) is { } approved
+                && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(install.Manifest)!, buildHashes.HashOf)
+                ? approved
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return null;
         }
     }
 
@@ -673,12 +706,12 @@ public sealed class AppHost : IAsyncDisposable
             if (changed)
             {
                 Profiles.Save(set);
-                notices.Add("Mirador no longer comes with Monado: your profiles now use Mirador's Monado, upstream's weekly build, which Mirador downloads for them.");
+                notices.Add("Your profiles now use the bundled Monado, upstream's weekly build, which Mirador downloads for them, instead of the Monado an older Mirador installed.");
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            AppLog.Write("Couldn't move the profiles to Mirador's Monado", e);
+            AppLog.Write("Couldn't move the profiles to the bundled Monado", e);
         }
     }
 
@@ -704,14 +737,14 @@ public sealed class AppHost : IAsyncDisposable
         var newest = (await Ipc.MonadoReleaseList.FetchAsync(http, AppInfo.Version, CancellationToken.None))?.FirstOrDefault();
         if (newest is null)
         {
-            return ("Mirador's Monado couldn't be downloaded: GitHub didn't answer, or no build is published yet. Try again on the Profiles page.", false);
+            return ("The bundled Monado couldn't be downloaded: GitHub didn't answer, or no build is published yet. Try again on the Profiles page.", false);
         }
 
         var reply = await Helper.SendAsync(new Ipc.HelperRequest(Ipc.HelperCommand.InstallMonado, Version: newest.Version), CancellationToken.None);
         NotifyProfilesChanged();
         return reply.Ok
-            ? ($"Mirador's Monado {newest.Version} is installed.", true)
-            : ($"Mirador's Monado couldn't be installed: {reply.Error}", false);
+            ? ($"The bundled Monado {newest.Version} is installed.", true)
+            : ($"The bundled Monado couldn't be installed: {reply.Error}", false);
     }
 
     /// <summary>Records <c>HKCU\Software\Mirador</c> <c>AppPath</c>, where the stand-in finds Mirador to start it.</summary>

@@ -302,7 +302,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
         if (Change(set => set.Delete(id), keep: null))
         {
-            Message = await host.TakeBackUnneededConsentAsync() ?? await host.ForgetUnneededApprovalsAsync();
+            Message = await TakeBackUnneededAsync();
 
             // What was the profile's alone goes with it: its branch's source, build and install (often gigabytes),
             // and its Verify result.
@@ -428,11 +428,22 @@ public sealed partial class ProfilesViewModel : ObservableObject
         // Saved or not, a consent no profile uses goes (the prompt may have recorded one for a save that then failed), and
         // so does an approved build the profile no longer runs as administrator.
         var saved = Change(set => set.Replace(profile), profile.Id);
-        var takeBack = await host.TakeBackUnneededConsentAsync() ?? await host.ForgetUnneededApprovalsAsync();
+        var takeBack = await TakeBackUnneededAsync();
         if (saved)
         {
             Message = problem ?? takeBack;
         }
+    }
+
+    /// <summary>
+    /// Takes back the consent no profile uses and the approvals no profile runs as administrator any more, each whether
+    /// or not the other worked; what went wrong, or null.
+    /// </summary>
+    private async Task<string?> TakeBackUnneededAsync()
+    {
+        var consent = await host.TakeBackUnneededConsentAsync();
+        var approvals = await host.ForgetUnneededApprovalsAsync();
+        return consent is null ? approvals : approvals is null ? consent : $"{consent} {approvals}";
     }
 
     private bool CanSave() => IsDirty && !HasProblems;

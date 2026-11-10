@@ -180,13 +180,13 @@ public class MonadoLocatorTests
     }
 
     [Fact]
-    public void No_bundled_monado_says_pick_a_folder()
+    public void No_monado_from_an_older_install_says_pick_another()
     {
         using var dir = new TempDir();
 
         var ex = LocateFails(dir.File("app"), BuildSource.Bundled);
 
-        Assert.Equal("This Mirador has no bundled Monado. Pick a Monado build folder in the profile.", ex.Message);
+        Assert.Equal("This Mirador has no Monado from an older install. Pick another Monado in the profile.", ex.Message);
     }
 
     [Fact]

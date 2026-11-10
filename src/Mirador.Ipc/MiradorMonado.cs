@@ -84,7 +84,7 @@ public static partial class MiradorMonado
     /// <summary>The install folder of <paramref name="version"/>.</summary>
     /// <exception cref="ArgumentException">It isn't a version's name.</exception>
     public static string FolderOf(string root, string version) =>
-        IsVersion(version) ? Path.Combine(root, version) : throw new ArgumentException($"Not a version of Mirador's Monado: {version}", nameof(version));
+        IsVersion(version) ? Path.Combine(root, version) : throw new ArgumentException($"Not a version of the bundled Monado: {version}", nameof(version));
 
     [GeneratedRegex(@"^monado-\d{4}\.\d{2}\.\d{2}-[0-9a-f]{7,40}\z")]
     private static partial Regex VersionPattern();

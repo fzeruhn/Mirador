@@ -10,4 +10,16 @@ namespace Mirador.Core.Monado;
 /// older Mirador came with), whose stand-in the installer or the helper placed; false for one in a folder the user can
 /// write (a build folder, a branch built here).
 /// </param>
-public sealed record MonadoInstall(string Manifest, string RuntimeDll, string ServiceExe, string StandInDir, bool IsBundled);
+/// <param name="Approved">
+/// For a branch or build folder whose profile runs as administrator: the approved copy of this very build (Mirador.md
+/// §4.11 item 51), which is what the helper runs elevated and what "Set as OpenXR runtime" makes the runtime; null when
+/// the build isn't approved as it is now.
+/// </param>
+public sealed record MonadoInstall(string Manifest, string RuntimeDll, string ServiceExe, string StandInDir, bool IsBundled, Mirador.Ipc.ApprovedBuild? Approved = null)
+{
+    /// <summary>The manifests that make this build the OpenXR runtime: its own, and its approved copy's.</summary>
+    public IEnumerable<string> RuntimeManifests => Approved is { } a ? [Manifest, a.Manifest] : [Manifest];
+
+    /// <summary>The folders a game's stand-in of this build runs from: its own, and its approved copy's.</summary>
+    public IEnumerable<string> StandInDirs => Approved is { } a ? [StandInDir, a.StandInDir] : [StandInDir];
+}

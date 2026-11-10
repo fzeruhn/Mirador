@@ -151,7 +151,7 @@ internal sealed class FakeRuntimeRegistry : IRuntimeRegistry
         return Active;
     }
 
-    public void SetActive(string path)
+    public void SetActive(string? path)
     {
         Write();
         Active = path;

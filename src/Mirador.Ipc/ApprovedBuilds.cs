@@ -23,6 +23,12 @@ public sealed record ApprovedBuild(string Owner, string ProfileId, string Commit
 
     /// <summary>The copy's service folder.</summary>
     public string ServerDir => Path.Combine(Folder, "bin");
+
+    /// <summary>
+    /// Where the copy's runtime DLL looks for <c>monado-service.exe</c> when a game finds no service running: Mirador's
+    /// stand-in, which the approval puts there.
+    /// </summary>
+    public string StandInDir => Path.Combine(ServerDir, "service");
 }
 
 /// <summary>Where approved builds are recorded; only an administrator can write it.</summary>
@@ -95,6 +101,7 @@ public static partial class ApprovedBuilds
         TryDeleteDirectory(staging);
         Copy(new DirectoryInfo(from), staging);
         WriteManifest(staging);
+        PlaceStandIn(appDir, staging);
         var files = Hash(staging);
 
         // The new copy in place and recorded first; an earlier copy of the same commit is moved aside whole.
@@ -109,9 +116,10 @@ public static partial class ApprovedBuilds
 
         foreach (var old in Directory.GetDirectories(profileRoot).Where(d => !string.Equals(d, target, StringComparison.OrdinalIgnoreCase)))
         {
-            TryDeleteDirectory(old);
+            RemoveWhole(old, appDir);
         }
 
+        SweepLeftovers(appDir, store);
         return build;
     }
 
@@ -127,7 +135,8 @@ public static partial class ApprovedBuilds
         }
 
         store.Remove(owner, profileId);
-        TryDeleteDirectory(ProfileRoot(appDir, owner, profileId));
+        RemoveWhole(ProfileRoot(appDir, owner, profileId), appDir);
+        SweepLeftovers(appDir, store);
     }
 
     /// <summary>
@@ -182,13 +191,15 @@ public static partial class ApprovedBuilds
     /// Whether the build in <paramref name="sourceInstall"/> (the profile's build as it is now) is the one approved: its
     /// runtime DLL and service have the approved copy's hashes. A rebuild is new code and runs as the user until approved.
     /// </summary>
-    public static bool Matches(ApprovedBuild build, string sourceInstall)
+    /// <param name="hashOf">The SHA-256 of a file, lower case: <see cref="HashOf"/>, or a cache in front of it.</param>
+    public static bool Matches(ApprovedBuild build, string sourceInstall, Func<string, string>? hashOf = null)
     {
+        hashOf ??= HashOf;
         foreach (var relative in new[] { RuntimeDll, Path.Combine("bin", "monado-service.exe") })
         {
             var file = Path.Combine(sourceInstall, relative);
             if (!build.Files.TryGetValue(relative, out var hash) || !File.Exists(file)
-                || !string.Equals(HashOf(file), hash, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(hashOf(file), hash, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
@@ -211,6 +222,22 @@ public static partial class ApprovedBuilds
     private static void WriteManifest(string folder) =>
         File.WriteAllText(Path.Combine(folder, "openxr_monado.json"),
             """{"file_format_version": "1.0.0", "runtime": {"name": "Monado (Mirador, approved build)", "library_path": "./bin/openxr_monado.dll"}}""");
+
+    /// <summary>
+    /// Mirador's own stand-in (<c>{app}\standin</c>) where the copy's runtime DLL looks for the service, whatever the build
+    /// had there: a game that starts while Monado is stopped then asks Mirador, as with any other Monado. Without it in
+    /// Mirador's folder (a development copy), the copy keeps what the build had.
+    /// </summary>
+    private static void PlaceStandIn(string appDir, string copy)
+    {
+        var standIn = Path.Combine(appDir, "standin", "monado-service.exe");
+        if (File.Exists(standIn))
+        {
+            var dir = Path.Combine(copy, "bin", "service");
+            Directory.CreateDirectory(dir);
+            File.Copy(standIn, Path.Combine(dir, "monado-service.exe"), overwrite: true);
+        }
+    }
 
     /// <summary>The full path of the DLL a manifest names, or null when it can't be read.</summary>
     private static string? LibraryOf(string manifest)
@@ -315,6 +342,62 @@ public static partial class ApprovedBuilds
     private static Dictionary<string, string> Hash(string folder) =>
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .ToDictionary(f => Path.GetRelativePath(folder, f), HashOf, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Moves <paramref name="folder"/> aside whole (into <c>{app}\builds\.old-*</c>), then deletes it. A copy the
+    /// elevated Monado runs from (its working folder is inside) or with a file held open can't be moved, so it stays
+    /// whole, never half deleted, until a later approval or forget sweeps it (<see cref="SweepLeftovers"/>) or the
+    /// uninstall. A game that has only loaded the copy's DLL doesn't stop the move: the DLL stays behind aside.
+    /// </summary>
+    private static void RemoveWhole(string folder, string appDir)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var aside = Path.Combine(Root(appDir), ".old-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.Move(folder, aside);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        TryDeleteDirectory(aside);
+    }
+
+    /// <summary>
+    /// What an earlier <see cref="RemoveWhole"/> moved aside but couldn't delete, and, of every user, the profile folders
+    /// that no approval is recorded for any more (one that couldn't be moved when it was forgotten).
+    /// </summary>
+    private static void SweepLeftovers(string appDir, IApprovedBuildStore store)
+    {
+        var root = Root(appDir);
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        foreach (var left in Directory.GetDirectories(root, ".old-*"))
+        {
+            TryDeleteDirectory(left);
+        }
+
+        foreach (var user in Directory.GetDirectories(root).Where(d => IsOwner(Path.GetFileName(d))))
+        {
+            var owner = Path.GetFileName(user);
+            foreach (var profile in Directory.GetDirectories(user))
+            {
+                if (IsProfileId(Path.GetFileName(profile)) && store.Get(owner, Path.GetFileName(profile)) is null)
+                {
+                    RemoveWhole(profile, appDir);
+                }
+            }
+        }
+    }
 
     private static void TryDeleteDirectory(string folder)
     {

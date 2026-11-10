@@ -73,6 +73,50 @@ public sealed class HelperHandlerApprovalTests : IDisposable
     }
 
     [Fact]
+    public async Task A_forgotten_copy_that_is_the_runtime_without_the_bundled_monado_gives_back_the_runtime_it_replaced()
+    {
+        consent.Set(Finn.Value);
+        var steamVr = temp.File("SteamVR", "steamxr_win64.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(steamVr)!);
+        File.WriteAllText(steamVr, "{}");
+        registry.Active = steamVr;
+        var build = Approve(Finn, "p1");
+        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.SetRuntimeApproved, Build: "p1"), Caller(Finn))).Ok);
+        Assert.Equal(build.Manifest, registry.Active);
+
+        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: "p1"), Caller(Finn))).Ok);
+
+        Assert.Equal(steamVr, registry.Active);
+        Assert.Null(registry.Recorded);
+    }
+
+    [Fact]
+    public async Task A_forgotten_copy_that_is_the_runtime_doesnt_give_back_a_runtime_that_is_gone()
+    {
+        consent.Set(Finn.Value);
+        registry.Active = temp.File("uninstalled", "steamxr_win64.json");
+        var build = Approve(Finn, "p1");
+        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.SetRuntimeApproved, Build: "p1"), Caller(Finn))).Ok);
+
+        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: "p1"), Caller(Finn))).Ok);
+
+        Assert.Null(registry.Active);
+        Assert.Null(registry.Recorded);
+        Assert.False(Directory.Exists(build.Folder));
+    }
+
+    [Fact]
+    public async Task A_forgotten_copy_that_is_the_runtime_with_nothing_to_go_back_to_leaves_no_runtime()
+    {
+        var build = Approve(Finn, "p1");
+        registry.Active = build.Manifest;
+
+        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: "p1"), Caller(Finn))).Ok);
+
+        Assert.Null(registry.Active);
+    }
+
+    [Fact]
     public async Task Taking_the_consent_back_takes_every_approval_of_that_user_back()
     {
         consent.Set(Finn.Value);

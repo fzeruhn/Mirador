@@ -17,15 +17,18 @@ public static class RuntimeSwitch
     /// For a branch or build folder: the profile whose approved copy becomes the runtime (Mirador.md §4.11 item 51), or
     /// null when it has none. Without one, a build in a folder the user can write is never made the runtime.
     /// </param>
+    /// <param name="runsAsAdministrator">Whether the profile has "Run as administrator" on: then a build without an approval is one that changed since.</param>
     /// <returns>Null when the runtime was set, else what went wrong in plain words.</returns>
     public static async Task<string?> SetAsync(
-        MonadoInstall install, IHelperClient helper, OpenXrRuntime runtime, string? approvedProfileId = null)
+        MonadoInstall install, IHelperClient helper, OpenXrRuntime runtime, string? approvedProfileId = null, bool runsAsAdministrator = false)
     {
         if (!install.IsBundled)
         {
             if (approvedProfileId is null)
             {
-                return "Turn on \"Run as administrator\" on the profile and approve this build first: every OpenXR program loads the runtime, so it can't be in a folder you can change.";
+                return runsAsAdministrator
+                    ? "This build changed since it was approved: approve it again on the Profiles page, then set it as the runtime."
+                    : "Turn on \"Run as administrator\" on the profile and approve this build first: every OpenXR program loads the runtime, so it can't be in a folder you can change.";
             }
 
             var approved = await helper.SendAsync(new HelperRequest(HelperCommand.SetRuntimeApproved, Build: approvedProfileId), CancellationToken.None).ConfigureAwait(false);
