@@ -27,8 +27,8 @@ alone.
 
 The direct-mode Vulkan layer (`layer\`, C++) needs the same tools, CMake and Ninja (Visual Studio's) and vcpkg (its
 `vcpkg.json`); `tools\build.ps1` builds it into `artifacts\layer-build` after the stand-in and, with `-Test`, runs its
-Catch2 tests (skipped with a warning when the C++ tools are missing, except on CI). `layer\build.ps1 -Configure -Build
--Test` builds it alone.
+Catch2 tests (skipped with a warning when the C++ tools are missing, except on CI). `tools\build-cmake.ps1 -Source layer
+-BuildDir artifacts\layer-build -Configure -Build -Test` builds it alone.
 
 OpenComposite, which runs OpenVR games on Monado: `tools\get-opencomposite.ps1` downloads the 64-bit build from the
 release of Mirador's fork (github.com/fzeruhn/OpenComposite), checks its pinned SHA-256 and unpacks it to

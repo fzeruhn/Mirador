@@ -19,11 +19,10 @@ inline constexpr int kExitNotUsed = 3;
 inline constexpr int kDefaultSeconds = 20;
 inline constexpr int kMaxSeconds = 3600;
 
-// mirador-display-check [--vulkan] [--no-heartbeat] [--ignore-holders] [--seconds=20]
+// mirador-display-check [--no-heartbeat] [--ignore-holders] [--seconds=20]
 struct Options {
-    bool vulkan = false;         // Through the layer, the way Monado uses it, instead of NVAPI alone.
     bool no_heartbeat = false;   // Do not send the board heartbeat.
-    bool ignore_holders = false; // Skip the holder checks (tests only, design 4); with --vulkan also the layer's.
+    bool ignore_holders = false; // Skip the holder checks (tests only, design 4).
     bool help = false;
     int seconds = kDefaultSeconds;
 };
@@ -38,15 +37,11 @@ struct ParsedOptions {
 // is not a whole number from 1 to kMaxSeconds is an error that names it.
 ParsedOptions parse_options(const std::vector<std::string>& args);
 
-// The text of --help and of a usage error: the options, the exit codes, and what --vulkan needs (the layer installed,
-// or VK_IMPLICIT_LAYER_PATH).
+// The text of --help and of a usage error: the options and the exit codes.
 std::string usage_text();
 
-// Sets the variables the mode needs in this process, before anything loads Vulkan or NVAPI:
-//  - MIRADOR_DIRECT_MODE_IGNORE_HOLDERS=1 with --ignore-holders (read by the display session in either mode, and by the
-//    layer); removed otherwise, so a stray value cannot skip the session's own holder check;
-//  - with --vulkan, MIRADOR_DIRECT_MODE=1 (enables the layer) and DISABLE_RTSS_LAYER=1 (keeps RTSS's overlay layer out,
-//    design 5).
+// Sets MIRADOR_DIRECT_MODE_IGNORE_HOLDERS=1 in this process with --ignore-holders (read by the display session), and
+// removes it otherwise, so a stray value cannot skip the session's own holder check.
 void apply_environment(const Options& options);
 
 } // namespace dvl

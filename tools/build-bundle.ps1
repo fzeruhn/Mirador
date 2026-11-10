@@ -127,7 +127,7 @@ Need $standin 'The stand-in'
 
 # The direct-mode layer, from layer\ (a child process, so its developer shell stays out of this one).
 $layerBuild = Join-Path $repo 'artifacts\layer-build'
-Invoke-Checked { & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'layer\build.ps1') -Configure -Build -BuildDir $layerBuild } 'Building the layer'
+Invoke-Checked { & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'tools\build-cmake.ps1') -Source (Join-Path $repo 'layer') -Configure -Build -BuildDir $layerBuild } 'Building the layer'
 $layerFiles = (Join-Path $layerBuild 'layer\mirador_direct_mode.json'), (Join-Path $layerBuild 'layer\mirador_direct_mode.dll'),
     (Join-Path $layerBuild 'check\mirador-display-check.exe')
 foreach ($file in $layerFiles) {

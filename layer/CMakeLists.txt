@@ -27,20 +27,14 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX)
 find_package(VulkanHeaders CONFIG REQUIRED)
 find_package(Catch2 3 CONFIG REQUIRED)
 
-# Each target is added by the task that brings its first source file, so the
-# build works while some of these folders do not exist yet.
 #   core/   nvdm                   static library
 #   layer/  dvl_pure               object library (no driver calls)
 #           mirador_direct_mode      shared library, links dvl_pure and nvdm
 #   check/  mirador-display-check executable
 #   tests/  dvl_tests              Catch2 tests, links nvdm and dvl_pure
 foreach(dir core layer check)
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${dir}/CMakeLists.txt")
-        add_subdirectory(${dir})
-    endif()
+    add_subdirectory(${dir})
 endforeach()
 
 enable_testing()
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
-    add_subdirectory(tests)
-endif()
+add_subdirectory(tests)

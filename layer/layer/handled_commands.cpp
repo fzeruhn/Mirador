@@ -4,15 +4,10 @@
 // What the layer does with each command of build/generated/handle_commands.inc (tools/gen_handle_commands.py): every
 // command in vk.xml, in all extensions, that can be handed one of the layer's own VkDisplayKHR, VkDisplayModeKHR,
 // VkSurfaceKHR or VkSwapchainKHR (design 6.3, last bullet). Each is one of
-//   - intercepted now (kIntercepted),
-//   - planned: a later task will intercept it (kPlanned, one entry per command with the task's number), or
+//   - intercepted (kIntercepted), or
 //   - not applicable, with the reason (kNotApplicable).
-// The test every_handle_command_is_classified fails for a command that is none of these, and the runtime guard
+// The test every_handle_command_is_classified fails for a command that is neither, and the runtime guard
 // (check_command_coverage) logs an error when an application enables an extension that has such a command.
-//
-// A task that adds an intercept moves its commands from kPlanned to kIntercepted in the same change; the test
-// handled_commands_match_the_layers_proc_address_tables fails if a name is in the wrong list. Task 11 left kPlanned
-// empty: every command is intercepted or not applicable.
 
 #include "layer/handled_commands.hpp"
 
@@ -26,8 +21,6 @@
 
 namespace dvl {
 namespace {
-
-// initializer_lists, because kPlanned has to be able to end up empty.
 
 // Intercepted now: the entries of the layer's proc-address tables (layer_main.cpp, and the lists in intercepts.hpp). A
 // task adds the commands it intercepts, also the ones the generated list does not have because they take none of our
@@ -103,12 +96,6 @@ const std::initializer_list<std::string_view> kIntercepted = {
     //    domains are answered from the layer below's QPC reading, without the handle.
     "vkGetCalibratedTimestampsKHR", "vkGetCalibratedTimestampsEXT",
 };
-
-struct Planned {
-    std::string_view name;
-    int task;
-};
-const std::initializer_list<Planned> kPlanned = {};
 
 // Commands that cannot do anything to the layer's objects here, with the reason: they cannot be handed one (another
 // platform), or only pass it on as a number. Surface creators only return a surface of the driver or the loader, never
@@ -208,27 +195,10 @@ const std::vector<std::string_view>& intercepted_commands()
     return *list;
 }
 
-const std::vector<PlannedCommand>& planned_commands()
-{
-    static const std::vector<PlannedCommand>* const list = [] {
-        auto* v = new std::vector<PlannedCommand>;
-        for (const Planned& p : kPlanned) {
-            v->push_back({p.name, p.task});
-        }
-        return v;
-    }();
-    return *list;
-}
-
 bool handled_command(std::string_view name)
 {
     for (const std::string_view& n : kIntercepted) {
         if (n == name) {
-            return true;
-        }
-    }
-    for (const Planned& p : kPlanned) {
-        if (p.name == name) {
             return true;
         }
     }

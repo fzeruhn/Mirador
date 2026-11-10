@@ -123,18 +123,6 @@ TEST_CASE("classification_is_consistent")
         in_list.emplace(c.name);
     }
 
-    // Planned commands: handled, taken from the generated list, by a task that exists, and not yet intercepted.
-    std::set<std::string> seen;
-    for (const dvl::PlannedCommand& p : dvl::planned_commands()) {
-        const std::string name(p.name);
-        INFO(name);
-        CHECK(seen.insert(name).second); // once only
-        CHECK(in_list.count(name) == 1); // a typo would never match a real command
-        CHECK((p.task == 9 || p.task == 10 || p.task == 11));
-        CHECK(dvl::handled_command(name));
-        CHECK(dvl::not_applicable(name) == nullptr);
-    }
-
     // Not-applicable commands: taken from the generated list, with a reason, once, and not handled as well.
     std::set<std::string> seen_na;
     for (const dvl::NotApplicableCommand& n : dvl::not_applicable_commands()) {
@@ -147,11 +135,10 @@ TEST_CASE("classification_is_consistent")
         CHECK_FALSE(dvl::handled_command(name));
     }
 
-    // Intercepted commands are handled, and not also planned.
+    // Intercepted commands are handled, and not also not applicable.
     for (const std::string_view name : dvl::intercepted_commands()) {
         INFO(name);
         CHECK(dvl::handled_command(name));
-        CHECK(seen.count(std::string(name)) == 0);
         CHECK(dvl::not_applicable(name) == nullptr);
     }
 }
@@ -200,11 +187,6 @@ TEST_CASE("handled_commands_match_the_layers_proc_address_tables")
     for (const std::string_view name : dvl::intercepted_commands()) {
         INFO(name << " is listed as intercepted, but the layer's tables do not have it");
         CHECK(gipa(VK_NULL_HANDLE, std::string(name).c_str()) != nullptr);
-    }
-    for (const dvl::PlannedCommand& p : dvl::planned_commands()) {
-        INFO(p.name << " is in the layer's tables; move it from planned_commands() to intercepted_commands() "
-                    << "(TODO(task " << p.task << "))");
-        CHECK(gipa(VK_NULL_HANDLE, std::string(p.name).c_str()) == nullptr);
     }
 }
 
@@ -365,32 +347,15 @@ TEST_CASE("guard_does_not_warn_about_known_extensions")
     CHECK(dvl::unknown_extension_warnings(dvl::known_extensions(), dvl::registry_version(), odd, 1).size() == 1);
 }
 
-TEST_CASE("task_9_commands_are_all_intercepted")
+TEST_CASE("the commands monado needs are intercepted")
 {
-    // Task 9 moved its 26 commands from planned to intercepted, with vkDeviceWaitIdle (the private queue's mutex).
-    for (const dvl::PlannedCommand& p : dvl::planned_commands()) {
-        INFO(p.name);
-        CHECK(p.task != 9);
-    }
+    // The display, plane and mode queries, the swapchain, acquire and present, display control and the fences, design
+    // 6.3's misc list: all in the layer's tables.
     const std::vector<std::string_view>& intercepted = dvl::intercepted_commands();
     for (const char* name :
          {"vkDeviceWaitIdle", "vkAcquireWinrtDisplayNV", "vkGetWinrtDisplayNV", "vkReleaseDisplayEXT",
           "vkGetPhysicalDeviceSurfacePresentModes2EXT", "vkGetDeviceGroupSurfacePresentModes2EXT",
-          "vkGetPhysicalDeviceSurfaceCapabilities2EXT", "vkCreateDisplayPlaneSurfaceKHR"}) {
-        INFO(name);
-        CHECK(std::find(intercepted.begin(), intercepted.end(), std::string_view(name)) != intercepted.end());
-    }
-    CHECK(intercepted.size() >= 6 + 1 + 26);
-}
-
-TEST_CASE("task_11_left_no_command_planned")
-{
-    // Task 11 intercepts the rest: nothing is planned any more, and its commands (the swapchain, acquire and present,
-    // display control and the fences, design 6.3's misc list) are all in the layer's tables.
-    CHECK(dvl::planned_commands().empty());
-    const std::vector<std::string_view>& intercepted = dvl::intercepted_commands();
-    for (const char* name :
-         {"vkCreateSwapchainKHR", "vkDestroySwapchainKHR", "vkGetSwapchainImagesKHR", "vkGetSwapchainStatusKHR",
+          "vkGetPhysicalDeviceSurfaceCapabilities2EXT", "vkCreateDisplayPlaneSurfaceKHR", "vkCreateSwapchainKHR", "vkDestroySwapchainKHR", "vkGetSwapchainImagesKHR", "vkGetSwapchainStatusKHR",
           "vkAcquireNextImageKHR", "vkAcquireNextImage2KHR", "vkQueuePresentKHR", "vkWaitForPresentKHR",
           "vkRegisterDisplayEventEXT", "vkDisplayPowerControlEXT", "vkGetSwapchainCounterEXT",
           "vkRegisterDeviceEventEXT", "vkWaitForFences", "vkGetFenceStatus", "vkResetFences", "vkDestroyFence",

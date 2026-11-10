@@ -60,31 +60,4 @@ struct NvapiEnv {
 
 ModeResult run_nvapi_check(const NvapiEnv& env, const Options& options, Output& out);
 
-// --- --vulkan (design 7) ------------------------------------------------------------------------------------------
-//
-// Through the layer, in Monado's order: instance (API 1.0, Monado's extensions), device before the first display
-// query (with VK_EXT_display_control and present id/wait), display, plane, mode, surface, swapchain, then clears with
-// present-wait, one display event per frame, and the flip counter.
-
-// What run_vulkan_check needs from outside, so a test can put a fake chain in place of the Vulkan loader.
-struct VulkanEnv {
-    PFN_vkGetInstanceProcAddr gipa = nullptr; // vkGetInstanceProcAddr of the loader
-    bool elevated = false;                    // for the advice when the layer is missing
-    bool disable_var_set = false;             // DISABLE_MIRADOR_DIRECT_MODE is set
-    std::function<bool()> interrupted;        // unset: never
-    // The layer's log, if it can be had (the real one reads %LOCALAPPDATA%\Mirador\direct-mode\layer.log): the tool prints
-    // the EDID route and the back-buffer import's lines from it at the end, from the lines of process `pid` only.
-    std::function<std::optional<std::string>()> layer_log;
-    unsigned long pid = GetCurrentProcessId(); // the layer runs in this process
-};
-
-ModeResult run_vulkan_check(const VulkanEnv& env, const Options& options, Output& out);
-
-// The whole text of a layer log file, or nullopt if it cannot be read.
-std::optional<std::string> read_layer_log_file(const std::wstring& path);
-
-// The real thing: applies the environment (MIRADOR_DIRECT_MODE=1, DISABLE_RTSS_LAYER=1, ...) before loading
-// vulkan-1.dll, then run_vulkan_check on its vkGetInstanceProcAddr. Touches the real layer and so the real NVAPI.
-ModeResult run_vulkan_mode(const Options& options, Output& out);
-
 } // namespace dvl

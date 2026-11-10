@@ -36,27 +36,19 @@ add_executable(dvl_tests
     test_present_timing.cpp
     test_heartbeat.cpp
     test_check_report.cpp
-    test_check_vulkan.cpp
     test_check_nvapi.cpp
 )
 target_link_libraries(dvl_tests PRIVATE Catch2::Catch2WithMain)
 
-# The libraries under test join as their folders appear.
-foreach(lib nvdm dvl_pure dvl_check_lib)
-    if(TARGET ${lib})
-        target_link_libraries(dvl_tests PRIVATE ${lib})
-    endif()
-endforeach()
+target_link_libraries(dvl_tests PRIVATE nvdm dvl_pure dvl_check_lib)
 
 # The layer tests load the built DLL and read the manifest next to it, so the tests build after both. The intercept
 # tests load the DLL's test build, which takes a display session on a fake NVAPI (fakes/fake_chain.hpp).
-if(TARGET mirador_direct_mode)
-    add_dependencies(dvl_tests mirador_direct_mode dvl_layer_for_tests)
-    target_compile_definitions(dvl_tests PRIVATE
-        "DVL_LAYER_DLL=\"$<TARGET_FILE:mirador_direct_mode>\""
-        "DVL_LAYER_TEST_DLL=\"$<TARGET_FILE:dvl_layer_for_tests>\""
-        "DVL_LAYER_MANIFEST=\"$<TARGET_FILE_DIR:mirador_direct_mode>/mirador_direct_mode.json\"")
-endif()
+add_dependencies(dvl_tests mirador_direct_mode dvl_layer_for_tests)
+target_compile_definitions(dvl_tests PRIVATE
+    "DVL_LAYER_DLL=\"$<TARGET_FILE:mirador_direct_mode>\""
+    "DVL_LAYER_TEST_DLL=\"$<TARGET_FILE:dvl_layer_for_tests>\""
+    "DVL_LAYER_MANIFEST=\"$<TARGET_FILE_DIR:mirador_direct_mode>/mirador_direct_mode.json\"")
 
 # PRE_TEST: discover test cases when ctest runs, not as a post-build step, so
 # the vcpkg runtime DLLs next to the exe are in place by then.

@@ -15,7 +15,6 @@ namespace {
 constexpr std::wstring_view kBuiltInProcesses[] = {
     L"monado-service.exe",
     L"mirador-display-check.exe",
-    L"dreamair-display-check.exe", // its Dream Air name, for one release
 };
 
 bool same_name(std::wstring_view a, std::wstring_view b)

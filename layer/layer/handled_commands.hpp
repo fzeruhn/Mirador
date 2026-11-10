@@ -43,15 +43,6 @@ const std::vector<NotApplicableCommand>& not_applicable_commands();
 // The commands the layer intercepts now. A test checks each one against the layer's proc-address tables.
 const std::vector<std::string_view>& intercepted_commands();
 
-// The commands that are counted as handled but not intercepted yet (kPlanned in handled_commands.cpp), and the task
-// that will do it. Each task moves its commands to intercepted_commands() when it adds the intercept; a test fails if
-// the two disagree with the layer's tables. Empty since Task 11.
-struct PlannedCommand {
-    std::string_view name;
-    int task;
-};
-const std::vector<PlannedCommand>& planned_commands();
-
 // The extensions the registry snapshot has (DVL_KNOWN_EXTENSION in the generated file), and the snapshot's Vulkan version
 // ("1.4.309"). The registry is pinned (the Vulkan-Headers port), and a driver can be newer than it.
 const std::vector<std::string_view>& known_extensions();

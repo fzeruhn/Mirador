@@ -109,38 +109,9 @@ std::vector<std::string> describe_open_result(const nvdm::OpenResult& result);
 // one); empty if none says it.
 std::string driver_version_from_lines(const std::vector<std::string>& lines);
 
-// The route named by the last "EDID route: <route>" in the layer's log text, if there is one.
-std::optional<std::string> edid_route_from_text(const std::string& log_text);
-
 // What a display-session failure line ("<Step>: <detail>", as DisplaySession::open() words it) means and what to do
-// about it, as lines that start "what it means: " and "what to do: ". The display that cannot be identified (Product)
-// is explained here; any other step points to the README's Troubleshooting table. Empty for a line that names no step.
+// about it, as lines that start "what it means: " (for the display that cannot be identified, Product) and "what to
+// do: ". Empty for a line that names no step.
 std::vector<std::string> explain_failure(const std::string& line);
-
-// What --vulkan reads out of the layer's log (%LOCALAPPDATA%\Mirador\direct-mode\layer.log, a new file per process): the
-// session's EDID route, and the back-buffer import: the trial import's line, and the memory-type fallback warning if
-// the layer logged one. Only the lines the layer stamped with process `pid` ("[pid N tid M]") count: the file can be an
-// older process's, or hold a line another process added.
-struct LayerLogFacts {
-    std::optional<std::string> edid_route;      // "NVAPI", "NVAPI-output", "registry" or "board"
-    std::optional<std::string> trial_import;    // the last "trial import on device ..." line, as the log has it
-    std::optional<std::string> memory_fallback; // the "... memory type comes from the image's memoryTypeBits ..." line
-    std::optional<std::string> failure;         // the last error line, without its stamp: "<Step>: <detail>"
-};
-LayerLogFacts layer_log_facts(const std::string& log_text, unsigned long pid);
-
-// A Vulkan driverVersion as NVIDIA numbers it (10 bits, 8 bits, 8 bits, 6 bits): 621.01.
-std::string nvidia_driver_text(uint32_t driver_version);
-
-// What --vulkan found out about the layer when instance creation could not have it.
-struct LayerFacts {
-    bool layer_listed = false;   // vkEnumerateInstanceLayerProperties names VK_LAYER_MIRADOR_direct_mode.
-    bool elevated = false;       // This process is elevated.
-    bool disable_var_set = false; // DISABLE_MIRADOR_DIRECT_MODE is set.
-};
-inline constexpr const char* kLayerName = "VK_LAYER_MIRADOR_direct_mode";
-
-// Lines saying what to do about it.
-std::vector<std::string> diagnose_missing_layer(const LayerFacts& facts);
 
 } // namespace dvl

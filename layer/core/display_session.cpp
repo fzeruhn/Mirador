@@ -578,15 +578,9 @@ std::string environment_one(const char* name)
     return length > 0 && length < sizeof(value) ? std::string(value, length) : std::string();
 }
 
-// MIRADOR_DIRECT_MODE_<x>, else (for one release) its Dream Air name DREAMAIR_VK_LAYER_<x>.
 std::string environment(const char* name)
 {
-    std::string value = environment_one(name);
-    constexpr const char* kNew = "MIRADOR_DIRECT_MODE";
-    if (value.empty() && std::strncmp(name, kNew, std::strlen(kNew)) == 0) {
-        value = environment_one(("DREAMAIR_VK_LAYER" + std::string(name + std::strlen(kNew))).c_str());
-    }
-    return value;
+    return environment_one(name);
 }
 
 class ProcessSession {

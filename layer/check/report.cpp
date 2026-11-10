@@ -281,7 +281,7 @@ std::vector<std::string> explain_failure(const std::string& line)
                     "an earlier connection names a headset this layer has not been tested with, so its mode may be "
                     "another headset's",
                     "what to do: update the NVIDIA driver, connect the headset alone and run this tool again; if it "
-                    "still fails, send this output to the maintainer (README, 'Reporting a driver version')"};
+                    "still fails, send this output, with the driver version, to the maintainer"};
         }
         if (line.find("unknown display product") == std::string::npos) { // no EDID: unreadable, or skipped (a test)
             return {"what it means: the layer cannot tell which headset this is. No EDID (the display's description of "
@@ -289,119 +289,36 @@ std::vector<std::string> explain_failure(const std::string& line)
                     "not be assumed instead",
                     "what to do: connect the Dream Air alone, by DisplayPort and USB, check that its board (USB "
                     "34A4:0044) is listed in Device Manager, and run this tool again; if it still fails, send this "
-                    "output to the maintainer (README, 'Reporting a driver version')"};
+                    "output, with the driver version, to the maintainer"};
         }
         return {std::string("what it means: the headset's EDID names a product this layer does not know: it drives "
                             "the ") +
                     nvdm::kDreamAir.name + ", and other headsets of a direct-mode vendor whose EDID gives their mode",
                 "what to do: if this headset should run in direct mode, send this output to the maintainer"};
     }
-    return {"what to do: see 'Troubleshooting' in the README, the line that starts with '" + step + ":'"};
-}
-
-std::optional<std::string> edid_route_from_text(const std::string& text)
-{
-    constexpr const char key[] = "EDID route: ";
-    const size_t at = text.rfind(key);
-    if (at == std::string::npos) {
-        return std::nullopt;
+    using nvdm::OpenStep;
+    const auto is = [&](OpenStep s) { return step == nvdm::step_name(s); };
+    if (is(OpenStep::Holders)) {
+        return {"what to do: quit Pimax Play and SteamVR and stop the PiServiceLauncher service (Mirador does this when "
+                "it starts Monado), then try again"};
     }
-    const size_t from = at + sizeof(key) - 1;
-    size_t to = from;
-    while (to < text.size() && text[to] != '\r' && text[to] != '\n' && text[to] != ' ') {
-        to++;
+    if (is(OpenStep::LoadNvapi) || is(OpenStep::D3D11)) {
+        return {"what to do: install or update NVIDIA's driver; AMD and Intel GPUs are not supported"};
     }
-    if (to == from) {
-        return std::nullopt;
+    if (is(OpenStep::Enumerate)) {
+        return {"what to do: check that the headset is switched on and connected by DisplayPort and USB, and that "
+                "nothing else holds it; unplug and replug it, then try again"};
     }
-    return text.substr(from, to - from);
-}
-
-namespace {
-
-// The last line of `text` that contains `key`, without its line ending.
-std::optional<std::string> last_line_containing(const std::string& text, const std::string& key)
-{
-    const size_t at = text.rfind(key);
-    if (at == std::string::npos) {
-        return std::nullopt;
+    if (is(OpenStep::Luid)) {
+        return {"what to do: connect the headset to the NVIDIA GPU Monado uses (on a laptop, the port wired to it)"};
     }
-    const size_t begin = text.find_last_of('\n', at);
-    const size_t from = begin == std::string::npos ? 0 : begin + 1;
-    size_t to = text.find_first_of("\r\n", at);
-    if (to == std::string::npos) {
-        to = text.size();
+    if (is(OpenStep::EnableDirectMode) || is(OpenStep::BindDevice)) {
+        return {"what to do: another program holds the display (Pimax, SteamVR or a second Monado): stop it and try "
+                "again; if it persists, restart Windows"};
     }
-    return text.substr(from, to - from);
-}
-
-// The lines of `text` the layer stamped with process `pid` ("[pid 1234 tid 5678]", layer/log.cpp), each ended by '\n'.
-std::string lines_of_process(const std::string& text, unsigned long pid)
-{
-    const std::string stamp = "[pid " + std::to_string(pid) + " tid ";
-    std::string out;
-    size_t from = 0;
-    while (from < text.size()) {
-        size_t to = text.find('\n', from);
-        if (to == std::string::npos) {
-            to = text.size();
-        }
-        std::string line = text.substr(from, to - from);
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.find(stamp) != std::string::npos) {
-            out += line;
-            out += '\n';
-        }
-        from = to + 1;
-    }
-    return out;
-}
-
-} // namespace
-
-LayerLogFacts layer_log_facts(const std::string& log_text, unsigned long pid)
-{
-    const std::string ours = lines_of_process(log_text, pid);
-    LayerLogFacts facts;
-    facts.edid_route = edid_route_from_text(ours);
-    facts.trial_import = last_line_containing(ours, "trial import on device");
-    facts.memory_fallback = last_line_containing(ours, "memory type comes from the image's memoryTypeBits");
-    // The stamp ends "] <level padded to 5> ", so an error line has "] error " before its text.
-    constexpr const char error[] = "] error ";
-    if (const std::optional<std::string> line = last_line_containing(ours, error)) {
-        facts.failure = line->substr(line->find(error) + sizeof(error) - 1);
-    }
-    return facts;
-}
-
-std::string nvidia_driver_text(uint32_t v)
-{
-    return format("%u.%02u", static_cast<unsigned>(v >> 22), static_cast<unsigned>((v >> 14) & 0xff));
-}
-
-std::vector<std::string> diagnose_missing_layer(const LayerFacts& facts)
-{
-    std::vector<std::string> advice;
-    if (!facts.layer_listed) {
-        advice.push_back(std::string("the Vulkan loader does not know the layer ") + kLayerName +
-                         ": install it (install.ps1, run as administrator), or start this tool with VK_IMPLICIT_LAYER_PATH=<the "
-                         "NVIDIA driver's nv-vk64.json>;<path of mirador_direct_mode.json>");
-        if (facts.elevated) {
-            advice.push_back("this process is elevated, and the loader ignores VK_IMPLICIT_LAYER_PATH and the per-user "
-                             "registry in elevated processes: start the tool unelevated, or install the layer");
-        }
-        return advice;
-    }
-    if (facts.disable_var_set) {
-        advice.push_back("DISABLE_MIRADOR_DIRECT_MODE is set in this environment, which switches the layer off: clear it");
-        return advice;
-    }
-    advice.push_back(std::string("the layer ") + kLayerName +
-                     " is registered but the loader did not offer its VK_EXT_display_surface_counter: its manifest "
-                     "and DLL do not match this build (run with VK_LOADER_DEBUG=layer to see why it was skipped)");
-    return advice;
+    // CheckIds (the driver moved a call), CreateBackBuffers and SetDisplayMode (the driver refused the mode).
+    return {"what to do: this NVIDIA driver doesn't do what the layer needs: send this output, with the driver "
+            "version, to the maintainer"};
 }
 
 } // namespace dvl

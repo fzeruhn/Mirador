@@ -32,7 +32,8 @@ try {
         [bool](& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
     if ($cppTools) {
         $layerArgs = @('-Configure', '-Build') + $(if ($Test) { @('-Test') } else { @() })
-        & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'layer\build.ps1') @layerArgs
+        & (Get-Process -Id $PID).Path -NoProfile -File (Join-Path $repo 'tools\build-cmake.ps1') -Source (Join-Path $repo 'layer') `
+            -BuildDir (Join-Path $repo 'artifacts\layer-build') @layerArgs
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         # xr-check, Verify's OpenXR test client (tools\xr-check): built here, run only by Verify on a PC with a GPU.

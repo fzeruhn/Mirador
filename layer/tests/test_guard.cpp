@@ -21,8 +21,8 @@ TEST_CASE("guard_allows_monado_and_check_tool")
     CHECK(dvl::process_allowed(L"MONADO-SERVICE.EXE", ""));
     CHECK(dvl::process_allowed(L"Monado-Service.exe", ""));
     CHECK(dvl::process_allowed(L"Mirador-Display-Check.EXE", ""));
-    // The check tool's Dream Air name, for one release.
-    CHECK(dvl::process_allowed(L"dreamair-display-check.exe", ""));
+    // The check tool's former name is just another program now.
+    CHECK_FALSE(dvl::process_allowed(L"dreamair-display-check.exe", ""));
 }
 
 TEST_CASE("guard_declines_unlisted_process")

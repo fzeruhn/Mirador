@@ -2,15 +2,13 @@
 # SPDX-License-Identifier: BSL-1.0
 
 # dvl_check_lib: everything of the check tool but main(). Linked into mirador-display-check and into dvl_tests, so the
-# tests run the heartbeat, the argument parser, the verdict and (against a fake Vulkan chain) the --vulkan mode
-# directly. It reaches Vulkan only through the pointers vkGetInstanceProcAddr gives it, never through vulkan-1.lib.
+# tests run the heartbeat, the argument parser and the verdict directly.
 add_library(dvl_check_lib STATIC
     heartbeat.cpp
     interrupt.cpp
     nvapi_mode.cpp
     options.cpp
     report.cpp
-    vulkan_mode.cpp
 )
 target_include_directories(dvl_check_lib PUBLIC "${PROJECT_SOURCE_DIR}")
 target_compile_features(dvl_check_lib PUBLIC cxx_std_17)

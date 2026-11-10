@@ -41,7 +41,6 @@ TEST_CASE("options_default_to_the_nvapi_check_of_20_seconds")
 {
     const dvl::ParsedOptions parsed = dvl::parse_options({});
     REQUIRE(parsed.ok());
-    CHECK_FALSE(parsed.options.vulkan);
     CHECK_FALSE(parsed.options.no_heartbeat);
     CHECK_FALSE(parsed.options.ignore_holders);
     CHECK_FALSE(parsed.options.help);
@@ -51,9 +50,8 @@ TEST_CASE("options_default_to_the_nvapi_check_of_20_seconds")
 TEST_CASE("options_take_every_flag_in_any_order")
 {
     const dvl::ParsedOptions parsed =
-        dvl::parse_options({"--seconds=5", "--ignore-holders", "--vulkan", "--no-heartbeat"});
+        dvl::parse_options({"--seconds=5", "--ignore-holders", "--no-heartbeat"});
     REQUIRE(parsed.ok());
-    CHECK(parsed.options.vulkan);
     CHECK(parsed.options.no_heartbeat);
     CHECK(parsed.options.ignore_holders);
     CHECK(parsed.options.seconds == 5);
@@ -61,7 +59,7 @@ TEST_CASE("options_take_every_flag_in_any_order")
 
 TEST_CASE("options_reject_what_they_do_not_know")
 {
-    for (const Args& args : {Args{"--bogus"}, Args{"vulkan"}, Args{"-v"}, Args{"--Vulkan"}, Args{"--vulkan=1"},
+    for (const Args& args : {Args{"--bogus"}, Args{"--vulkan"}, Args{"-v"}, Args{"--Vulkan"}, Args{"--vulkan=1"},
                              Args{"--seconds"}, Args{"--seconds", "5"}, Args{"--no-heartbeat=1"}, Args{""}}) {
         INFO("first argument: '" << args[0] << "'");
         const dvl::ParsedOptions parsed = dvl::parse_options(args);
@@ -98,11 +96,10 @@ TEST_CASE("options_help_is_recognised_and_wins_over_nothing_else")
     CHECK_FALSE(dvl::parse_options({"--help", "--bogus"}).ok());
 }
 
-TEST_CASE("the usage text names every option, the exit codes and the layer's need")
+TEST_CASE("the usage text names every option and the exit codes")
 {
     const std::string usage = dvl::usage_text();
-    for (const char* part : {"--vulkan", "--no-heartbeat", "--ignore-holders", "--seconds=20", "VK_IMPLICIT_LAYER_PATH",
-                             "Exit code", "mirador-display-check"}) {
+    for (const char* part : {"--no-heartbeat", "--ignore-holders", "--seconds=20", "Exit code", "mirador-display-check"}) {
         INFO(part);
         CHECK(contains(usage, part));
     }
@@ -113,7 +110,7 @@ TEST_CASE("the usage text names every option, the exit codes and the layer's nee
 
 // --- The environment the modes set ----------------------------------------------------------------------------------
 
-TEST_CASE("the environment follows design 7 for each mode")
+TEST_CASE("the environment sets the holder switch only when asked")
 {
     dvl_test::ScopedEnv layer(L"MIRADOR_DIRECT_MODE", nullptr);
     dvl_test::ScopedEnv rtss(L"DISABLE_RTSS_LAYER", nullptr);
@@ -137,22 +134,6 @@ TEST_CASE("the environment follows design 7 for each mode")
     dvl::apply_environment(nvapi_ignore);
     CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"1");
     CHECK(get(L"MIRADOR_DIRECT_MODE") == L"<unset>");
-
-    // --vulkan: the layer on and RTSS's layer off, in this process.
-    dvl::Options vulkan;
-    vulkan.vulkan = true;
-    dvl::apply_environment(vulkan);
-    CHECK(get(L"MIRADOR_DIRECT_MODE") == L"1");
-    CHECK(get(L"DISABLE_RTSS_LAYER") == L"1");
-    CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"<unset>");
-
-    dvl::Options vulkan_ignore;
-    vulkan_ignore.vulkan = true;
-    vulkan_ignore.ignore_holders = true;
-    dvl::apply_environment(vulkan_ignore);
-    CHECK(get(L"MIRADOR_DIRECT_MODE") == L"1");
-    CHECK(get(L"DISABLE_RTSS_LAYER") == L"1");
-    CHECK(get(L"MIRADOR_DIRECT_MODE_IGNORE_HOLDERS") == L"1");
 }
 
 // --- Holder checks ---------------------------------------------------------------------------------------------------
@@ -490,30 +471,28 @@ TEST_CASE("a headset left to Windows, and an untested EDID from the registry, ar
     CHECK_FALSE(contains(registry[1], "34A4:0044"));
 }
 
-TEST_CASE("any other failing step points to the README's troubleshooting table, by its name")
+TEST_CASE("every other failing step says what to do itself")
 {
-    const std::vector<std::string> lines =
-        dvl::explain_failure("BindDevice: NVAPI would not bind the display (is another program using it?) (code -5)");
-    REQUIRE(lines.size() == 1);
-    CHECK(lines[0].rfind("what to do: ", 0) == 0);
-    CHECK(contains(lines[0], "Troubleshooting"));
-    CHECK(contains(lines[0], "BindDevice:"));
+    const auto advice = [](const char* line) {
+        const std::vector<std::string> lines = dvl::explain_failure(line);
+        REQUIRE(lines.size() == 1);
+        CHECK(lines[0].rfind("what to do: ", 0) == 0);
+        CHECK_FALSE(contains(lines[0], "README"));
+        return lines[0];
+    };
+    CHECK(contains(advice("BindDevice: NVAPI would not bind the display (code -5)"), "another program holds the display"));
+    CHECK(contains(advice("EnableDirectMode: refused (code -5)"), "another program holds the display"));
+    CHECK(contains(advice("Holders: Pimax or SteamVR is running"), "PiServiceLauncher"));
+    CHECK(contains(advice("LoadNvapi: nvapi64.dll is missing"), "NVIDIA's driver"));
+    CHECK(contains(advice("D3D11: no device"), "NVIDIA's driver"));
+    CHECK(contains(advice("Enumerate: no direct-mode display of vendor PVR"), "DisplayPort and USB"));
+    CHECK(contains(advice("Luid: the display is on adapter 2"), "NVIDIA GPU Monado uses"));
+    for (const char* line : {"CheckIds: this driver has no NVAPI call 0x1", "CreateBackBuffers: refused", "SetDisplayMode: refused"}) {
+        CHECK(contains(advice(line), "driver version"));
+    }
 
     CHECK(dvl::explain_failure("not a failure line").empty());
     CHECK(dvl::explain_failure("").empty());
-}
-
-TEST_CASE("the layer's log gives its last error line, as the session worded it")
-{
-    const std::string log =
-        "2026-10-31 09:00:00.000 [pid 77 tid 5] error Enumerate: no direct-mode display appeared\r\n"
-        "2026-10-31 09:00:01.000 [pid 77 tid 5] warn  warning: untested driver version 700.12\r\n"
-        "2026-10-31 09:00:02.000 [pid 77 tid 5] error Product: the display's EDID could not be read (code -10003)\r\n"
-        "2026-10-31 09:00:03.000 [pid 78 tid 5] error Holders: another process's line\r\n"
-        "2026-10-31 09:00:04.000 [pid 77 tid 5] info  display query on X: the layer's display is not listed\r\n";
-    CHECK(dvl::layer_log_facts(log, 77).failure == "Product: the display's EDID could not be read (code -10003)");
-    CHECK(dvl::layer_log_facts(log, 78).failure == "Holders: another process's line");
-    CHECK_FALSE(dvl::layer_log_facts(log, 79).failure.has_value());
 }
 
 TEST_CASE("the driver version is taken from the session's lines")
@@ -523,119 +502,4 @@ TEST_CASE("the driver version is taken from the session's lines")
               {"warning: untested driver version 700.12; trying it anyway (tested: 621.01)"}) == "700.12");
     CHECK(dvl::driver_version_from_lines({"warning: the driver version could not be read; trying it anyway"}).empty());
     CHECK(dvl::driver_version_from_lines({}).empty());
-}
-
-TEST_CASE("the EDID route is the last one the layer's log names")
-{
-    CHECK(dvl::edid_route_from_text("12:00:01 info EDID route: NVAPI\n") == "NVAPI");
-    CHECK(dvl::edid_route_from_text("a\nEDID route: registry\r\nb\n") == "registry");
-    // An older line of a log that was added to loses to the newest.
-    CHECK(dvl::edid_route_from_text("EDID route: NVAPI\nlater\nEDID route: registry\n") == "registry");
-    CHECK_FALSE(dvl::edid_route_from_text("nothing about it\n").has_value());
-    CHECK_FALSE(dvl::edid_route_from_text("").has_value());
-    CHECK_FALSE(dvl::edid_route_from_text("EDID route: \n").has_value());
-}
-
-TEST_CASE("the layer's log gives the EDID route, the trial import and the memory-type fallback")
-{
-    // The layer's line stamp (layer/log.cpp): date, time, "[pid N tid M]", level.
-    const std::string log =
-        "2026-10-31 09:59:00.000 [pid 77 tid 5] info  vkCreateInstance: ...\r\n"
-        "2026-10-31 09:59:01.000 [pid 77 tid 5] info  trial import on device 0001: the 3 back-buffers import as A and "
-        "as B (imported and released)\r\n"
-        "2026-10-31 09:59:02.000 [pid 77 tid 5] info  EDID route: NVAPI\r\n"
-        "2026-10-31 09:59:03.000 [pid 77 tid 5] info  trial import on device 0002: the 3 back-buffers import as A and "
-        "as B (imported and released)\r\n"
-        "2026-10-31 09:59:04.000 [pid 77 tid 6] warn  import on device 0002: vkGetMemoryWin32HandlePropertiesKHR gave "
-        "no memory types for back-buffer 0003, so the memory type comes from the image's memoryTypeBits (0x7) alone, "
-        "as Monado's target did\r\n"
-        "2026-10-31 09:59:05.000 [pid 77 tid 5] info  vkCreateSwapchainKHR: ...";
-    const dvl::LayerLogFacts facts = dvl::layer_log_facts(log, 77);
-    CHECK(facts.edid_route == "NVAPI");
-    REQUIRE(facts.trial_import.has_value());
-    CHECK(facts.trial_import->rfind("2026-10-31 09:59:03.000 [pid 77 tid 5] info  trial import on device 0002", 0) ==
-          0); // the last one
-    CHECK(facts.trial_import->find('\r') == std::string::npos);
-    REQUIRE(facts.memory_fallback.has_value());
-    CHECK(facts.memory_fallback->rfind("2026-10-31 09:59:04.000 [pid 77 tid 6] warn", 0) == 0);
-
-    const dvl::LayerLogFacts none = dvl::layer_log_facts("[pid 77 tid 1] one line\n[pid 77 tid 1] another", 77);
-    CHECK_FALSE(none.edid_route.has_value());
-    CHECK_FALSE(none.trial_import.has_value());
-    CHECK_FALSE(none.memory_fallback.has_value());
-    // A last line without a line ending is a line.
-    CHECK(dvl::layer_log_facts("a\n[pid 77 tid 1] EDID route: registry", 77).edid_route == "registry");
-    CHECK(dvl::layer_log_facts("a\n[pid 77 tid 1] trial import on device 9: ok", 77).trial_import ==
-          "[pid 77 tid 1] trial import on device 9: ok");
-}
-
-TEST_CASE("only this process's lines of the layer's log count")
-{
-    // layer.log can hold another process's lines: an older run's file when this run's layer wrote none, or a line a
-    // declined process added. They must never be printed as this run's (Task 12 review). The layer stamps each line
-    // "[pid N tid M]"; a pid that only begins like ours is another one.
-    const std::string log =
-        "2026-10-31 09:00:00.000 [pid 4242 tid 7] info  EDID route: registry\r\n"
-        "2026-10-31 09:00:01.000 [pid 4242 tid 7] info  trial import on device 0001: ok\r\n"
-        "2026-10-31 09:00:02.000 [pid 4242 tid 8] warn  import on device 0001: ... so the memory type comes from the "
-        "image's memoryTypeBits (0x7) alone\r\n"
-        "2026-10-31 10:00:00.000 [pid 424 tid 9] info  EDID route: NVAPI\r\n"
-        "2026-10-31 10:00:01.000 [pid 42 tid 9] info  trial import on device 0042: ok\r\n"
-        "EDID route: registry, in a line with no stamp\r\n";
-
-    const dvl::LayerLogFacts old_run = dvl::layer_log_facts(log, 4242);
-    CHECK(old_run.edid_route == "registry");
-    CHECK(old_run.trial_import == "2026-10-31 09:00:01.000 [pid 4242 tid 7] info  trial import on device 0001: ok");
-    CHECK(old_run.memory_fallback.has_value());
-
-    const dvl::LayerLogFacts this_run = dvl::layer_log_facts(log, 424);
-    CHECK(this_run.edid_route == "NVAPI");
-    CHECK_FALSE(this_run.trial_import.has_value());
-    CHECK_FALSE(this_run.memory_fallback.has_value());
-
-    const dvl::LayerLogFacts other = dvl::layer_log_facts(log, 42);
-    CHECK_FALSE(other.edid_route.has_value());
-    CHECK(other.trial_import == "2026-10-31 10:00:01.000 [pid 42 tid 9] info  trial import on device 0042: ok");
-
-    const dvl::LayerLogFacts nothing = dvl::layer_log_facts(log, 1);
-    CHECK_FALSE(nothing.edid_route.has_value());
-    CHECK_FALSE(nothing.trial_import.has_value());
-    CHECK_FALSE(nothing.memory_fallback.has_value());
-}
-
-TEST_CASE("an NVIDIA driver version is printed the way NVIDIA numbers it")
-{
-    // 621.01: major in the top 10 bits, minor in the next 8.
-    const uint32_t v621_01 = (621u << 22) | (1u << 14);
-    CHECK(dvl::nvidia_driver_text(v621_01) == "621.01");
-    CHECK(dvl::nvidia_driver_text((572u << 22) | (83u << 14)) == "572.83");
-    CHECK(dvl::nvidia_driver_text(0) == "0.00");
-}
-
-TEST_CASE("a missing layer is explained by what the loader says about it")
-{
-    // Not registered at all.
-    dvl::LayerFacts facts;
-    facts.layer_listed = false;
-    std::vector<std::string> advice = dvl::diagnose_missing_layer(facts);
-    CHECK(any_line_contains(advice, "VK_LAYER_MIRADOR_direct_mode"));
-    CHECK(any_line_contains(advice, "VK_IMPLICIT_LAYER_PATH"));
-    CHECK_FALSE(any_line_contains(advice, "elevated"));
-
-    // An elevated process ignores the layer-path variables.
-    facts.elevated = true;
-    advice = dvl::diagnose_missing_layer(facts);
-    CHECK(any_line_contains(advice, "elevated"));
-
-    // Listed but off.
-    facts = dvl::LayerFacts{};
-    facts.layer_listed = true;
-    facts.disable_var_set = true;
-    advice = dvl::diagnose_missing_layer(facts);
-    CHECK(any_line_contains(advice, "DISABLE_MIRADOR_DIRECT_MODE"));
-
-    // Listed, not disabled, still no extension: the manifest and the loader disagree.
-    facts.disable_var_set = false;
-    advice = dvl::diagnose_missing_layer(facts);
-    CHECK(any_line_contains(advice, "VK_EXT_display_surface_counter"));
 }
