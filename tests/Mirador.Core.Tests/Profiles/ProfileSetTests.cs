@@ -10,7 +10,7 @@ public class ProfileSetTests
         var s = ProfileSet.Defaults();
         Assert.Equal(["dreamair", "custom"], s.Profiles.Select(p => p.Id));
         Assert.Equal("Dream Air", s.Profiles[0].Name);
-        Assert.Equal("dreamair", s.Profiles[0].ModuleId);
+        Assert.Equal("pimax", s.Profiles[0].ModuleId); // the module's id now, so nothing migrates (or saves) at first run
         Assert.Null(s.Profiles[1].ModuleId);
         Assert.Equal("dreamair", s.SelectedId);
         Assert.Same(s.Profiles[0], s.Selected);
@@ -44,7 +44,7 @@ public class ProfileSetTests
         Assert.NotEqual("dreamair", copy.Id);
         Assert.Matches("^[0-9a-f]{32}$", copy.Id);
         Assert.Equal("Dev", copy.Name);
-        Assert.Equal("dreamair", copy.ModuleId);
+        Assert.Equal("pimax", copy.ModuleId);
         Assert.Equal(original.Monado, copy.Monado);
         Assert.Equal(original.ExtraEnvironment, copy.ExtraEnvironment);
         Assert.Equal(original.ModuleOptions, copy.ModuleOptions);

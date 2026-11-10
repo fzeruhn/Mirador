@@ -125,6 +125,12 @@ public sealed class AppHost : IAsyncDisposable
     public const string NotAllowedReason =
         "Runs as you: Windows hasn't been asked yet for Monado to run as administrator.";
 
+    /// <summary>
+    /// Whether Mirador started with no profiles file (its first run for this user): the window then asks where Monado
+    /// comes from (Mirador.md §4.11 item 55). Taken before the launch's migrations, which may save the file.
+    /// </summary>
+    public bool FirstRun { get; private set; }
+
     /// <summary>The folder Mirador.exe is in.</summary>
     public string AppDir { get; }
 
@@ -223,18 +229,33 @@ public sealed class AppHost : IAsyncDisposable
     /// Says that devices were plugged in or out; call on the UI thread. With no Bluetooth found so far, Mirador looks
     /// for it again: an adapter may just have been plugged in or its driver installed.
     /// </summary>
-    public void NotifyDevicesChanged()
-    {
-        // The Pimax module's model, looked up once per change before the pages read it.
-        foreach (var pimax in Modules.Values.OfType<PimaxModule>())
-        {
-            pimax.RefreshModel();
-        }
+    public void NotifyDevicesChanged() => _ = OnDevicesChangedAsync();
 
+    private async Task OnDevicesChangedAsync()
+    {
+        // The Pimax module's model, looked up once per change before the pages read it: listing the USB devices is a
+        // WMI query (up to seconds), so off the UI thread; the pages hear of the change once it is known.
+        await Task.Run(RefreshModels);
         DevicesChanged?.Invoke();
         if (radio.State == BluetoothState.Missing)
         {
             _ = Task.Run(StartRadioAsync);
+        }
+    }
+
+    /// <summary>Looks the Pimax module's model up again (a WMI query: not on the UI thread). Never throws.</summary>
+    private void RefreshModels()
+    {
+        foreach (var pimax in Modules.Values.OfType<PimaxModule>())
+        {
+            try
+            {
+                pimax.RefreshModel();
+            }
+            catch (Exception e)
+            {
+                AppLog.Write("Couldn't look the Pimax headset's model up", e);
+            }
         }
     }
 
@@ -465,6 +486,12 @@ public sealed class AppHost : IAsyncDisposable
     public static AppHost Create(string appDir, AppPaths paths)
     {
         var host = new AppHost(appDir, paths);
+
+        // The Pimax module's model, looked up early and off the UI thread, so the window's first reads find it known.
+        _ = Task.Run(host.RefreshModels);
+
+        // Before anything can write the file: a migration's save mustn't make a first run look like a later one.
+        host.FirstRun = !File.Exists(paths.ProfilesFile);
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
         host.MigrateProfiles();
 

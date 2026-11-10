@@ -13,10 +13,13 @@ namespace Mirador.Core.Profiles;
 /// </param>
 public sealed record ProfileSet(IReadOnlyList<Profile> Profiles, string SelectedId, bool RunAsAdministratorPerProfile = false)
 {
-    /// <summary>The first-run set: Dream Air (selected) and Custom, both on Mirador's Monado.</summary>
+    /// <summary>
+    /// The first-run set: Dream Air (selected, with the Pimax module) and Custom, both on Mirador's Monado. The module is
+    /// named by its id now: a former one would be migrated, and saved, at the first launch.
+    /// </summary>
     public static ProfileSet Defaults() => new(
         [
-            new Profile("dreamair", "Dream Air", "dreamair", BuildSource.Mirador, [], new Dictionary<string, string>()),
+            new Profile("dreamair", "Dream Air", global::Mirador.Ipc.PimaxEnvironment.ModuleId, BuildSource.Mirador, [], new Dictionary<string, string>()),
             new Profile("custom", "Custom", null, BuildSource.Mirador, [], new Dictionary<string, string>()),
         ],
         "dreamair",

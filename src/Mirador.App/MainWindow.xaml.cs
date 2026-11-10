@@ -58,7 +58,7 @@ public sealed partial class MainWindow : Window
         NavView.SelectedItem = NavView.MenuItems[0];
         App.Current.Host.ProfilesChanged += ShowHeadsetPages;
         ShowHeadsetPages();
-        if (!File.Exists(App.Current.Host.Paths.ProfilesFile))
+        if (App.Current.Host.FirstRun)
         {
             _ = AskWhereMonadoComesFromAsync();
         }

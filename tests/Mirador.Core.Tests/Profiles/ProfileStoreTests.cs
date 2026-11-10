@@ -26,7 +26,7 @@ public class ProfileStoreTests
         Assert.Equal("custom", loaded.SelectedId);
         Assert.Equal(set.Profiles.Select(p => p.Id), loaded.Profiles.Select(p => p.Id));
         Assert.Equal(["Dream Air", "Custom", "Workshop"], loaded.Profiles.Select(p => p.Name));
-        Assert.Equal(["dreamair", null, null], loaded.Profiles.Select(p => p.ModuleId));
+        Assert.Equal(["pimax", null, null], loaded.Profiles.Select(p => p.ModuleId));
 
         var first = loaded.Profiles[0];
         Assert.Equal(SourceKind.Folder, first.Monado.Kind);
