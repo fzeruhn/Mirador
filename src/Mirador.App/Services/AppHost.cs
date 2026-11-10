@@ -354,14 +354,25 @@ public sealed class AppHost : IAsyncDisposable
             var keep = Profiles.Load().Profiles
                 .Where(p => p.RunAsAdministrator && p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
                 .Select(p => p.Id)
-                .ToList();
-            var reply = await Helper.SendAsync(new HelperRequest(HelperCommand.ForgetApprovedBuilds, Keep: keep), CancellationToken.None);
-            if (!reply.Ok)
+                .ToHashSet(StringComparer.Ordinal);
+            var listed = await Helper.SendAsync(new HelperRequest(HelperCommand.ListApprovedBuilds), CancellationToken.None);
+            if (!listed.Ok)
             {
-                AppLog.Write($"Taking back the approvals no profile needs failed: {reply.Error}");
+                AppLog.Write($"Listing the approved builds failed: {listed.Error}");
+                return null; // an older helper, or none: nothing it knows of to take back
             }
 
-            return reply.Ok ? null : $"Mirador couldn't take back an approved build no profile runs as administrator any more: {reply.Error}";
+            foreach (var id in (listed.Value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Where(id => !keep.Contains(id)))
+            {
+                var reply = await Helper.SendAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: id), CancellationToken.None);
+                if (!reply.Ok)
+                {
+                    AppLog.Write($"Taking back the approval of profile {id} failed: {reply.Error}");
+                    return $"Mirador couldn't take back an approved build no profile runs as administrator any more: {reply.Error}";
+                }
+            }
+
+            return null;
         }
         catch (Exception e)
         {

@@ -221,7 +221,8 @@ public sealed class HelperHandler
                 : !InstalledMirador.IsInstalledCopy(caller.ImagePath, installDir) ? new HelperReply(false, NotInstalledMirador)
                 : monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
             HelperCommand.SetRuntimeApproved => SetRuntimeApproved(request.Build, caller),
-            HelperCommand.ForgetApprovedBuilds => ForgetApprovedBuilds(request.Keep ?? [], caller),
+            HelperCommand.ListApprovedBuilds => ListApprovedBuilds(caller),
+            HelperCommand.ForgetApprovedBuild => ForgetApprovedBuild(request.Build, caller),
             _ => new HelperReply(false, UnknownCommand),
         });
     }
@@ -296,45 +297,56 @@ public sealed class HelperHandler
         consent.Revoke(caller.Sid);
 
         // Without the consent no build of theirs runs as administrator: its approvals go with it.
-        ForgetApprovals(caller, keep: []);
+        foreach (var profileId in approved?.ProfilesOf(caller.Sid.Value) ?? [])
+        {
+            Forget(caller, profileId);
+        }
+
         return new HelperReply(true);
     }
 
-    /// <summary>Takes back the caller's approvals but those of <paramref name="keep"/> (<see cref="HelperCommand.ForgetApprovedBuilds"/>).</summary>
-    private HelperReply ForgetApprovedBuilds(IReadOnlyList<string> keep, CallerInfo? caller)
+    /// <summary>The caller's approved profiles, comma-separated (<see cref="HelperCommand.ListApprovedBuilds"/>).</summary>
+    private HelperReply ListApprovedBuilds(CallerInfo? caller) =>
+        caller is null ? new HelperReply(false, NoCaller)
+        : new HelperReply(true, Value: string.Join(',', approved?.ProfilesOf(caller.Sid.Value) ?? []));
+
+    /// <summary>Takes back the caller's approval of one profile's build (<see cref="HelperCommand.ForgetApprovedBuild"/>).</summary>
+    private HelperReply ForgetApprovedBuild(string? profileId, CallerInfo? caller)
     {
         if (caller is null)
         {
             return new HelperReply(false, NoCaller);
         }
 
-        ForgetApprovals(caller, keep);
+        if (!ApprovedBuilds.IsProfileId(profileId))
+        {
+            return new HelperReply(false, NotApproved);
+        }
+
+        Forget(caller, profileId!);
         return new HelperReply(true);
     }
 
-    private void ForgetApprovals(CallerInfo caller, IReadOnlyList<string> keep)
+    private void Forget(CallerInfo caller, string profileId)
     {
         if (approved is null)
         {
             return;
         }
 
+        // The machine's runtime never points at a copy that is going: Mirador's Monado takes over, when there is one.
         var owner = caller.Sid.Value;
-        foreach (var profileId in approved.ProfilesOf(owner).Where(p => !keep.Contains(p, StringComparer.Ordinal)))
+        if (approved.Get(owner, profileId) is { } build && registry.GetActive() is { } active
+            && string.Equals(Path.GetFullPath(active), Path.GetFullPath(build.Manifest), StringComparison.OrdinalIgnoreCase))
         {
-            // The machine's runtime never points at a copy that is going: Mirador's Monado takes over, when there is one.
-            if (approved.Get(owner, profileId) is { } build && registry.GetActive() is { } active
-                && string.Equals(Path.GetFullPath(active), Path.GetFullPath(build.Manifest), StringComparison.OrdinalIgnoreCase))
+            var miradors = monado?.CurrentManifest() ?? bundledManifest;
+            if (File.Exists(miradors))
             {
-                var miradors = monado?.CurrentManifest() ?? bundledManifest;
-                if (File.Exists(miradors))
-                {
-                    registry.SetActive(miradors);
-                }
+                registry.SetActive(miradors);
             }
-
-            ApprovedBuilds.Forget(owner, profileId, installDir, approved);
         }
+
+        ApprovedBuilds.Forget(owner, profileId, installDir, approved);
     }
 
     /// <summary>Mirador's Monado's current version when one is installed, else the bundled Monado of an older install.</summary>

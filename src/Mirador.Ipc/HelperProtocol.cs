@@ -84,12 +84,20 @@ public enum HelperCommand
     SetRuntimeApproved,
 
     /// <summary>
-    /// Takes back every approval of the caller's own builds except those of the profiles <see cref="HelperRequest.Keep"/>
-    /// names (Mirador.md §4.11 item 51): Mirador sends it after a profile is saved or deleted, with the profiles that
-    /// still run an approved build as administrator, so an approval never outlives the choice that made it. A copy that
+    /// Answers with the profiles the caller has an approved build for (Mirador.md §4.11 item 51), as
+    /// <see cref="HelperReply.Value"/>: their ids separated by commas (an id has none), empty for none. With
+    /// <see cref="ForgetApprovedBuild"/>, Mirador takes back what no profile asks for any more: a request never carries
+    /// a list, a reply may.
+    /// </summary>
+    ListApprovedBuilds,
+
+    /// <summary>
+    /// Takes back the caller's own approval of the build of the profile <see cref="HelperRequest.Build"/> names: its
+    /// record, then its copy. Mirador sends it once a profile no longer runs that build as administrator (its switch
+    /// off, its Monado changed, the profile deleted), so an approval never outlives the choice that made it. A copy that
     /// is the active OpenXR runtime hands that over to Mirador's Monado first. Taking a right away needs no prompt.
     /// </summary>
-    ForgetApprovedBuilds,
+    ForgetApprovedBuild,
 }
 
 /// <summary>
@@ -126,10 +134,7 @@ public sealed record ElevatedStart(
 /// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a nightly's name, checked by the helper), and
 /// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper).
 /// </summary>
-/// <param name="Keep">For <see cref="HelperCommand.ForgetApprovedBuilds"/>: the profiles whose approvals stay.</param>
-public sealed record HelperRequest(
-    [property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null,
-    IReadOnlyList<string>? Keep = null);
+public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null);
 
 /// <summary>
 /// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing

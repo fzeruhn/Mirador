@@ -37,20 +37,24 @@ public sealed class HelperHandlerApprovalTests : IDisposable
     }
 
     [Fact]
-    public async Task Forgetting_keeps_only_the_callers_profiles_still_asking_and_never_another_users()
+    public async Task The_callers_approvals_are_listed_and_one_is_taken_back_never_another_users()
     {
         var gone = Approve(Finn, "p1");
         Approve(Finn, "p2");
         Approve(Other, "p1");
 
-        var reply = await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuilds, Keep: ["p2"]), Caller(Finn));
+        var listed = await Handler().HandleAsync(new HelperRequest(HelperCommand.ListApprovedBuilds), Caller(Finn));
+        Assert.True(listed.Ok, listed.Error);
+        Assert.Equal(["p1", "p2"], listed.Value!.Split(',').Order());
+
+        var reply = await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: "p1"), Caller(Finn));
 
         Assert.True(reply.Ok, reply.Error);
         Assert.Null(store.Get(Finn.Value, "p1"));
-        Assert.False(Directory.Exists(ApprovedBuilds.ProfileRoot(App, Finn.Value, "p1")));
         Assert.False(Directory.Exists(gone.Folder));
         Assert.NotNull(store.Get(Finn.Value, "p2"));
         Assert.NotNull(store.Get(Other.Value, "p1"));
+        Assert.Equal("p2", (await Handler().HandleAsync(new HelperRequest(HelperCommand.ListApprovedBuilds), Caller(Finn))).Value);
     }
 
     [Fact]
@@ -63,7 +67,7 @@ public sealed class HelperHandlerApprovalTests : IDisposable
         File.WriteAllText(miradors, "{}");
         monado.Current = miradors;
 
-        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuilds, Keep: []), Caller(Finn))).Ok);
+        Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: "p1"), Caller(Finn))).Ok);
 
         Assert.Equal(miradors, registry.Active);
     }
