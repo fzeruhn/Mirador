@@ -171,8 +171,9 @@ static BOOL is_file(const wchar_t *path)
 }
 
 /*
- * The Mirador this stand-in came with: installed, it sits in <app>\monado\runtime\service\, three folders below
- * <app>\Mirador.exe. A copy in a build folder has no Mirador there.
+ * The Mirador this stand-in came with: installed, it sits in <app>\monado\<version>\bin\service\ (the bundled Monado)
+ * or <app>\builds\<user>\<profile>\<commit>\bin\service\ (an approved build), so the nearest folder above it that holds
+ * Mirador.exe, at most seven up. A copy in a user's build folder has none there.
  */
 static BOOL own_app(wchar_t *path, DWORD count)
 {
@@ -183,7 +184,7 @@ static BOOL own_app(wchar_t *path, DWORD count)
         return FALSE;
     }
 
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < 7; i++)
     {
         wchar_t *slash = wcsrchr(path, L'\\');
         if (slash == NULL)
@@ -191,14 +192,19 @@ static BOOL own_app(wchar_t *path, DWORD count)
             return FALSE;
         }
         *slash = L'\0';
+        if (wcslen(path) + wcslen(L"\\Mirador.exe") + 1 > count)
+        {
+            return FALSE;
+        }
+        wcscat(path, L"\\Mirador.exe");
+        if (is_file(path))
+        {
+            return TRUE;
+        }
+        *wcsrchr(path, L'\\') = L'\0';
     }
 
-    if (wcslen(path) + wcslen(L"\\Mirador.exe") + 1 > count)
-    {
-        return FALSE;
-    }
-    wcscat(path, L"\\Mirador.exe");
-    return is_file(path);
+    return FALSE;
 }
 
 /*

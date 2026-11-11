@@ -9,7 +9,7 @@
     <Project Path="src/Mirador.Core/Mirador.Core.csproj">
       <Platform Solution="*|x64" Project="x64" />
     </Project>
-    <Project Path="src/Mirador.DreamAir/Mirador.DreamAir.csproj">
+    <Project Path="src/Mirador.Pimax/Mirador.Pimax.csproj">
       <Platform Solution="*|x64" Project="x64" />
     </Project>
     <Project Path="src/Mirador.Helper/Mirador.Helper.csproj">
@@ -23,7 +23,7 @@
     <Project Path="tests/Mirador.Core.Tests/Mirador.Core.Tests.csproj">
       <Platform Solution="*|x64" Project="x64" />
     </Project>
-    <Project Path="tests/Mirador.DreamAir.Tests/Mirador.DreamAir.Tests.csproj">
+    <Project Path="tests/Mirador.Pimax.Tests/Mirador.Pimax.Tests.csproj">
       <Platform Solution="*|x64" Project="x64" />
     </Project>
     <Project Path="tests/Mirador.Helper.Tests/Mirador.Helper.Tests.csproj">

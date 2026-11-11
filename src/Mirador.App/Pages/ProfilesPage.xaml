@@ -7,107 +7,20 @@
     xmlns:vm="using:Mirador.App.ViewModels"
     NavigationCacheMode="Required">
 
-    <Page.Resources>
-        <!-- A list command: an icon button without a frame until it is pointed at, like a toolbar's. -->
-        <Style x:Key="ListCommand" TargetType="Button">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="FontSize" Value="16" />
-        </Style>
-    </Page.Resources>
-
     <!--
-        List and details: the profiles on the left with their commands above them, the selected one's settings on the
-        right, and Save and Revert under the settings, always in view.
+        The profile picked at the top (its drop-down ends with "Add a profile…"), its settings below, in the same centred
+        column as the other pages; Save and Revert under them in that column, always in view.
     -->
-    <Grid Padding="36,24,36,24" ColumnSpacing="24" RowSpacing="8">
+    <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="200" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
 
-        <TextBlock
-            Grid.ColumnSpan="2"
-            Style="{StaticResource PageTitle}"
-            Text="Profiles" />
-
-        <!--  The list  -->
-        <Grid
-            Grid.Row="1"
-            Grid.RowSpan="2"
-            RowSpacing="4">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <!-- The list's commands, as icons with their names as tooltips (a toolbar over the list). -->
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <Button
-                    AutomationProperties.Name="Add"
-                    Command="{x:Bind ViewModel.AddCommand}"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Add">
-                    <FontIcon Glyph="&#xE710;" />
-                </Button>
-                <Button
-                    AutomationProperties.Name="Duplicate"
-                    Command="{x:Bind ViewModel.DuplicateCommand}"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Duplicate">
-                    <FontIcon Glyph="&#xE8C8;" />
-                </Button>
-                <Button
-                    AutomationProperties.Name="Rename"
-                    Click="OnRename"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Rename">
-                    <FontIcon Glyph="&#xE8AC;" />
-                </Button>
-                <Button
-                    AutomationProperties.Name="Delete"
-                    Click="OnDelete"
-                    IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                    Style="{StaticResource ListCommand}"
-                    ToolTipService.ToolTip="Delete">
-                    <FontIcon Glyph="&#xE74D;" />
-                </Button>
-            </StackPanel>
-            <ListView
-                Grid.Row="1"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="8"
-                IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
-                ItemsSource="{x:Bind ViewModel.Profiles}"
-                SelectedItem="{x:Bind ViewModel.Selected, Mode=TwoWay, Converter={StaticResource ProfileConverter}}"
-                SelectionMode="Single" />
-            <TextBlock
-                Grid.Row="2"
-                Margin="0,4,0,0"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Save or revert your changes first."
-                TextWrapping="Wrap"
-                Visibility="{x:Bind ViewModel.IsDirty, Mode=OneWay}" />
-        </Grid>
-
-        <!--  The details  -->
-        <ScrollViewer Grid.Row="1" Grid.Column="1">
-            <c:PageColumn IsCentered="False" MaxColumnWidth="700">
-            <StackPanel Spacing="4">
+        <ScrollViewer>
+            <c:PageColumn>
+            <StackPanel Padding="36,24,36,12" Spacing="4">
+                <TextBlock Style="{StaticResource PageTitle}" Text="Profiles" />
                 <InfoBar
                     IsClosable="False"
                     IsOpen="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
@@ -123,23 +36,123 @@
                     Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}" />
 
                 <TextBlock Margin="1,4,0,6" Style="{StaticResource SectionHeader}" Text="Profile" />
+                <toolkit:SettingsCard Description="{x:Bind ViewModel.PickerDescription, Mode=OneWay}" Header="Profile">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ComboBox
+                            MinWidth="200"
+                            AutomationProperties.Name="Profile"
+                            IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}"
+                            IsTextSearchEnabled="False"
+                            PreviewKeyDown="OnPickerPreviewKeyDown"
+                            ItemsSource="{x:Bind ViewModel.Profiles}"
+                            SelectedItem="{x:Bind ViewModel.Selected, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
+                        <Button
+                            Command="{x:Bind ViewModel.DuplicateCommand}"
+                            Content="Duplicate"
+                            IsEnabled="{x:Bind ViewModel.CanSwitch, Mode=OneWay}" />
+                        <Button
+                            Click="OnDelete"
+                            Content="Delete profile"
+                            IsEnabled="{x:Bind ViewModel.CanDelete, Mode=OneWay}" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
                 <toolkit:SettingsCard Header="Name">
                     <TextBox MinWidth="200" Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </toolkit:SettingsCard>
-                <toolkit:SettingsCard Description="Mirador's steps for this headset run with Monado." Header="Headset">
-                    <ComboBox
-                        MinWidth="200"
-                        ItemsSource="{x:Bind ViewModel.Headsets}"
-                        SelectedItem="{x:Bind ViewModel.Headset, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
-                </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Builds" />
-                <toolkit:SettingsCard Description="The Monado that comes with Mirador, or one you built yourself." Header="Monado build">
+                <toolkit:SettingsCard Description="The bundled Monado is upstream's weekly build, which Mirador downloads. Or Mirador builds a branch for you, or runs one you built." Header="Monado">
                     <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.MonadoSource, Mode=TwoWay}">
-                        <ComboBoxItem Content="Comes with Mirador" />
+                        <ComboBoxItem Content="Bundled Monado" />
+                        <ComboBoxItem Content="Build upstream main" />
+                        <ComboBoxItem Content="Build from a link" />
                         <ComboBoxItem Content="A build folder" />
                     </ComboBox>
                 </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    ContentAlignment="Vertical"
+                    Description="A branch or merge request on GitLab or GitHub: paste its page's link."
+                    Header="Link"
+                    HorizontalContentAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.MonadoFromLink, Mode=OneWay}">
+                    <TextBox PlaceholderText="https://gitlab.freedesktop.org/you/monado/-/tree/your-branch" Text="{x:Bind ViewModel.MonadoLink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="Filled in from the link."
+                    Header="Branch"
+                    Visibility="{x:Bind ViewModel.MonadoFromLink, Mode=OneWay}">
+                    <TextBox MinWidth="200" Text="{x:Bind ViewModel.MonadoBranch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    ContentAlignment="Vertical"
+                    Description="Only if the branch needs them: -DNAME=value, one per line. They come after Mirador's own."
+                    Header="Extra CMake options"
+                    HorizontalContentAlignment="Stretch"
+                    Visibility="{x:Bind ViewModel.MonadoFromLink, Mode=OneWay}">
+                    <TextBox AcceptsReturn="True" MinHeight="60" Text="{x:Bind ViewModel.MonadoOptions, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="{x:Bind ViewModel.MiradorMonado.Status, Mode=OneWay}"
+                    Header="Bundled Monado"
+                    Visibility="{x:Bind ViewModel.MiradorMonado.IsVisible, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.MiradorMonado.IsBusy, Mode=OneWay}" />
+                        <Button Command="{x:Bind ViewModel.MiradorMonado.CheckCommand}" Content="Check" />
+                        <Button Command="{x:Bind ViewModel.MiradorMonado.RollBackCommand}" Content="Roll back" />
+                        <Button
+                            Command="{x:Bind ViewModel.MiradorMonado.InstallCommand}"
+                            Content="{x:Bind ViewModel.MiradorMonado.InstallLabel, Mode=OneWay}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="{x:Bind ViewModel.RunAsAdministratorDescription, Mode=OneWay}"
+                    Header="Run as administrator"
+                    IsEnabled="{x:Bind ViewModel.CanRunAsAdministrator}">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.RunAsAdministrator, Mode=TwoWay}" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="{x:Bind ViewModel.ApprovalStatus, Mode=OneWay}"
+                    Header="Approved build"
+                    Visibility="{x:Bind ViewModel.CanApprove, Mode=OneWay}">
+                    <Button Command="{x:Bind ViewModel.ApproveCommand}" Content="Approve" />
+                </toolkit:SettingsCard>
+                <toolkit:SettingsCard
+                    Description="{x:Bind ViewModel.Build.Status, Mode=OneWay}"
+                    Header="Build"
+                    Visibility="{x:Bind ViewModel.Build.IsVisible, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.Build.IsBuilding, Mode=OneWay}" />
+                        <Button Click="OnCheckBuildTools" Content="Check build tools" />
+                        <Button Command="{x:Bind ViewModel.Build.CancelCommand}" Content="Cancel" />
+                        <Button Command="{x:Bind ViewModel.Build.OpenLogCommand}" Content="Open log" />
+                        <Button
+                            Command="{x:Bind ViewModel.Build.BuildCommand}"
+                            Content="{x:Bind ViewModel.Build.BuildLabel, Mode=OneWay}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
+                <Expander
+                    Margin="0,0,0,4"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    Header="Build log"
+                    Visibility="{x:Bind ViewModel.Build.IsVisible, Mode=OneWay}">
+                    <TextBox
+                        MaxHeight="320"
+                        FontFamily="Consolas"
+                        FontSize="12"
+                        IsReadOnly="True"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        Text="{x:Bind ViewModel.Build.Log, Mode=OneWay}"
+                        TextWrapping="NoWrap" />
+                </Expander>
                 <toolkit:SettingsCard
                     ContentAlignment="Vertical"
                     Header="Monado build folder"
@@ -157,32 +170,35 @@
                             Content="Browse…" />
                     </Grid>
                 </toolkit:SettingsCard>
-
+                <!-- Passed or failed with the date; each step and the run's log are on Diagnostics. -->
                 <toolkit:SettingsCard
-                    Description="The Dream Air's direct-mode layer: the one that comes with Mirador, or its build or release folder."
-                    Header="Vulkan layer"
-                    Visibility="{x:Bind ViewModel.IsDreamAir, Mode=OneWay}">
-                    <ComboBox MinWidth="200" SelectedIndex="{x:Bind ViewModel.LayerSource, Mode=TwoWay}">
-                        <ComboBoxItem Content="Comes with Mirador" />
-                        <ComboBoxItem Content="A layer folder" />
-                    </ComboBox>
-                </toolkit:SettingsCard>
-                <toolkit:SettingsCard
-                    ContentAlignment="Vertical"
-                    Header="Layer folder"
-                    HorizontalContentAlignment="Stretch"
-                    Visibility="{x:Bind ShowLayerFolder(ViewModel.IsDreamAir, ViewModel.LayerFromFolder), Mode=OneWay}">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox PlaceholderText="C:\Users\you\Projects\dreamair-vk-layer\build" Text="{x:Bind ViewModel.LayerFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    Description="{x:Bind ViewModel.Verify.Status, Mode=OneWay}"
+                    Header="Verify build for Windows"
+                    Visibility="{x:Bind ViewModel.Verify.IsVisible, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.Verify.IsBusy, Mode=OneWay}" />
                         <Button
-                            Grid.Column="1"
-                            Click="OnBrowseLayer"
-                            Content="Browse…" />
-                    </Grid>
+                            Click="OnOpenDiagnostics"
+                            Content="Diagnostics"
+                            Visibility="{x:Bind ViewModel.Verify.PointsToDiagnostics, Mode=OneWay}" />
+                        <Button
+                            Command="{x:Bind ViewModel.Verify.CancelCommand}"
+                            Content="Cancel"
+                            Visibility="{x:Bind ViewModel.Verify.IsBusy, Mode=OneWay}" />
+                        <Button Command="{x:Bind ViewModel.Verify.VerifyCommand}" Content="Verify" />
+                    </StackPanel>
+                </toolkit:SettingsCard>
+
+                <!-- What Mirador does on Windows for the headset: one choice turns all of it on, the layer included. -->
+                <TextBlock Style="{StaticResource SectionHeader}" Text="Windows tools" />
+                <toolkit:SettingsCard Description="{x:Bind ViewModel.HeadsetDescription, Mode=OneWay}" Header="Headset">
+                    <ComboBox
+                        MinWidth="200"
+                        ItemsSource="{x:Bind ViewModel.Headsets}"
+                        SelectedItem="{x:Bind ViewModel.Headset, Mode=TwoWay, Converter={StaticResource ProfileConverter}}" />
                 </toolkit:SettingsCard>
 
                 <TextBlock Style="{StaticResource SectionHeader}" Text="Lighthouse" />
@@ -249,20 +265,21 @@
             </c:PageColumn>
         </ScrollViewer>
 
-        <StackPanel
-            Grid.Row="2"
-            Grid.Column="1"
-            Orientation="Horizontal"
-            Spacing="8">
-            <Button
-                MinWidth="96"
-                Command="{x:Bind ViewModel.SaveCommand}"
-                Content="Save"
-                Style="{StaticResource AccentButtonStyle}" />
-            <Button
-                MinWidth="96"
-                Command="{x:Bind ViewModel.RevertCommand}"
-                Content="Revert" />
-        </StackPanel>
+        <c:PageColumn Grid.Row="1">
+            <StackPanel
+                Padding="36,8,36,24"
+                Orientation="Horizontal"
+                Spacing="8">
+                <Button
+                    MinWidth="96"
+                    Command="{x:Bind ViewModel.SaveCommand}"
+                    Content="Save"
+                    Style="{StaticResource AccentButtonStyle}" />
+                <Button
+                    MinWidth="96"
+                    Command="{x:Bind ViewModel.RevertCommand}"
+                    Content="Revert" />
+            </StackPanel>
+        </c:PageColumn>
     </Grid>
 </Page>

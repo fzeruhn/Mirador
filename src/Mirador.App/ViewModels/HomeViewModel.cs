@@ -133,15 +133,19 @@ public sealed partial class HomeViewModel : ObservableObject
     public partial string? RuntimeNotice { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRunsAsYouNotice))]
+    [NotifyPropertyChangedFor(nameof(HasRunsAsYouNotice), nameof(AllowLabel))]
     public partial string? RunsAsYouNotice { get; set; }
 
     /// <summary>
-    /// Whether the "Runs as you" line offers "Allow again": the last Start ran as the user because SteamVR's Lighthouse
-    /// driver changed since the user allowed Monado as administrator (Mirador.md §4.10 item 46).
+    /// Whether the "Runs as you" line offers "Allow" (again): the profile has "Run as administrator" on but the consent
+    /// isn't recorded, or the last Start ran as the user because SteamVR's Lighthouse driver changed since the user
+    /// allowed Monado as administrator (Mirador.md §4.10 item 46).
     /// </summary>
     [ObservableProperty]
     public partial bool OffersAllowAgain { get; set; }
+
+    /// <summary>The button's label: "Allow" when the consent was never recorded, else "Allow again".</summary>
+    public string AllowLabel => RunsAsYouNotice == AppHost.NotAllowedReason ? "Allow" : "Allow again";
 
     /// <summary>False while "Allow again" waits for its UAC prompt.</summary>
     [ObservableProperty]
@@ -164,6 +168,10 @@ public sealed partial class HomeViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool CanSetOpenComposite { get; set; }
+
+    /// <summary>Whether "Get OpenComposite" shows: there is no OpenComposite to copy yet.</summary>
+    [ObservableProperty]
+    public partial bool CanGetOpenComposite { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRuntimeProblem))]
@@ -189,7 +197,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasOpenCompositeUpdate))]
     public partial string? OpenCompositeUpdateText { get; set; }
 
-    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenComposite (Task 48) and the release has a zip to check.</summary>
+    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenComposite and the release has a zip to check.</summary>
     [ObservableProperty]
     public partial bool CanUpdateOpenComposite { get; set; }
 
@@ -219,8 +227,19 @@ public sealed partial class HomeViewModel : ObservableObject
         LoadProfiles();
         RefreshRuntime();
         RefreshStations();
+        GpuSchedulingNotice = Core.Gpu.GpuScheduling.Notice(Core.Gpu.GpuScheduling.Now());
         _ = RunChecksAsync();
     }
+
+    /// <summary>
+    /// The warning while hardware-accelerated GPU scheduling is off (or the driver doesn't offer it): Monado as
+    /// administrator needs it for the GPU's realtime priority. Asked each time Home shows; it changes only with a restart.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasGpuSchedulingNotice))]
+    public partial string? GpuSchedulingNotice { get; set; }
+
+    public bool HasGpuSchedulingNotice => GpuSchedulingNotice is not null;
 
     /// <summary>
     /// Home listens to the base stations while it is the current page, the base stations card shows and the window is on
@@ -324,7 +343,7 @@ public sealed partial class HomeViewModel : ObservableObject
         MonadoInstall install;
         try
         {
-            install = host.Session.CurrentInstall ?? host.Locator.Locate(SelectedSet().Selected.Monado);
+            install = host.Session.CurrentInstall ?? host.Locator.Locate(SelectedSet().Selected);
         }
         catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
         {
@@ -342,7 +361,9 @@ public sealed partial class HomeViewModel : ObservableObject
         CanSetRuntime = false;
         try
         {
-            RuntimeProblem = await RuntimeSwitch.SetAsync(install, host.Helper, ElevatedRuntime.RunAsync, host.Runtime);
+            var profile = SelectedSet().Selected;
+            RuntimeProblem = await RuntimeSwitch.SetAsync(
+                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null, profile.RunAsAdministrator);
         }
         catch (Exception e)
         {
@@ -567,20 +588,37 @@ public sealed partial class HomeViewModel : ObservableObject
     private void RefreshRuntime()
     {
         MonadoInstall? install = host.Session.CurrentInstall;
+        string? noMonado = null;
         if (install is null)
         {
             try
             {
-                install = host.Locator.Locate(SelectedSet().Selected.Monado);
+                install = host.Locator.Locate(SelectedSet().Selected);
             }
             catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
             {
                 install = null;
+                noMonado = e.Message;
+            }
+        }
+
+        // A profile with no Monado yet can't Start, and says why.
+        if (State == SessionState.Stopped)
+        {
+            CanStartStop = noMonado is null;
+            if (noMonado is null)
+            {
+                RemoveNotice("nomonado");
+            }
+            else if (Notices.FirstOrDefault(n => n.Key == "nomonado")?.Message != noMonado)
+            {
+                RemoveNotice("nomonado");
+                Notices.Insert(0, new NoticeItem("nomonado", "No Monado yet", noMonado, InfoBarSeverity.Warning, IsClosable: false));
             }
         }
 
         var active = host.Runtime.Active();
-        var isActive = install is not null && host.Runtime.IsActive(install.Manifest);
+        var isActive = install is not null && host.Runtime.IsActive(install);
         OpenXrRow = new StatusItem("OpenXR runtime", RuntimeLine.Describe(active, install, isActive), isActive ? StatusLevel.Ok : StatusLevel.Info);
         CanSetRuntime = install is not null && !isActive;
         if (isActive)
@@ -591,7 +629,7 @@ public sealed partial class HomeViewModel : ObservableObject
 
         RuntimeNotice = host.Session.RuntimeNotice;
         RunsAsYouNotice = host.RunsAsYouReason();
-        OffersAllowAgain = RunsAsYouNotice == AppHost.SteamVrChangedReason;
+        OffersAllowAgain = RunsAsYouNotice is AppHost.SteamVrChangedReason or AppHost.NotAllowedReason;
         RefreshOpenVr(isActive, active);
     }
 
@@ -634,12 +672,15 @@ public sealed partial class HomeViewModel : ObservableObject
     /// </summary>
     private void RefreshOpenVr(bool openXrIsMonado, string? activeOpenXr)
     {
-        ShowOpenVr = host.OpenVr.Available;
-        if (!ShowOpenVr)
+        // Without OpenComposite yet the row says so and offers "Get OpenComposite" (Mirador.md §4.11 item 56).
+        ShowOpenVr = true;
+        CanGetOpenComposite = !host.OpenVr.Available;
+        if (CanGetOpenComposite)
         {
+            OpenVrRow = new StatusItem("OpenVR runtime", "OpenComposite isn't downloaded yet", StatusLevel.Info);
             CanSetOpenComposite = false;
             OpenVrWarning = null;
-            OpenVrProblem = null;
+            OpenVrProblem = openCompositeProblem;
             return;
         }
 
@@ -666,6 +707,29 @@ public sealed partial class HomeViewModel : ObservableObject
         CanSetOpenComposite = view.OffersOpenComposite;
         OpenVrWarning = view.Warning;
         OpenVrProblem = openCompositeProblem ?? view.Problem;
+    }
+
+    /// <summary>
+    /// "Get OpenComposite": the fork's latest release, downloaded and checked into the per-user copy (Mirador.md §4.11
+    /// item 56). It doesn't switch OpenVR games: "Set OpenComposite" then does.
+    /// </summary>
+    [RelayCommand]
+    private async Task GetOpenCompositeAsync()
+    {
+        CanGetOpenComposite = false;
+        try
+        {
+            var message = await App.Current.Updates.GetOpenCompositeAsync();
+            openCompositeProblem = null;
+            ShowNotice("opencomposite-update", "OpenComposite", message, InfoBarSeverity.Informational);
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Getting OpenComposite failed", e);
+            openCompositeProblem = $"Getting OpenComposite failed ({e.Message.Trim().TrimEnd('.')}).";
+        }
+
+        RefreshRuntime();
     }
 
     /// <summary>"Set OpenComposite": OpenComposite first for OpenVR games, until the owner or SteamVR changes it.</summary>
@@ -757,6 +821,13 @@ public sealed partial class HomeViewModel : ObservableObject
             var problem = text.StartsWith("Monado stopped by itself", StringComparison.Ordinal);
             ShowNotice("ended", "Monado stopped", text, problem ? InfoBarSeverity.Error : InfoBarSeverity.Informational);
         }
+    }
+
+    /// <summary>How installing Mirador's Monado at launch went.</summary>
+    public void ShowMonadoNotice(string message, bool ok)
+    {
+        ShowNotice("miradors-monado", "Bundled Monado", message, ok ? InfoBarSeverity.Success : InfoBarSeverity.Warning);
+        RefreshRuntime();
     }
 
     private void ShowNotice(string key, string title, string message, InfoBarSeverity severity)

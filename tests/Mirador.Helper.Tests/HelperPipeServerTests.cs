@@ -34,10 +34,7 @@ public sealed class HelperPipeServerTests : IAsyncLifetime
 
     private HelperHandler NewHandler()
     {
-        var manifest = temp.File(@"monado\runtime\openxr_monado.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(manifest)!);
-        File.WriteAllText(manifest, "{}");
-        return new HelperHandler(services, processes, registry, manifest, "9.9.9", new Mirador.Ipc.ElevatedConsent(consentValues));
+        return new HelperHandler(services, processes, registry, "9.9.9", new Mirador.Ipc.ElevatedConsent(consentValues));
     }
 
     private HelperPipeServer NewServer(string name, TimeSpan? readLimit = null) =>

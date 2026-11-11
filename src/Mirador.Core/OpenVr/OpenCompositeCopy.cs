@@ -5,7 +5,7 @@ namespace Mirador.Core.OpenVr;
 /// <summary>What <see cref="OpenCompositeCopy.Update"/> did.</summary>
 public enum CopyOutcome
 {
-    /// <summary>The copy matched the bundle already; nothing was written.</summary>
+    /// <summary>The copy was up to date already; nothing was written.</summary>
     Current,
 
     /// <summary>The copy was made or brought up to date.</summary>
@@ -14,19 +14,22 @@ public enum CopyOutcome
     /// <summary>A game holds the copy's DLL: the old copy stays, and the next try may succeed.</summary>
     InUse,
 
-    /// <summary>This Mirador has no bundled OpenComposite (a dev run).</summary>
-    NoBundle,
+    /// <summary>There is no OpenComposite to copy yet: none downloaded ("Get OpenComposite", Mirador.md §4.11 item 56).</summary>
+    NoneYet,
+
+    /// <summary>"Roll back" found no earlier OpenComposite to go back to.</summary>
+    NothingEarlier,
 }
 
 /// <summary>
-/// Mirador's per-user copy of the bundled OpenComposite (Mirador.md §4.6 item 20). OpenComposite writes
+/// Mirador's per-user copy of OpenComposite (Mirador.md §4.6 item 20): a release downloaded from the fork ("Get
+/// OpenComposite", the update; §4.11 item 56). OpenComposite writes
 /// <c>applist.json</c> next to its DLL at every game start and ends the game if it can't, so it can't run from the
 /// admin-only install folder. Only <c>bin\vrclient_x64.dll</c> and <c>bin\version.txt</c> are ever written; the files
 /// OpenComposite and the owner put there (<c>applist.json</c>, <c>apps-config.json</c>, <c>opencomposite.ini</c>) stay.
 /// </summary>
-/// <param name="bundleDir">The bundled OpenComposite: <c>{app}\opencomposite</c>, with <c>bin\</c> and <c>SOURCE.txt</c>.</param>
 /// <param name="runtimeDir">The copy: the OpenVR runtime folder, with <c>bin\</c> below it.</param>
-public sealed class OpenCompositeCopy(string bundleDir, string runtimeDir)
+public sealed class OpenCompositeCopy(string runtimeDir)
 {
     private const string Dll = "vrclient_x64.dll";
 
@@ -39,97 +42,127 @@ public sealed class OpenCompositeCopy(string bundleDir, string runtimeDir)
     /// <summary>The copy's folder, the one the OpenVR paths file names.</summary>
     public string RuntimeDir => runtimeDir;
 
-    /// <summary>Whether this Mirador has OpenComposite in its bundle.</summary>
-    public bool HasBundle => File.Exists(Path.Combine(bundleDir, "bin", Dll));
-
     /// <summary>Whether the copy's DLL is there.</summary>
     public bool HasCopy => File.Exists(Path.Combine(runtimeDir, "bin", Dll));
 
     /// <summary>The copy's OpenComposite, from its <c>SOURCE.txt</c>; null when it has no record (made before Phase 6, or by hand).</summary>
     public OpenCompositeSource? CopySource => ReadSource(runtimeDir);
 
-    /// <summary>Whether the copy is a release downloaded from GitHub: its version is newer than the bundle's.</summary>
-    public bool HoldsDownload => CopySource?.Version is { } version && OpenCompositeSource.Compare(version, BundleSource?.Version) > 0;
+    /// <summary>Whether the copy is a release downloaded from GitHub (it has its record), so "Roll back" can apply.</summary>
+    public bool HoldsDownload => CopySource?.Version is not null;
+
+    /// <summary>Whether there is OpenComposite to copy: a finished download.</summary>
+    public bool HasSomethingToCopy => Downloads().Any();
+
+    /// <summary>How many downloaded releases are kept: the one in use and one for "Roll back".</summary>
+    public const int KeptDownloads = 2;
 
     /// <summary>Where downloaded releases are unpacked: <c>{runtimeDir}\download\&lt;version&gt;\OpenComposite</c>.</summary>
     public string DownloadRoot => Path.Combine(runtimeDir, "download");
 
     /// <summary>
-    /// At Mirador's launch and at "Set OpenComposite": brings the copy up to date with the newest of the bundle and the
-    /// unpacked downloads that are newer than the bundle. It is written when it has no record, an older version, or the
+    /// At Mirador's launch and at "Set OpenComposite": brings the copy up to date with the newest of the unpacked
+    /// downloads. It is written when it has no record, an older version, or the
     /// same version with other bytes; a newer copy stays. IO problems other than a held DLL are thrown.
     /// </summary>
-    public CopyOutcome Update()
-    {
-        if (!HasBundle)
-        {
-            return CopyOutcome.NoBundle;
-        }
-
-        return Sync(Candidate(), force: false);
-    }
-
-    /// <summary>The same as <see cref="Update"/> from <paramref name="releaseDir"/>, an unpacked release (<c>OpenComposite\</c> with <c>bin\</c>).</summary>
-    public CopyOutcome Install(string releaseDir) => Sync(releaseDir, force: false);
+    public CopyOutcome Update() => Candidate() is { } from ? Sync(from, force: false) : CopyOutcome.NoneYet;
 
     /// <summary>
-    /// Goes back to the bundled OpenComposite whatever the versions, and deletes the downloads. When a game holds the DLL
-    /// nothing changes (the downloads stay, so the copy would stay as it is).
+    /// The same as <see cref="Update"/> from <paramref name="releaseDir"/>, an unpacked release (<c>OpenComposite\</c>
+    /// with <c>bin\</c>). Once it is in place, only it and the release before it stay downloaded.
     /// </summary>
-    public CopyOutcome UseBundled()
+    public CopyOutcome Install(string releaseDir)
     {
-        if (!HasBundle)
+        var outcome = Sync(releaseDir, force: false);
+        if (outcome != CopyOutcome.InUse)
         {
-            return CopyOutcome.NoBundle;
-        }
-
-        var outcome = Sync(bundleDir, force: true);
-        if (outcome == CopyOutcome.InUse)
-        {
-            return outcome;
-        }
-
-        if (Directory.Exists(DownloadRoot))
-        {
-            Directory.Delete(DownloadRoot, recursive: true);
-        }
-
-        // A record or licence the bundle doesn't have would describe the wrong OpenComposite.
-        foreach (var stale in Directory.EnumerateFiles(runtimeDir, "*.txt").Where(f => IsOurs(Path.GetFileName(f)) && !File.Exists(Path.Combine(bundleDir, Path.GetFileName(f)))))
-        {
-            File.Delete(stale);
+            PruneDownloads();
         }
 
         return outcome;
     }
 
-    private static bool IsOurs(string name) =>
-        name.Equals("SOURCE.txt", StringComparison.OrdinalIgnoreCase)
-        || name.StartsWith("LICENSE", StringComparison.OrdinalIgnoreCase)
-        || name.StartsWith("LICENCE", StringComparison.OrdinalIgnoreCase)
-        || name.StartsWith("NOTES_", StringComparison.OrdinalIgnoreCase);
-
-    private string Candidate()
+    /// <summary>
+    /// "Roll back": goes back to the release before the one in the copy, from the downloads, and deletes the newer
+    /// download so the launch doesn't bring it back. When a game holds the DLL nothing changes.
+    /// </summary>
+    public CopyOutcome RollBack()
     {
-        var best = bundleDir;
-        var bestVersion = BundleSource?.Version;
+        var have = CopySource?.Version;
+        var candidates = Downloads()
+            .Where(d => have is null || OpenCompositeSource.Compare(d.Version, have) < 0)
+            .OrderByDescending(d => d.Version, Comparer<string>.Create((a, b) => OpenCompositeSource.Compare(a, b)))
+            .Take(1)
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return CopyOutcome.NothingEarlier;
+        }
+
+        var earlier = candidates[0];
+
+        var outcome = Sync(earlier.Folder, force: true);
+        if (outcome == CopyOutcome.InUse)
+        {
+            return outcome;
+        }
+
+        foreach (var newer in Downloads().Where(d => OpenCompositeSource.Compare(d.Version, earlier.Version) > 0))
+        {
+            Directory.Delete(Path.GetDirectoryName(newer.Folder)!, recursive: true);
+        }
+
+        return outcome;
+    }
+
+    /// <summary>The finished downloads: <c>download\&lt;version&gt;\OpenComposite</c> whose SOURCE.txt names that version.</summary>
+    private IEnumerable<(string Folder, string Version)> Downloads()
+    {
         if (!Directory.Exists(DownloadRoot))
         {
-            return best;
+            yield break;
         }
 
         foreach (var folder in Directory.EnumerateDirectories(DownloadRoot))
         {
             var release = Path.Combine(folder, "OpenComposite");
             // Only a finished unpack: its folder is named for its version. "<ver>.part" (a crash mid-unpack) never is.
-            if (!File.Exists(Path.Combine(release, "bin", Dll))
-                || ReadSource(release)?.Version is not { } version
-                || !string.Equals(Path.GetFileName(folder), version, StringComparison.Ordinal))
+            if (File.Exists(Path.Combine(release, "bin", Dll))
+                && ReadSource(release)?.Version is { } version
+                && string.Equals(Path.GetFileName(folder), version, StringComparison.Ordinal))
             {
-                continue;
+                yield return (release, version);
             }
+        }
+    }
 
-            if (OpenCompositeSource.Compare(version, bestVersion) > 0)
+    /// <summary>All but the newest <see cref="KeptDownloads"/> downloads go; one a game holds stays until next time.</summary>
+    private void PruneDownloads()
+    {
+        var old = Downloads()
+            .OrderByDescending(d => d.Version, Comparer<string>.Create((a, b) => OpenCompositeSource.Compare(a, b)))
+            .Skip(KeptDownloads)
+            .ToList();
+        foreach (var (folder, _) in old)
+        {
+            try
+            {
+                Directory.Delete(Path.GetDirectoryName(folder)!, recursive: true);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    /// <summary>The newest of the downloads, or null when there is none.</summary>
+    private string? Candidate()
+    {
+        string? best = null;
+        string? bestVersion = null;
+        foreach (var (release, version) in Downloads())
+        {
+            if (best is null || OpenCompositeSource.Compare(version, bestVersion) > 0)
             {
                 best = release;
                 bestVersion = version;
@@ -210,26 +243,8 @@ public sealed class OpenCompositeCopy(string bundleDir, string runtimeDir)
         return File.Exists(file) ? OpenCompositeSource.Read(File.ReadAllText(file)) : null;
     }
 
-    /// <summary>The bundle's OpenComposite: its <c>SOURCE.txt</c>'s first line, or null when it is missing or says neither form.</summary>
-    public OpenCompositeSource? BundleSource
-    {
-        get
-        {
-            return ReadSource(bundleDir);
-        }
-    }
-
-    /// <summary>The OpenComposite commit the bundle was built from.</summary>
-    public string? Commit() => BundleSource?.Commit;
-
-    /// <summary>
-    /// The line for <c>versions.txt</c>: <c>OpenComposite: &lt;version (commit)&gt;, bundled</c> or <c>, updated from GitHub</c>,
-    /// the same as About says.
-    /// </summary>
-    public string VersionLine() =>
-        (CopySource ?? BundleSource) is { } source
-            ? $"OpenComposite: {source.Describe()}, {(HoldsDownload ? "updated from GitHub" : "bundled")}"
-            : "OpenComposite: not in this build";
+    /// <summary>The line for <c>versions.txt</c>: <c>OpenComposite: &lt;version (commit)&gt;</c>, as About says.</summary>
+    public string VersionLine() => CopySource is { } source ? $"OpenComposite: {source.Describe()}" : "OpenComposite: none yet";
 
     private static bool SameContent(string a, string b)
     {

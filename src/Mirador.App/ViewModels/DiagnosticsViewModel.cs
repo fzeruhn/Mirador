@@ -1,14 +1,16 @@
 using System.Diagnostics;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
 using Mirador.App.Services;
 using Mirador.Core;
+using Mirador.Core.Build;
 using Mirador.Core.Diagnostics;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Session;
-using Mirador.DreamAir;
+using Mirador.Pimax;
 
 namespace Mirador.App.ViewModels;
 
@@ -73,6 +75,22 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CheckDisplayCommand))]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>Whether a profile has a "Verify build for Windows" result.</summary>
+    [ObservableProperty]
+    public partial bool HasVerify { get; set; }
+
+    /// <summary>The newest Verify result's profile, time and outcome.</summary>
+    [ObservableProperty]
+    public partial string VerifySummary { get; set; } = "";
+
+    /// <summary>Each step of that result, a line each.</summary>
+    [ObservableProperty]
+    public partial string VerifySteps { get; set; } = "";
+
+    /// <summary>The newest Verify run's own log (the Verify tab).</summary>
+    [ObservableProperty]
+    public partial string VerifyLog { get; set; } = "";
 
     public bool HasCheckResult => CheckResult is not null;
 
@@ -142,7 +160,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunCheck))]
     private async Task CheckDisplayAsync()
     {
-        if (Profile() is not { } profile || host.Modules.GetValueOrDefault(DreamAirModule.ModuleId) is not DreamAirModule module)
+        if (Profile() is not { } profile || host.Modules.GetValueOrDefault(PimaxModule.ModuleId) is not PimaxModule module)
         {
             return;
         }
@@ -153,7 +171,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         {
             // Through the session: a Start waits for the check, and recovery restarts Pimax if Mirador goes away meanwhile.
             var (check, pimaxProblem) = await host.Session.RunWhileStoppedAsync(
-                DreamAirModule.ModuleId, (save, ct) => module.CheckDisplayAsync(host.Context, profile, save, ct), CancellationToken.None);
+                PimaxModule.ModuleId, (save, ct) => module.CheckDisplayAsync(host.Context, profile, save, ct), CancellationToken.None);
             CheckPassed = check.Pass;
             var verdict = check.Pass
                 ? (check.Message == "Direct mode works." ? check.Message : $"Direct mode works: {Sentence(check.Message)}")
@@ -254,9 +272,62 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     private void Refresh()
     {
         var profile = Profile();
-        IsDreamAir = profile?.ModuleId == DreamAirModule.ModuleId;
+        // The display check is the Pimax module's: it stops Pimax's software around it.
+        IsDreamAir = profile?.ModuleId == PimaxModule.ModuleId;
         CanCheckDisplay = IsDreamAir && host.Session.State == SessionState.Stopped;
         Versions = profile is null ? $"Mirador {AppInfo.Version}" : AppInfo.Versions(profile, host.AppDir).TrimEnd();
+        RefreshVerify();
+    }
+
+    private string? wantedVerifyProfile;
+    private string? wantedVerifyLog;
+
+    /// <summary>
+    /// What the Profiles page's Diagnostics button sends: the profile whose result to show, and the log of its last run
+    /// (a run that stopped has a log but no result). Kept until the next one.
+    /// </summary>
+    public void ShowVerify(string? profileId, string? logFile)
+    {
+        wantedVerifyProfile = profileId;
+        wantedVerifyLog = logFile;
+    }
+
+    /// <summary>
+    /// The Verify result of the profile the Profiles page sent the user here for, else the newest of any
+    /// (<see cref="VerifyResult.ForDiagnostics"/>), and its run's log (else the newest run's).
+    /// </summary>
+    private void RefreshVerify()
+    {
+        IReadOnlyList<Profile> profiles;
+        try
+        {
+            profiles = host.Profiles.Load().Profiles;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            profiles = [];
+        }
+
+        var shown = VerifyResult.ForDiagnostics(
+            profiles.Select(p => (p.Id, VerifyResult.Load(host.VerifyResultFile(p.Id)))), wantedVerifyProfile);
+        HasVerify = shown is not null;
+        if (shown is { } found)
+        {
+            var name = profiles.FirstOrDefault(p => p.Id == found.ProfileId)?.Name ?? found.ProfileId;
+            var result = found.Result;
+            VerifySummary = $"{name}, {result.At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}: {result.Summary()}";
+            VerifySteps = string.Join(Environment.NewLine, result.Steps.Select(s => $"{s.Outcome switch
+            {
+                VerifyOutcome.Passed => "Passed",
+                VerifyOutcome.Failed => "Failed",
+                _ => "Skipped",
+            }}: {s.Name}. {s.Detail}"));
+        }
+
+        var logFile = new[] { wantedVerifyLog, shown?.Result.LogFile }.FirstOrDefault(f => f is not null && File.Exists(f))
+            ?? DiagnosticsZip.NewestVerifyLog(host.Paths.LogsDir);
+        var log = ReadTail(logFile);
+        VerifyLog = log.Count > 0 ? string.Join(Environment.NewLine, log) : "No Verify run yet. Verify build for Windows is on the Profiles page.";
     }
 
     private void OnSessionChanged() => ui.TryEnqueue(Refresh);

@@ -18,8 +18,27 @@ public class ElevatedEnvironmentTests
         int lh = 3000, int scale = 100, int comp = 6, bool exit = false, string module = "") =>
         new(lh, scale, comp, exit, module);
 
-    private static IReadOnlyDictionary<string, string> Build(ElevatedStart? start = null, string module = "", params string[] testLines) =>
-        ElevatedEnvironment.Build(start ?? Start(module: module), Folders, ServerDir, SteamVrPath, testLines);
+    private static IReadOnlyDictionary<string, string> Build(ElevatedStart? start = null, string module = "") =>
+        ElevatedEnvironment.Build(start ?? Start(module: module), Folders, ServerDir, SteamVrPath);
+
+    [Fact]
+    public void Headless_adds_the_null_compositor_and_the_simulated_headset_and_nothing_else()
+    {
+        var plain = Build();
+        var headless = Build(Start() with { Headless = true });
+
+        Assert.False(plain.ContainsKey("XRT_COMPOSITOR_NULL"));
+        Assert.False(plain.ContainsKey("SIMULATED_ENABLE"));
+        Assert.Equal("1", headless["XRT_COMPOSITOR_NULL"]);
+        Assert.Equal("1", headless["SIMULATED_ENABLE"]);
+        Assert.Equal(plain.Count + 2, headless.Count);
+    }
+
+    [Fact]
+    public void Headless_with_a_headset_module_is_refused()
+    {
+        Assert.Throws<ArgumentException>(() => Build(Start(module: PimaxEnvironment.ModuleId) with { Headless = true }));
+    }
 
     [Fact]
     public void No_user_path()
@@ -62,7 +81,7 @@ public class ElevatedEnvironmentTests
         };
 
         var folders = UserFolders.FromBlock(block);
-        var env = ElevatedEnvironment.Build(Start(), folders, ServerDir, SteamVrPath, []);
+        var env = ElevatedEnvironment.Build(Start(), folders, ServerDir, SteamVrPath);
 
         Assert.Equal(block["TEMP"], env["TEMP"]);
         Assert.Equal(block["TMP"], env["TMP"]);
@@ -94,7 +113,7 @@ public class ElevatedEnvironmentTests
         Assert.Equal(@"D:\TempB", UserFolders.FromBlock(temp).Temp);
         Assert.Equal(
             MonadoPipeName.NameFor(temp, AnsiCodePage.RoundTrip),
-            MonadoPipeName.NameFor(ElevatedEnvironment.Build(Start(), UserFolders.FromBlock(temp), ServerDir, SteamVrPath, []), AnsiCodePage.RoundTrip));
+            MonadoPipeName.NameFor(ElevatedEnvironment.Build(Start(), UserFolders.FromBlock(temp), ServerDir, SteamVrPath), AnsiCodePage.RoundTrip));
 
         var none = UserFolders.FromBlock(new Dictionary<string, string> { ["USERPROFILE"] = @"C:\Users\u" });
         Assert.Equal(@"C:\Users\u", none.Temp);
@@ -116,9 +135,31 @@ public class ElevatedEnvironmentTests
         Assert.Throws<ArgumentException>(() => Build(Start(module: "vive")));
 
     [Fact]
-    public void Dreamair_adds_its_fixed_table()
+    public void The_dream_airs_elevated_table_is_exactly_its_eight_variables()
     {
-        var env = Build(module: "dreamair");
+        var expected = new Dictionary<string, string>
+        {
+            ["STEAMVR_LH_ENABLE"] = "1",
+            ["MIRADOR_DIRECT_MODE"] = "1",
+            ["DISABLE_RTSS_LAYER"] = "1",
+            ["VK_LOADER_LAYERS_ALLOW"] = "VK_LAYER_MIRADOR_direct_mode",
+            ["XRT_COMPOSITOR_FORCE_VK_DISPLAY"] = "0",
+            ["XRT_COMPOSITOR_USE_PRESENT_WAIT"] = "1",
+            ["U_PACING_COMP_PRESENT_TO_DISPLAY_OFFSET_MS"] = "8.9",
+            ["DREAMAIR_LOG"] = "info",
+        };
+
+        Assert.Equal(expected, DreamAirEnvironment.FixedEnvironment.ToDictionary(p => p.Key, p => p.Value));
+        Assert.Equal(8, DreamAirEnvironment.FixedEnvironment.Count);
+        Assert.Equal(
+            ["MIRADOR_DIRECT_MODE", "DISABLE_RTSS_LAYER", "VK_LOADER_LAYERS_ALLOW", "XRT_COMPOSITOR_FORCE_VK_DISPLAY", "XRT_COMPOSITOR_USE_PRESENT_WAIT"],
+            DirectModeEnvironment.Variables.Select(p => p.Key));
+    }
+
+    [Fact]
+    public void Pimax_adds_the_dream_airs_fixed_table()
+    {
+        var env = Build(module: PimaxEnvironment.ModuleId);
 
         foreach (var (name, value) in DreamAirEnvironment.FixedEnvironment)
         {
@@ -129,7 +170,7 @@ public class ElevatedEnvironmentTests
     [Fact]
     public void No_vk_or_xr_variables_but_layers_allow()
     {
-        var env = Build(module: "dreamair");
+        var env = Build(module: PimaxEnvironment.ModuleId);
 
         var vk = env.Keys.Where(k => k.StartsWith("VK_", StringComparison.OrdinalIgnoreCase)).ToList();
         Assert.Equal(["VK_LOADER_LAYERS_ALLOW"], vk);
@@ -151,16 +192,6 @@ public class ElevatedEnvironmentTests
         var env = Build();
 
         Assert.Equal(SteamVrPath, env["STEAMVR_PATH"]);
-    }
-
-    [Fact]
-    public void Test_lines_only_when_given()
-    {
-        Assert.False(Build().ContainsKey("XRT_COMPOSITOR_NULL"));
-
-        var env = Build(Start(), "", "XRT_COMPOSITOR_NULL=1", "SIMULATED_ENABLE=1");
-        Assert.Equal("1", env["XRT_COMPOSITOR_NULL"]);
-        Assert.Equal("1", env["SIMULATED_ENABLE"]);
     }
 
     [Fact]

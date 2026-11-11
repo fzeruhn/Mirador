@@ -26,10 +26,6 @@ public static partial class Program
     private static int Main(string[] args)
     {
         var parsed = AppArgs.Parse(args);
-        if (parsed.SetRuntime is { } manifest)
-        {
-            return SetRuntimeCommand.Run(manifest, ActiveRuntimeWriter.Write);
-        }
 
         // The elevated step of "Run Monado as administrator": records this user's consent, and SteamVR's Lighthouse DLLs
         // that Valve didn't sign as they are now. No window, no app.
@@ -41,6 +37,34 @@ public static partial class Program
                 AllowElevatedCommand.CurrentUser(),
                 AllowElevatedCommand.UnsignedLighthouseFiles,
                 AppLog.Write);
+        }
+
+        // The elevated step of "Run as administrator" for a branch or build folder (Mirador.md §4.11 item 51): copies the
+        // build into the install folder, which only administrators can change, and records each file's hash. No window.
+        if (parsed.ApproveBuild is { } approve)
+        {
+            AppLog.Open(AppPaths.Default);
+            try
+            {
+                var owner = AllowElevatedCommand.CurrentUser()?.Value ?? throw new InvalidOperationException("Windows didn't say who you are.");
+                var build = Mirador.Ipc.ApprovedBuilds.Approve(owner, approve.ProfileId, approve.Commit, approve.Source, AppContext.BaseDirectory, new Mirador.Ipc.RegistryApprovedBuildStore());
+
+                // When the machine's runtime was this profile's earlier approved copy, it is the new one now: the old
+                // copy goes.
+                var profileRoot = Mirador.Ipc.ApprovedBuilds.ProfileRoot(AppContext.BaseDirectory, owner, approve.ProfileId) + Path.DirectorySeparatorChar;
+                if (new RegistryRuntimeReader().ActiveRuntime() is { } active
+                    && Path.GetFullPath(active).StartsWith(profileRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    ActiveRuntimeWriter.Write(build.Manifest);
+                }
+
+                return 0;
+            }
+            catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                AppLog.Write("Approving the build failed", e);
+                return 1;
+            }
         }
 
         // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.

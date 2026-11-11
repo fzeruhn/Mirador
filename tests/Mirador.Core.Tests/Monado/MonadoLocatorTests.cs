@@ -159,46 +159,4 @@ public class MonadoLocatorTests
 
         Assert.Contains("Pick a Monado build folder in the profile.", ex.Message);
     }
-
-    [Fact]
-    public void Bundled_layout_resolves_relative_library_path()
-    {
-        using var dir = new TempDir();
-        var root = dir.File("app");
-        File.WriteAllText(Touch(root, "runtime", "openxr_monado.json"), TestManifest.Json("./openxr_monado.dll"));
-        Touch(root, "runtime", "openxr_monado.dll");
-        Touch(root, "server", "monado-service.exe");
-
-        var install = new MonadoLocator(root).Locate(BuildSource.Bundled);
-
-        Assert.Equal(Path.Combine(root, "runtime", "openxr_monado.json"), install.Manifest);
-        Assert.Equal(Path.Combine(root, "runtime", "openxr_monado.dll"), install.RuntimeDll);
-        Assert.Equal(Path.Combine(root, "server", "monado-service.exe"), install.ServiceExe);
-        Assert.Equal(Path.Combine(root, "runtime", "service"), install.StandInDir); // where the runtime DLL looks
-        Assert.False(Directory.Exists(install.StandInDir)); // the installer puts the stand-in there; locating creates nothing
-        Assert.True(install.IsBundled);
-    }
-
-    [Fact]
-    public void No_bundled_monado_says_pick_a_folder()
-    {
-        using var dir = new TempDir();
-
-        var ex = LocateFails(dir.File("app"), BuildSource.Bundled);
-
-        Assert.Equal("This Mirador has no bundled Monado. Pick a Monado build folder in the profile.", ex.Message);
-    }
-
-    [Fact]
-    public void Bundled_monado_without_its_service_names_the_file()
-    {
-        using var dir = new TempDir();
-        var root = dir.File("app");
-        File.WriteAllText(Touch(root, "runtime", "openxr_monado.json"), TestManifest.Json("./openxr_monado.dll"));
-        Touch(root, "runtime", "openxr_monado.dll");
-
-        var ex = LocateFails(root, BuildSource.Bundled);
-
-        Assert.Contains(Path.Combine(root, "server", "monado-service.exe"), ex.Message);
-    }
 }

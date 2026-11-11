@@ -284,7 +284,18 @@ public sealed class SystemRuntimeRegistry : IRuntimeRegistry
 
     public string? GetActive() => Read(activeKey, ActiveValue);
 
-    public void SetActive(string path) => Write(activeKey, ActiveValue, path);
+    public void SetActive(string? path)
+    {
+        if (path is not null)
+        {
+            Write(activeKey, ActiveValue, path);
+            return;
+        }
+
+        using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+        using var key = root.OpenSubKey(activeKey, writable: true);
+        key?.DeleteValue(ActiveValue, throwOnMissingValue: false);
+    }
 
     public string? GetRecorded() => Read(recordedKey, RecordedValue);
 
@@ -299,6 +310,21 @@ public sealed class SystemRuntimeRegistry : IRuntimeRegistry
         using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
         using var key = root.OpenSubKey(recordedKey, writable: true);
         key?.DeleteValue(RecordedValue, throwOnMissingValue: false);
+    }
+
+    public void SetAvailable(string manifest, bool available)
+    {
+        using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+        if (available)
+        {
+            using var key = root.CreateSubKey(activeKey + @"\AvailableRuntimes", writable: true);
+            key.SetValue(manifest, 0, RegistryValueKind.DWord);
+        }
+        else
+        {
+            using var key = root.OpenSubKey(activeKey + @"\AvailableRuntimes", writable: true);
+            key?.DeleteValue(manifest, throwOnMissingValue: false);
+        }
     }
 
     private string? Read(string subKey, string value)

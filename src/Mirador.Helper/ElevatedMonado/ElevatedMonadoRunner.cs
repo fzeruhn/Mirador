@@ -14,12 +14,12 @@ namespace Mirador.Helper.ElevatedMonado;
 /// SID. It runs only the bundled <c>monado\server\monado-service.exe</c> found from the helper's own install folder,
 /// with the environment the helper builds (<see cref="ElevatedEnvironment"/>), in the caller's session with the
 /// caller's linked (elevated) token, inside a kill-on-close job that also ends when the caller process exits. Its
-/// Win32 path is exercised on the PC in Task 51; the decision logic it leans on is unit-tested.
+/// Win32 path runs only on a PC; the decision logic it leans on is unit-tested.
 /// </summary>
 public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 {
     private const string BundledMissing =
-        "The Monado that comes with Mirador is incomplete, so it can't be started as administrator. Reinstall Mirador.";
+        "This Monado has no monado-service.exe, so it can't be started as administrator. Install the bundled Monado again, or approve the build again, on the Profiles page.";
 
     private const string NoSteamVr =
         "SteamVR isn't installed, so Monado can't track the headset as administrator. Install SteamVR, or turn off running Monado as administrator.";
@@ -30,21 +30,23 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     private readonly ElevatedConsent consent;
     private readonly Func<string, string?> signer;
     private readonly string installDir;
-    private readonly string serverDir;
-    private readonly string serviceExe;
+    private readonly IMonadoInstaller? monado;
+    private readonly IApprovedBuildStore? approved;
     private readonly string logDir;
     private readonly ConcurrentDictionary<string, ElevatedService> sessions = new();
     private readonly object gate = new();
 
     /// <param name="consent">Where users' consent lives, with the SteamVR files each allowed; the caller's SID must be allowed.</param>
     /// <param name="signer">The Authenticode signer subject of a file; the real one is <see cref="WinTrustSigner.SubjectOf"/>.</param>
-    public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null)
+    /// <param name="monado">The bundled Monado: its current version is the one started.</param>
+    /// <param name="approved">The builds owners approved to run as administrator (Mirador.md §4.11 item 51).</param>
+    public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null, IMonadoInstaller? monado = null, IApprovedBuildStore? approved = null)
     {
+        this.approved = approved;
         this.consent = consent;
         this.signer = signer ?? WinTrustSigner.SubjectOf;
+        this.monado = monado;
         installDir = HelperHandler.DefaultInstallDir;
-        serverDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "monado", "server"));
-        serviceExe = Path.Combine(serverDir, "monado-service.exe");
         logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado");
     }
 
@@ -130,14 +132,42 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 return Fail(refusal);
             }
 
+            // Mirador's Monado's current version, read at each Start: an update or a roll back may have changed it. Or a
+            // profile's approved build, every file checked against its approval at each Start.
+            string serverDir;
+            if (start.Build is { Length: > 0 } buildProfile)
+            {
+                // The caller's own approval only: the record is per user.
+                if (approved is null || !ApprovedBuilds.IsProfileId(buildProfile) || approved.Get(caller.Sid.Value, buildProfile) is not { } build)
+                {
+                    return Fail("This profile's build isn't approved to run as administrator.");
+                }
+
+                if (ApprovedBuilds.Verify(build, installDir) is { } problem)
+                {
+                    return Fail(problem);
+                }
+
+                serverDir = build.ServerDir;
+            }
+            else
+            {
+                if (monado?.CurrentServerDir() is not { } current)
+                {
+                    return Fail(BundledMissing);
+                }
+
+                serverDir = current;
+            }
+
+            var serviceExe = Path.Combine(serverDir, "monado-service.exe");
             if (!File.Exists(serviceExe))
             {
                 return Fail(BundledMissing);
             }
 
             var folders = ReadUserFolders(userToken);
-            var testLines = ReadTestLines();
-            var lighthouse = start.Module == DreamAirEnvironment.ModuleId || HasLighthouseEnable(testLines);
+            var lighthouse = start.Module is PimaxEnvironment.ModuleId;
 
             IDisposable hold = EmptyHold.Instance;
             string steamVrPath;
@@ -175,7 +205,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 IReadOnlyDictionary<string, string> env;
                 try
                 {
-                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath, testLines);
+                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath);
                 }
                 catch (ArgumentException e)
                 {
@@ -313,32 +343,6 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
         finally
         {
             Marshal.FreeHGlobal(buffer);
-        }
-    }
-
-    private static bool HasLighthouseEnable(IReadOnlyList<string> testLines) =>
-        testLines.Any(line =>
-        {
-            var eq = line.IndexOf('=');
-            return eq > 0
-                && string.Equals(line[..eq].Trim(), "STEAMVR_LH_ENABLE", StringComparison.OrdinalIgnoreCase)
-                && line[(eq + 1)..].Trim() == "1";
-        });
-
-    /// <summary>The admin-only test lines (<c>HKLM\SOFTWARE\Mirador</c> <c>ElevatedMonadoTestEnv</c>), empty when absent.</summary>
-    private static IReadOnlyList<string> ReadTestLines()
-    {
-        try
-        {
-            using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-            using var key = machine.OpenSubKey(@"SOFTWARE\Mirador");
-            return key?.GetValue("ElevatedMonadoTestEnv") is string[] lines
-                ? [.. lines.Where(l => !string.IsNullOrWhiteSpace(l))]
-                : [];
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        {
-            return [];
         }
     }
 

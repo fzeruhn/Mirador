@@ -9,6 +9,8 @@
   #define AppVersion "0.1.0"
 #endif
 #define Bundle "..\artifacts\bundle"
+; The bundle (tools\build-bundle.ps1) has no Monado or OpenComposite: the helper and the app download them (Mirador.md
+; section 4.11 items 55 and 56).
 #define ServiceName "MiradorHelper"
 
 [Setup]
@@ -35,19 +37,21 @@ UninstallDisplayIcon={app}\Mirador.exe
 UninstallDisplayName=Mirador
 LicenseFile=..\LICENSE
 WizardStyle=modern
-Compression=lzma2/max
+Compression=lzma2/ultra64
 SolidCompression=yes
 MinVersion=10.0.19041
 
 [InstallDelete]
-; What an older version (or the dev install's helper.new) left there goes, so no stale file is loaded.
-Type: filesandordirs; Name: "{app}\helper"
-Type: filesandordirs; Name: "{app}\helper.new"
-Type: filesandordirs; Name: "{app}\monado"
+; What an older version left there goes, so no stale file is loaded.
 Type: filesandordirs; Name: "{app}\layer"
 Type: filesandordirs; Name: "{app}\standin"
 Type: filesandordirs; Name: "{app}\tools"
-Type: filesandordirs; Name: "{app}\opencomposite"
+
+[UninstallDelete]
+; Mirador's Monado, which the helper installed (Mirador.md section 4.11 item 55), and its download folder; and the
+; builds users approved to run as administrator (item 51), which the elevated approval step copied.
+Type: filesandordirs; Name: "{app}\monado"
+Type: filesandordirs; Name: "{app}\builds"
 
 [Files]
 Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -56,26 +60,21 @@ Source: "{#Bundle}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs 
 Name: "{autoprograms}\Mirador"; Filename: "{app}\Mirador.exe"
 
 [Registry]
-; The bundled layer, registered as an implicit layer; it acts only when DREAMAIR_VK_LAYER=1 (in Monado's process).
-Root: HKLM64; Subkey: "SOFTWARE\Khronos\Vulkan\ImplicitLayers"; ValueType: dword; ValueName: "{app}\layer\dreamair_vk_layer.json"; ValueData: "0"; Flags: uninsdeletevalue
-; The bundled Monado, listed as an available OpenXR runtime.
-Root: HKLM64; Subkey: "SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes"; ValueType: dword; ValueName: "{app}\monado\runtime\openxr_monado.json"; ValueData: "0"; Flags: uninsdeletevalue
+; The layer, registered as an implicit layer; it acts only when MIRADOR_DIRECT_MODE=1 (in Monado's process).
+Root: HKLM64; Subkey: "SOFTWARE\Khronos\Vulkan\ImplicitLayers"; ValueType: dword; ValueName: "{app}\layer\mirador_direct_mode.json"; ValueData: "0"; Flags: uninsdeletevalue
 ; Where the stand-in finds Mirador when no user has run it yet.
 Root: HKLM64; Subkey: "SOFTWARE\Mirador"; ValueType: string; ValueName: "AppPath"; ValueData: "{app}\Mirador.exe"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
-[Tasks]
-; Off unless chosen (Mirador.md section 4.10 item 44): Monado may then run as administrator, with realtime GPU priority.
-Name: "elevatedmonado"; Description: "Run Monado as administrator (realtime GPU priority)"; Flags: unchecked
-
 [Run]
-; The consent of the user who installs: the installer is elevated, and so is this step (it writes HKLM\SOFTWARE\Mirador\ElevatedMonado, and SteamVR's unsigned Lighthouse files in ElevatedMonadoFiles).
-Filename: "{app}\Mirador.exe"; Parameters: "--allow-elevated-monado"; StatusMsg: "Recording the consent to run Monado as administrator..."; Tasks: elevatedmonado; Flags: runhidden waituntilterminated
+; No consent for Monado as administrator here: a profile's "Run as administrator" asks for it when it is saved
+; (Mirador.md section 4.10 item 44), and it goes once no profile has it on.
 Filename: "{app}\Mirador.exe"; Description: "Start Mirador"; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [Code]
 const
   ImplicitLayers = 'SOFTWARE\Khronos\Vulkan\ImplicitLayers';
   OpenXrKey = 'SOFTWARE\Khronos\OpenXR\1';
+  AvailableRuntimes = 'SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes';
   MiradorKey = 'SOFTWARE\Mirador';
   QuitMirador = 'Mirador is running. Quit it from its tray icon (Quit), then press Retry.';
 
@@ -162,12 +161,14 @@ var
   I: Integer;
   Ours, Name: String;
 begin
-  Ours := Lowercase(ExpandConstant('{app}\layer\dreamair_vk_layer.json'));
+  Ours := Lowercase(ExpandConstant('{app}\layer\mirador_direct_mode.json'));
   if RegGetValueNames(HKLM64, ImplicitLayers, Names) then
     for I := 0 to GetArrayLength(Names) - 1 do
     begin
       Name := Lowercase(Names[I]);
-      if (Name <> Ours) and HasSuffix(Name, '\dreamair_vk_layer.json') then
+      { Another copy of this layer, or the one it was before it was renamed (dreamair_vk_layer.json, the standalone
+        release's and an older Mirador's): two registered would both load. }
+      if (Name <> Ours) and (HasSuffix(Name, '\mirador_direct_mode.json') or HasSuffix(Name, '\dreamair_vk_layer.json')) then
         RegDeleteValue(HKLM64, ImplicitLayers, Names[I]);
     end;
 end;
@@ -185,13 +186,36 @@ procedure InstallHelper;
 var
   BinPath: String;
 begin
-  BinPath := '"\"' + ExpandConstant('{app}\helper\Mirador.Helper.exe') + '\""';
+  BinPath := '"\"' + ExpandConstant('{app}\Mirador.Helper.exe') + '\""';
   if ServiceExists then
     HelperStep('set up', Sc('config {#ServiceName} binPath= ' + BinPath + ' start= auto DisplayName= "Mirador helper"'))
   else
     HelperStep('installed', Sc('create {#ServiceName} binPath= ' + BinPath + ' start= auto DisplayName= "Mirador helper"'));
   Sc('description {#ServiceName} "Does the steps Mirador needs an administrator for: Pimax''s service and the OpenXR runtime."');
   HelperStep('started', Sc('start {#ServiceName}'));
+end;
+
+{ Whether Manifest is one of Mirador's: a version of the bundled Monado, or an approved build's copy. }
+function IsMiradorsManifest(const Manifest: String): Boolean;
+var
+  Monado, Builds: String;
+begin
+  Monado := Lowercase(ExpandConstant('{app}\monado\'));
+  Builds := Lowercase(ExpandConstant('{app}\builds\'));
+  Result := ((Copy(Lowercase(Manifest), 1, Length(Monado)) = Monado) or (Copy(Lowercase(Manifest), 1, Length(Builds)) = Builds))
+    and HasSuffix(Lowercase(Manifest), '\openxr_monado.json');
+end;
+
+{ The runtime entries of the bundled Monado's versions (the helper's). }
+procedure RemoveMiradorsRuntimes;
+var
+  Names: TArrayOfString;
+  I: Integer;
+begin
+  if RegGetValueNames(HKLM64, AvailableRuntimes, Names) then
+    for I := 0 to GetArrayLength(Names) - 1 do
+      if IsMiradorsManifest(Names[I]) then
+        RegDeleteValue(HKLM64, AvailableRuntimes, Names[I]);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -207,7 +231,7 @@ end;
   calibration backups in %LOCALAPPDATA%\Mirador stay. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Active, Ours, Recorded: String;
+  Active, Recorded: String;
   Code: Integer;
 begin
   if CurUninstallStep <> usUninstall then
@@ -227,8 +251,7 @@ begin
   else if Code <> 0 then
     Log(Format('Mirador.exe --remove-sign-in: exit code %d (the start at sign-in could not be removed).', [Code]));
 
-  Ours := ExpandConstant('{app}\monado\runtime\openxr_monado.json');
-  if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
+  if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then
   begin
     if SuppressibleMsgBox('Monado is the active OpenXR runtime. Switch back to the runtime that was active before?',
       mbConfirmation, MB_YESNO, IDYES) = IDYES then
@@ -237,17 +260,18 @@ begin
       StopHelper;
       if not RegQueryStringValue(HKLM64, MiradorKey, 'PreviousActiveRuntime', Recorded) then
         Recorded := '';
-      if not Exec(ExpandConstant('{app}\helper\Mirador.Helper.exe'), '--restore-runtime', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+      if not Exec(ExpandConstant('{app}\Mirador.Helper.exe'), '--restore-runtime', '', SW_HIDE, ewWaitUntilTerminated, Code) then
         Code := -1;
       { However that went: put back what was recorded, if Mirador's runtime is still the active one. }
-      if (Recorded <> '') and RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
+      if (Recorded <> '') and RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then
         RegWriteStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Recorded);
     end;
 
     { Never left pointing at a file this uninstall removes: no runtime rather than a broken one. }
-    if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and (CompareText(Active, Ours) = 0) then
+    if RegQueryStringValue(HKLM64, OpenXrKey, 'ActiveRuntime', Active) and IsMiradorsManifest(Active) then
       RegDeleteValue(HKLM64, OpenXrKey, 'ActiveRuntime');
   end;
+  RemoveMiradorsRuntimes;
 
   StopHelper;
   Sc('delete {#ServiceName}');
@@ -256,4 +280,6 @@ begin
     the SteamVR files each user allowed (item 46). }
   RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonado');
   RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ElevatedMonadoFiles');
+  { And every user's approved builds (item 51): an approval isn't carried over to a reinstall. }
+  RegDeleteKeyIncludingSubkeys(HKLM64, MiradorKey + '\ApprovedBuilds');
 end;

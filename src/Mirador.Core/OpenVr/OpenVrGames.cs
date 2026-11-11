@@ -12,15 +12,18 @@ public sealed record OpenVrView(string Runtime, bool OffersOpenComposite, string
 /// <summary>
 /// Home's "OpenVR runtime" row (Mirador.md §4.6 items 20–22): OpenComposite, Mirador's copy, or whatever the paths file
 /// names. One way, like the OpenXR runtime: "Set OpenComposite" puts the copy first, and nothing in Mirador switches it
-/// back or forth by itself (Finn, 2026-11-06). SteamVR puts itself first again whenever it starts.
+/// back or forth by itself. SteamVR puts itself first again whenever it starts.
 /// </summary>
 public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeCopy copy)
 {
     /// <summary>Home's button for <see cref="UseMonado"/>.</summary>
     public const string SetOpenCompositeLabel = "Set OpenComposite";
 
-    /// <summary>Whether this Mirador has OpenComposite to offer (not in a dev run without the bundle).</summary>
-    public bool Available => copy.HasBundle;
+    /// <summary>
+    /// Whether there is OpenComposite to offer: a copy, a download or an older install's bundle. Without one, Home offers
+    /// "Get OpenComposite" (Mirador.md §4.11 item 56).
+    /// </summary>
+    public bool Available => copy.HasCopy || copy.HasSomethingToCopy;
 
     /// <summary>Home's "OpenVR runtime" row, from the paths file as it is now.</summary>
     /// <param name="openXrIsMonado">Whether the profile's Monado is the active OpenXR runtime.</param>
@@ -79,9 +82,9 @@ public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeCopy copy)
             return CouldNotCopy(e);
         }
 
-        if (outcome == CopyOutcome.NoBundle)
+        if (outcome == CopyOutcome.NoneYet)
         {
-            return "OpenComposite isn't in this Mirador build.";
+            return "Mirador has no OpenComposite yet: press \"Get OpenComposite\" first.";
         }
 
         if (!copy.HasCopy)

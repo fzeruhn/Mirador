@@ -55,6 +55,20 @@ public class StandInTests
     }
 
     [Fact]
+    public void The_stand_in_of_a_builds_approved_copy_belongs_to_that_build()
+    {
+        using var dir = new TempDir();
+        var copy = dir.File("app", "builds", "S-1-5-21-1", "p1", "abc1234");
+        Directory.CreateDirectory(Path.Combine(copy, "bin", "service"));
+        var standIn = Path.Combine(copy, "bin", "service", StandIn.FileName);
+        File.WriteAllText(standIn, "stand-in");
+        var approved = new Mirador.Ipc.ApprovedBuild("S-1-5-21-1", "p1", "abc1234", copy, new Dictionary<string, string>());
+
+        Assert.False(StandIn.BelongsTo(standIn, InstallIn(dir.File("user"))));
+        Assert.True(StandIn.BelongsTo(standIn, InstallIn(dir.File("user")) with { Approved = approved }));
+    }
+
+    [Fact]
     public void Only_a_stand_in_caller_names_a_program()
     {
         Assert.Null(StandIn.ProgramOf(null, _ => throw new InvalidOperationException("not asked")));

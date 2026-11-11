@@ -1,0 +1,10 @@
+{
+  "name": "mirador-xr-check",
+  "version-string": "0.1.0",
+  "license": "BSL-1.0",
+  "dependencies": [
+    "openxr-loader",
+    "vulkan-headers"
+  ],
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489"
+}

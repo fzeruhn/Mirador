@@ -174,6 +174,19 @@ public partial class App : Application
     {
         try
         {
+            // On the first run, only once the user said where Monado comes from, and only for "Bundled Monado".
+            if (await Host.FirstRunAnswered && await Host.InstallMiradorsMonadoIfNeededAsync() is { } installed)
+            {
+                Ui.TryEnqueue(() => Home.ShowMonadoNotice(installed.Message, installed.Ok));
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write("Installing the bundled Monado at launch failed", ex);
+        }
+
+        try
+        {
             await Updates.CheckDailyAsync();
         }
         catch (Exception ex)
@@ -277,6 +290,12 @@ public partial class App : Application
             case AppPipe.Start:
                 // A stand-in sits beside the Monado runtime the game loaded: only that Monado may start for it.
                 var standIn = StandIn.ProgramOf(caller, Host.Processes.ImagePathOf);
+                if (await Host.TryAnswerStandInAsync(standIn, ct) is { } verifying)
+                {
+                    AppLog.Write($"Verify's game asked for Monado ({standIn})");
+                    return verifying;
+                }
+
                 AppLog.Write(standIn is null ? "A game asked for Monado" : $"A game asked for Monado ({standIn})");
                 var wasStopped = Host.Session.State == SessionState.Stopped;
                 var outcome = await Host.Session.StartAsync(StartReason.Game, standIn, ct);

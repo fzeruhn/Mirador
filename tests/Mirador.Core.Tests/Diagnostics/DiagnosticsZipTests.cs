@@ -45,11 +45,26 @@ public class DiagnosticsZipTests
         Assert.Contains("XRT_COMPOSITOR_SCALE_PERCENTAGE=120\n", entries["environment.txt"]);
         Assert.DoesNotContain("USERPROFILE", entries["environment.txt"]); // only what Mirador set
         Assert.Contains("\"name\": \"Dream Air\"", entries["profile.json"]);
-        Assert.Contains("\"kind\": \"Bundled\"", entries["profile.json"]);
+        Assert.Contains("\"kind\": \"Mirador\"", entries["profile.json"]);
         Assert.Equal("Mirador 0.1.0\n", entries["versions.txt"]);
         Assert.Contains("120", entries["monado-settings.json"]);
         Assert.Contains("Monado service starting", entries["monado.log"]);
         Assert.False(entries.ContainsKey("missing.txt"));
+    }
+
+    [Fact]
+    public async Task The_newest_verify_runs_log_goes_in_as_verify_log()
+    {
+        await using var h = new Harness();
+        Directory.CreateDirectory(h.Paths.LogsDir);
+        File.WriteAllText(Path.Combine(h.Paths.LogsDir, "verify-run-20261109-212204.log"), "older run\n");
+        File.WriteAllText(Path.Combine(h.Paths.LogsDir, "verify-run-20261109-213000.log"), "newest run\n");
+        File.WriteAllText(Path.Combine(h.Paths.LogsDir, "verify-monado-20261109-213001.log"), "Monado's own log of a run\n");
+
+        var entries = Read(Collect(h, Context(h)));
+
+        Assert.Equal("newest run\n", entries["verify.log"]);
+        Assert.Equal(Path.Combine(h.Paths.LogsDir, "verify-run-20261109-213000.log"), DiagnosticsZip.NewestVerifyLog(h.Paths.LogsDir));
     }
 
     [Fact]

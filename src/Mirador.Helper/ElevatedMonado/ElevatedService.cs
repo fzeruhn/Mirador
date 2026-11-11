@@ -8,7 +8,7 @@ namespace Mirador.Helper.ElevatedMonado;
 /// <summary>
 /// One elevated <c>monado-service</c> the helper started: inside a kill-on-close job, its output pumped to the log
 /// file, ended when the caller process exits, on <see cref="Stop"/>, or when the helper stops. The SteamVR driver hold
-/// is released once Monado's pipe is up or after 60 s. Its Win32 path is verified on the PC in Task 51.
+/// is released once Monado's pipe is up or after 60 s. Its Win32 path runs only on a PC.
 /// </summary>
 internal sealed class ElevatedService : IDisposable
 {
@@ -96,7 +96,7 @@ internal sealed class ElevatedService : IDisposable
         string serviceExe, string serverDir, IReadOnlyDictionary<string, string> env, SafeAccessTokenHandle token,
         int callerProcessId, string logFile, IDisposable hold, string pipeName)
     {
-        var job = CreateKillOnCloseJob();
+        var job = Mirador.Ipc.ProcessJobs.CreateKillOnCloseJob();
         SafeFileHandle? readPipe = null;
         SafeFileHandle? writePipe = null;
         var envHandle = GCHandle.Alloc(EnvironmentBlock(env), GCHandleType.Pinned);
@@ -111,13 +111,12 @@ internal sealed class ElevatedService : IDisposable
             var process = new SafeProcessHandle(info.hProcess, ownsHandle: true);
             using var thread = new SafeProcessHandle(info.hThread, ownsHandle: true);
 
-            if (!AssignProcessToJobObject(job, process))
+            if (Mirador.Ipc.ProcessJobs.AssignToJob(job, process) is var jobError and not 0)
             {
                 // Still suspended: it has run nothing. End it before it ever runs outside the job, and refuse.
-                var error = Marshal.GetLastPInvokeError();
                 TerminateProcess(process, 1);
                 process.Dispose();
-                throw new Win32Exception(error, "Windows wouldn't put Monado in the group that ends it when Mirador closes");
+                throw new Win32Exception(jobError, "Windows wouldn't put Monado in the group that ends it when Mirador closes");
             }
 
             if (ResumeThread(info.hThread) == ResumeFailed)
@@ -210,7 +209,7 @@ internal sealed class ElevatedService : IDisposable
             {
                 while (DateTime.UtcNow < deadline && !stop.IsCancellationRequested)
                 {
-                    if (PipeExists(pipeName) || WaitForSingleObject(process, 0) == WaitObject0)
+                    if (Mirador.Ipc.ProcessJobs.PipeExists(pipeName) || WaitForSingleObject(process, 0) == WaitObject0)
                     {
                         break;
                     }
@@ -334,42 +333,6 @@ internal sealed class ElevatedService : IDisposable
         SetHandleInformation(read, HandleFlagInherit, 0);
     }
 
-    private static SafeFileHandle CreateKillOnCloseJob()
-    {
-        var job = CreateJobObjectW(IntPtr.Zero, IntPtr.Zero);
-        if (job.IsInvalid)
-        {
-            throw new Win32Exception(Marshal.GetLastPInvokeError());
-        }
-
-        var info = new ExtendedLimitInformation();
-        info.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        if (!SetInformationJobObject(job, 9, ref info, (uint)Marshal.SizeOf<ExtendedLimitInformation>()))
-        {
-            var error = Marshal.GetLastPInvokeError();
-            job.Dispose();
-            throw new Win32Exception(error);
-        }
-
-        return job;
-    }
-
-    private static bool PipeExists(string name)
-    {
-        string normalized;
-        try
-        {
-            normalized = Path.GetFullPath(name);
-        }
-        catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
-        {
-            return false;
-        }
-
-        const int ErrorSemTimeout = 121;
-        return WaitNamedPipeW(normalized, 1) || Marshal.GetLastPInvokeError() == ErrorSemTimeout;
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     private struct SecurityAttributes
     {
@@ -419,42 +382,6 @@ internal sealed class ElevatedService : IDisposable
         public int dwThreadId;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct BasicLimitInformation
-    {
-        public long PerProcessUserTimeLimit;
-        public long PerJobUserTimeLimit;
-        public uint LimitFlags;
-        public nuint MinimumWorkingSetSize;
-        public nuint MaximumWorkingSetSize;
-        public uint ActiveProcessLimit;
-        public nuint Affinity;
-        public uint PriorityClass;
-        public uint SchedulingClass;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct IoCounters
-    {
-        public ulong ReadOperationCount;
-        public ulong WriteOperationCount;
-        public ulong OtherOperationCount;
-        public ulong ReadTransferCount;
-        public ulong WriteTransferCount;
-        public ulong OtherTransferCount;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ExtendedLimitInformation
-    {
-        public BasicLimitInformation Basic;
-        public IoCounters Io;
-        public nuint ProcessMemoryLimit;
-        public nuint JobMemoryLimit;
-        public nuint PeakProcessMemoryUsed;
-        public nuint PeakJobMemoryUsed;
-    }
-
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreateProcessAsUserW(
@@ -485,17 +412,6 @@ internal sealed class ElevatedService : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint ResumeThread(IntPtr thread);
 
-    [DllImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true)]
-    private static extern SafeFileHandle CreateJobObjectW(IntPtr attributes, IntPtr name);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetInformationJobObject(SafeFileHandle job, int infoClass, ref ExtendedLimitInformation info, uint length);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AssignProcessToJobObject(SafeFileHandle job, SafeProcessHandle process);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
 
@@ -509,10 +425,6 @@ internal sealed class ElevatedService : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
-
-    [DllImport("kernel32.dll", EntryPoint = "WaitNamedPipeW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool WaitNamedPipeW(string name, uint timeout);
 
     /// <summary>A hold that holds nothing, after the real one has been released.</summary>
     private sealed class NoHold : IDisposable

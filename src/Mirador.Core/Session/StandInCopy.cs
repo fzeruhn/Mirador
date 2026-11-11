@@ -1,3 +1,4 @@
+using Mirador.Ipc;
 using System.Security.Cryptography;
 using Mirador.Core.Modules;
 
@@ -49,24 +50,12 @@ internal static class StandInCopy
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            TryDelete(temp);
+            Cleanup.TryDelete(temp);
             return new StatusLine(
                 "standin",
                 "Games",
                 StatusLevel.Warning,
                 $"Games may not start Monado from this build: Mirador couldn't copy its stand-in to {standInDir} ({e.Message.Trim().TrimEnd('.')}).");
-        }
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            // Left for the next copy to replace.
         }
     }
 

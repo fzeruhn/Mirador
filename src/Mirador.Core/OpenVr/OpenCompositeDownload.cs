@@ -1,7 +1,7 @@
-using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Mirador.Core.Diagnostics;
+
+using Mirador.Ipc;
 
 namespace Mirador.Core.OpenVr;
 
@@ -26,7 +26,7 @@ public static partial class OpenCompositeDownload
         FetchAsync(http, release, downloadRoot, ct, IdleTimeout);
 
     /// <summary>How long GitHub may say nothing (no answer, or no more of the body) before the download is given up.</summary>
-    public static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan IdleTimeout = CheckedDownload.IdleTimeout;
 
     /// <summary><see cref="FetchAsync(HttpClient, Release, string, CancellationToken)"/> with its own idle timeout (for tests).</summary>
     internal static async Task<string> FetchAsync(HttpClient http, Release release, string downloadRoot, CancellationToken ct, TimeSpan idle)
@@ -55,14 +55,14 @@ public static partial class OpenCompositeDownload
         var staging = Path.Combine(downloadRoot, version + ".part");
         try
         {
-            await DownloadAsync(http, url, zipFile, release.WindowsZipSha256, ct, idle);
+            await CheckedDownload.ToFileAsync(http, url, zipFile, MaxBytes, release.WindowsZipSha256, "OpenComposite", m => new MiradorException(m), ct, idle);
 
             if (Directory.Exists(staging))
             {
                 Directory.Delete(staging, recursive: true);
             }
 
-            Unpack(zipFile, staging);
+            CheckedDownload.Unpack(zipFile, staging, MaxBytes, "OpenComposite", m => new MiradorException(m));
             var unpacked = Path.Combine(staging, "OpenComposite");
             Check(unpacked, version);
 
@@ -81,100 +81,8 @@ public static partial class OpenCompositeDownload
         }
         finally
         {
-            TryDelete(zipFile);
-            TryDeleteDirectory(staging);
-        }
-    }
-
-    private static async Task DownloadAsync(HttpClient http, Uri url, string file, string expectedSha, CancellationToken userCt, TimeSpan idle)
-    {
-        // The HttpClient's own timeout stops at the headers; this one restarts at every bit of the body that arrives.
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(userCt);
-        var ct = linked.Token;
-        try
-        {
-            linked.CancelAfter(idle);
-            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new MiradorException($"GitHub didn't give the OpenComposite download ({(int)response.StatusCode} {response.ReasonPhrase}).");
-            }
-
-            if (response.Content.Headers.ContentLength > MaxBytes)
-            {
-                throw new MiradorException("OpenComposite's download is larger than Mirador allows, so it was not fetched.");
-            }
-
-            using var hash = SHA256.Create();
-            await using (var network = await response.Content.ReadAsStreamAsync(ct))
-            await using (var output = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                var buffer = new byte[81920];
-                long total = 0;
-                int read;
-                while ((read = await network.ReadAsync(buffer, ct)) > 0)
-                {
-                    total += read;
-                    if (total > MaxBytes)
-                    {
-                        throw new MiradorException("OpenComposite's download is larger than Mirador allows, so it was stopped.");
-                    }
-
-                    linked.CancelAfter(idle);
-                    hash.TransformBlock(buffer, 0, read, null, 0);
-                    await output.WriteAsync(buffer.AsMemory(0, read), ct);
-                }
-            }
-
-            hash.TransformFinalBlock([], 0, 0);
-            if (!string.Equals(Convert.ToHexString(hash.Hash!), expectedSha, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new MiradorException("OpenComposite's download doesn't match the SHA-256 GitHub lists for it, so it was not used.");
-            }
-        }
-        catch (Exception e) when (e is HttpRequestException or IOException || (e is OperationCanceledException && !userCt.IsCancellationRequested))
-        {
-            var why = e is OperationCanceledException ? "GitHub stopped answering" : e.Message.Trim().TrimEnd('.');
-            throw new MiradorException($"Mirador couldn't download OpenComposite ({why}).");
-        }
-    }
-
-    private static void Unpack(string zipFile, string folder)
-    {
-        var root = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        using var zip = ZipFile.OpenRead(zipFile);
-
-        // Every path is checked, and the size added up, before anything is written.
-        long size = 0;
-        var targets = new List<(ZipArchiveEntry Entry, string Path)>();
-        foreach (var entry in zip.Entries)
-        {
-            var target = Path.GetFullPath(Path.Combine(root, entry.FullName));
-            if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new MiradorException($"OpenComposite's download has a file (\"{entry.FullName}\") that would land outside its folder, so it was not used.");
-            }
-
-            size += entry.Length;
-            if (size > MaxBytes)
-            {
-                throw new MiradorException("OpenComposite's download unpacks to more than Mirador allows, so it was not used.");
-            }
-
-            targets.Add((entry, target));
-        }
-
-        Directory.CreateDirectory(root);
-        foreach (var (entry, target) in targets)
-        {
-            if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\'))
-            {
-                Directory.CreateDirectory(target);
-                continue;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            entry.ExtractToFile(target, overwrite: true);
+            Cleanup.TryDelete(zipFile);
+            Cleanup.TryDeleteDirectory(staging);
         }
     }
 
@@ -196,31 +104,6 @@ public static partial class OpenCompositeDownload
     }
 
     private static string Plain(string tag) => tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
-
-    private static void TryDelete(string file)
-    {
-        try
-        {
-            File.Delete(file);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-        }
-    }
-
-    private static void TryDeleteDirectory(string folder)
-    {
-        try
-        {
-            if (Directory.Exists(folder))
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-        }
-    }
 
     [GeneratedRegex(@"^[0-9A-Za-z][0-9A-Za-z._-]*$")]
     private static partial Regex SafeName();

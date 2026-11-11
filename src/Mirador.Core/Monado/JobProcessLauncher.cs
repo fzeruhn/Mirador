@@ -21,7 +21,7 @@ public sealed class JobProcessLauncher : IProcessLauncher, IDisposable
     {
         try
         {
-            job = Win32.CreateKillOnCloseJob();
+            job = Mirador.Ipc.ProcessJobs.CreateKillOnCloseJob();
         }
         catch (Win32Exception e)
         {
@@ -46,7 +46,7 @@ public sealed class JobProcessLauncher : IProcessLauncher, IDisposable
             var process = StartProcess(spec);
             try
             {
-                var error = Win32.AssignToJob(job, process.SafeHandle);
+                var error = Mirador.Ipc.ProcessJobs.AssignToJob(job, process.SafeHandle);
                 if (error != 0 && !process.HasExited) // a process that already ended needs no group
                 {
                     throw new MiradorException(

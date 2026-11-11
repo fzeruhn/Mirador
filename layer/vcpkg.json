@@ -1,0 +1,16 @@
+{
+  "name": "mirador-direct-mode",
+  "version-string": "0.1.0",
+  "license": "BSL-1.0",
+  "dependencies": [
+    "vulkan-headers",
+    "catch2"
+  ],
+  "overrides": [
+    {
+      "name": "vulkan-headers",
+      "version": "1.4.363.0"
+    }
+  ],
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489"
+}

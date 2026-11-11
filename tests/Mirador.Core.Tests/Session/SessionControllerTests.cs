@@ -34,6 +34,7 @@ public class SessionControllerTests
     public async Task Consent_runs_elevated_only_from_the_installed_copy(bool installedCopy)
     {
         await using var h = new Harness(installedCopy: installedCopy);
+        h.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
 
         var outcome = await h.StartRunningAsync();
 
@@ -41,6 +42,74 @@ public class SessionControllerTests
         Assert.True(outcome.Ok);
         Assert.Equal(installedCopy ? 1 : 0, h.ElevatedStarts.Count);
         Assert.Equal(1, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task A_profile_without_run_as_administrator_runs_as_you_whatever_the_consent()
+    {
+        await using var h = new Harness(installedCopy: true);
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        Assert.Empty(h.ElevatedStarts);
+        Assert.Equal(1, h.Launcher.Starts);
+    }
+
+    [Fact]
+    public async Task A_direct_mode_headset_gets_the_layer_turned_on_by_the_session()
+    {
+        await using var h = new Harness();
+        h.Module.UsesNvidiaDirectMode = true;
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        var env = h.Launcher.Spec.Environment;
+        Assert.Equal("1", env["MIRADOR_DIRECT_MODE"]);
+        Assert.Equal("VK_LAYER_MIRADOR_direct_mode", env["VK_LOADER_LAYERS_ALLOW"]);
+        Assert.Equal("1", env["FAKE_HEADSET"]);
+        Assert.False(env.ContainsKey("VK_ADD_IMPLICIT_LAYER_PATH"));
+    }
+
+    [Fact]
+    public async Task A_layer_folder_left_in_a_profile_is_ignored_for_the_layer_that_comes_with_mirador()
+    {
+        await using var h = new Harness();
+        h.Module.UsesNvidiaDirectMode = true;
+        h.UseProfile(Harness.DreamAir with { ModuleOptions = new Dictionary<string, string> { ["layerFolder"] = @"C:\gone\layer-build" } });
+
+        var outcome = await h.StartRunningAsync();
+
+        Assert.True(outcome.Ok, outcome.Message);
+        var env = h.Launcher.Spec.Environment;
+        Assert.Equal("1", env["MIRADOR_DIRECT_MODE"]);
+        Assert.False(env.ContainsKey("VK_ADD_IMPLICIT_LAYER_PATH"));
+    }
+
+    [Fact]
+    public async Task A_headset_without_direct_mode_gets_no_layer()
+    {
+        await using var h = new Harness();
+
+        await h.StartRunningAsync();
+
+        Assert.False(h.Launcher.Spec.Environment.ContainsKey("MIRADOR_DIRECT_MODE"));
+    }
+
+    [Fact]
+    public async Task A_missing_layer_fails_the_start_before_monado_launches()
+    {
+        await using var h = new Harness();
+        h.Module.UsesNvidiaDirectMode = true;
+        Directory.Delete(h.BundledLayer, recursive: true);
+
+        var outcome = await Start(h).WaitAsync(Harness.Limit);
+
+        Assert.False(outcome.Ok);
+        Assert.Contains("direct-mode layer", outcome.Message);
+        Assert.Equal(0, h.Launcher.Starts);
+        Assert.Equal(SessionState.Stopped, h.Controller.State);
     }
 
     [Fact]
@@ -85,7 +154,7 @@ public class SessionControllerTests
         Assert.Equal(SessionState.Running, h.Changes.Last());
 
         // The bundled Monado's stand-in is the installer's business.
-        Assert.Equal(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "service"), h.Controller.CurrentInstall?.StandInDir);
+        Assert.Equal(Path.Combine(h.RuntimeDir, "service"), h.Controller.CurrentInstall?.StandInDir);
         Assert.False(Directory.Exists(h.Controller.CurrentInstall!.StandInDir));
 
         var again = await h.Controller.StartAsync(StartReason.Tray, CancellationToken.None).WaitAsync(Limit);
@@ -158,7 +227,7 @@ public class SessionControllerTests
         await using var h = new Harness(hook);
         h.Pipe.Up = true;
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -523,7 +592,7 @@ public class SessionControllerTests
     {
         await using var h = new Harness();
         h.Pipe.Up = true;
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -539,7 +608,7 @@ public class SessionControllerTests
         h.Module.UsesSteamVrLighthouse = true;
         h.Processes.Running.Add(new ProcInfo("vrserver", 42)); // a later step would refuse with its own words
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -581,7 +650,7 @@ public class SessionControllerTests
         h.UseProfile(Harness.DreamAir with { Name = "Custom", ModuleId = null });
         h.Pipe.Up = true;
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -594,7 +663,7 @@ public class SessionControllerTests
         await using var h = new Harness();
         await h.StartRunningAsync();
         h.Usb.Devices.Clear();
-        var standIn = StandInBelow(Path.GetDirectoryName(h.BundledManifest)!);
+        var standIn = StandInBelow(h.RuntimeDir);
 
         var outcome = await h.Controller.StartAsync(StartReason.Game, standIn, CancellationToken.None).WaitAsync(Limit);
 
@@ -613,7 +682,7 @@ public class SessionControllerTests
 
         Assert.False(outcome.Ok);
         Assert.StartsWith($"The game uses the Monado in {Path.Combine(h.Root, "other build", "runtime")}, but the profile ", outcome.Message);
-        Assert.Contains($"uses the one in {Path.GetDirectoryName(h.BundledManifest)}.", outcome.Message);
+        Assert.Contains($"uses the one in {h.RuntimeDir}.", outcome.Message);
         Assert.Equal(0, h.Module.BeforeStartCalls);
         Assert.Equal(0, h.Launcher.Starts);
         Assert.Equal(SessionState.Stopped, h.Controller.State);
@@ -859,7 +928,7 @@ public class SessionControllerTests
     {
         await using var h = new Harness();
         h.Controller.PlaceStandIn();
-        Assert.False(Directory.Exists(Path.Combine(Path.GetDirectoryName(h.BundledManifest)!, "service")));
+        Assert.False(Directory.Exists(Path.Combine(h.RuntimeDir, "service")));
 
         h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, Path.Combine(h.Root, "gone")) });
         h.Controller.PlaceStandIn(); // no throw

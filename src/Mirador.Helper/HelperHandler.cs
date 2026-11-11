@@ -3,6 +3,9 @@ using System.Security.Principal;
 using Mirador.Helper.ElevatedMonado;
 using Mirador.Ipc;
 
+// The helper runs as LocalSystem beside the app's files: every DLL it loads by name is Windows' own, from System32 only.
+[assembly: System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+
 namespace Mirador.Helper;
 
 /// <summary>Services on this machine: just what the helper needs to know and do with Pimax's.</summary>
@@ -53,14 +56,17 @@ public interface IRuntimeRegistry
     /// <summary>The OpenXR <c>ActiveRuntime</c> manifest path, or null when there is none.</summary>
     string? GetActive();
 
-    /// <summary>Makes <paramref name="path"/> the OpenXR active runtime.</summary>
-    void SetActive(string path);
+    /// <summary>Makes <paramref name="path"/> the OpenXR active runtime; null leaves no runtime set.</summary>
+    void SetActive(string? path);
 
     /// <summary>The runtime Mirador replaced (<c>PreviousActiveRuntime</c>), or null when nothing is recorded.</summary>
     string? GetRecorded();
 
     /// <summary>Records the replaced runtime; null forgets it.</summary>
     void SetRecorded(string? path);
+
+    /// <summary>Lists <paramref name="manifest"/> under OpenXR's <c>AvailableRuntimes</c>, or takes it off.</summary>
+    void SetAvailable(string manifest, bool available);
 }
 
 /// <summary>Who is on the other end of the pipe, as Windows reports it; nothing in it comes from a request.</summary>
@@ -77,8 +83,11 @@ public sealed record CallerInfo(SecurityIdentifier Sid, int SessionId, int Proce
 /// </summary>
 public sealed class HelperHandler
 {
-    private const string BundledMissing = "This Mirador has no bundled Monado.";
+    private const string BundledMissing = "The bundled Monado isn't installed yet. Install it on the Profiles page.";
+    private const string NoMiradorsMonado = "This helper can't install the bundled Monado.";
+    private const string NotApproved = "This profile's build isn't approved. Turn on \"Run as administrator\" on the profile to approve it.";
     private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
+    private const string NotInstalledMirador = "Only the installed Mirador may change which version of the bundled Monado is current.";
     private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
     private const string NoElevated = "Mirador's helper service can't start Monado as administrator.";
     private const string NoStart = "Mirador's helper service was asked to start Monado as administrator without any settings.";
@@ -90,26 +99,29 @@ public sealed class HelperHandler
     private readonly IServiceControl services;
     private readonly IProcessControl processes;
     private readonly IRuntimeRegistry registry;
-    private readonly string bundledManifest;
     private readonly ElevatedConsent? consent;
     private readonly IElevatedMonado? elevated;
     private readonly string version;
     private readonly string installDir;
+    private readonly IMonadoInstaller? monado;
+    private readonly IApprovedBuildStore? approved;
     private readonly object gate = new();
 
-    /// <param name="bundledManifest">The OpenXR manifest of the Monado that came with Mirador.</param>
     /// <param name="version">What <see cref="HelperCommand.Ping"/> answers; the helper's own version when null.</param>
     /// <param name="consent">Where users' consent to run Monado as administrator is; without it, revoking fails with a message.</param>
     /// <param name="elevated">Starts and stops the elevated Monado; without it, the elevated commands fail with a message.</param>
     /// <param name="installDir">What <see cref="HelperCommand.GetInstallFolder"/> answers; <see cref="DefaultInstallDir"/> when null.</param>
+    /// <param name="monado">The bundled Monado; without it, installing and setting it as the runtime fail with a message.</param>
     public HelperHandler(
-        IServiceControl services, IProcessControl processes, IRuntimeRegistry registry, string bundledManifest,
-        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null, string? installDir = null)
+        IServiceControl services, IProcessControl processes, IRuntimeRegistry registry,
+        string? version = null, ElevatedConsent? consent = null, IElevatedMonado? elevated = null, string? installDir = null,
+        IMonadoInstaller? monado = null, IApprovedBuildStore? approved = null)
     {
+        this.monado = monado;
+        this.approved = approved;
         this.services = services;
         this.processes = processes;
         this.registry = registry;
-        this.bundledManifest = Path.GetFullPath(bundledManifest);
         this.consent = consent;
         this.elevated = elevated;
         this.version = version ?? OwnVersion();
@@ -117,16 +129,10 @@ public sealed class HelperHandler
     }
 
     /// <summary>
-    /// The helper's install folder, one above its own: where the installed <c>Mirador.exe</c> is, the only caller the
-    /// elevated Monado is started for (<see cref="ElevatedMonado.ElevatedRequestCheck"/>).
+    /// The helper's install folder, its own: the installed <c>Mirador.exe</c> is beside it (they share one .NET runtime),
+    /// the only caller the elevated Monado is started for (<see cref="ElevatedMonado.ElevatedRequestCheck"/>).
     /// </summary>
-    public static string DefaultInstallDir { get; } = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
-
-    /// <summary>
-    /// The bundled manifest of a normal install: <c>&lt;helper folder&gt;\..\monado\runtime\openxr_monado.json</c>.
-    /// </summary>
-    public static string DefaultBundledManifest { get; } = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "..", "monado", "runtime", "openxr_monado.json"));
+    public static string DefaultInstallDir { get; } = Path.TrimEndingDirectorySeparator(Path.GetFullPath(AppContext.BaseDirectory));
 
     /// <summary>
     /// Carries out one request. Any failure comes back as an error reply, never as an exception.
@@ -165,6 +171,36 @@ public sealed class HelperHandler
             return WaitMonadoElevated(caller);
         }
 
+        // A download takes minutes: it doesn't hold up the other commands (the installer takes its own lock).
+        if (command == HelperCommand.InstallMonado)
+        {
+            if (monado is null)
+            {
+                return new HelperReply(false, NoMiradorsMonado);
+            }
+
+            // Only a caller Windows names, and only the installed Mirador: it changes the Monado every user's elevated
+            // start and runtime use, so another program of any user's can't pick (an older) one.
+            if (caller is null)
+            {
+                return new HelperReply(false, NoCaller);
+            }
+
+            if (!InstalledMirador.IsInstalledCopy(caller.ImagePath, installDir))
+            {
+                return new HelperReply(false, NotInstalledMirador);
+            }
+
+            try
+            {
+                return monado.InstallAsync(request.Version ?? "", CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception e)
+            {
+                return new HelperReply(false, Shorten($"The bundled Monado couldn't be installed ({e.Message.TrimEnd('.')})."));
+            }
+        }
+
         return Locked(() => command switch
         {
             HelperCommand.SetRuntimeBundled => SetRuntimeBundled(),
@@ -174,6 +210,13 @@ public sealed class HelperHandler
             HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
             HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
             HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
+            HelperCommand.RollBackMonado =>
+                caller is null ? new HelperReply(false, NoCaller)
+                : !InstalledMirador.IsInstalledCopy(caller.ImagePath, installDir) ? new HelperReply(false, NotInstalledMirador)
+                : monado?.RollBack() ?? new HelperReply(false, NoMiradorsMonado),
+            HelperCommand.SetRuntimeApproved => SetRuntimeApproved(request.Build, caller),
+            HelperCommand.ListApprovedBuilds => ListApprovedBuilds(caller),
+            HelperCommand.ForgetApprovedBuild => ForgetApprovedBuild(request.Build, caller),
             _ => new HelperReply(false, UnknownCommand),
         });
     }
@@ -246,12 +289,70 @@ public sealed class HelperHandler
         }
 
         consent.Revoke(caller.Sid);
+
+        // Without the consent no build of theirs runs as administrator: its approvals go with it.
+        foreach (var profileId in approved?.ProfilesOf(caller.Sid.Value) ?? [])
+        {
+            Forget(caller, profileId);
+        }
+
         return new HelperReply(true);
     }
 
+    /// <summary>The caller's approved profiles, comma-separated (<see cref="HelperCommand.ListApprovedBuilds"/>).</summary>
+    private HelperReply ListApprovedBuilds(CallerInfo? caller) =>
+        caller is null ? new HelperReply(false, NoCaller)
+        : new HelperReply(true, Value: string.Join(',', approved?.ProfilesOf(caller.Sid.Value) ?? []));
+
+    /// <summary>Takes back the caller's approval of one profile's build (<see cref="HelperCommand.ForgetApprovedBuild"/>).</summary>
+    private HelperReply ForgetApprovedBuild(string? profileId, CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        if (!ApprovedBuilds.IsProfileId(profileId))
+        {
+            return new HelperReply(false, NotApproved);
+        }
+
+        Forget(caller, profileId!);
+        return new HelperReply(true);
+    }
+
+    private void Forget(CallerInfo caller, string profileId)
+    {
+        if (approved is null)
+        {
+            return;
+        }
+
+        // The machine's runtime never points at a copy that is going (or that stays, unrecorded, while a program holds
+        // it): the bundled Monado takes over when there is one, else the runtime Mirador replaced if it is still there,
+        // else none.
+        var owner = caller.Sid.Value;
+        if (approved.Get(owner, profileId) is { } build && registry.GetActive() is { } active
+            && string.Equals(Path.GetFullPath(active), Path.GetFullPath(build.Manifest), StringComparison.OrdinalIgnoreCase))
+        {
+            if (monado?.CurrentManifest() is { } miradors && File.Exists(miradors))
+            {
+                registry.SetActive(miradors);
+            }
+            else
+            {
+                registry.SetActive(registry.GetRecorded() is { } recorded && File.Exists(recorded) ? recorded : null);
+                registry.SetRecorded(null);
+            }
+        }
+
+        ApprovedBuilds.Forget(owner, profileId, installDir, approved);
+    }
+
+    /// <summary>The bundled Monado's current version.</summary>
     private HelperReply SetRuntimeBundled()
     {
-        if (!File.Exists(bundledManifest))
+        if (monado?.CurrentManifest() is not { } manifest || !File.Exists(manifest))
         {
             return new HelperReply(false, BundledMissing);
         }
@@ -262,7 +363,45 @@ public sealed class HelperHandler
             registry.SetRecorded(active);
         }
 
-        registry.SetActive(bundledManifest);
+        registry.SetActive(manifest);
+        return new HelperReply(true);
+    }
+
+    /// <summary>
+    /// The approved copy of a profile's build as the runtime (Mirador.md §4.11 item 51): only once every file matches its
+    /// recorded hash, so the machine's runtime never points at anything but what was approved.
+    /// </summary>
+    private HelperReply SetRuntimeApproved(string? profileId, CallerInfo? caller)
+    {
+        if (caller is null)
+        {
+            return new HelperReply(false, NoCaller);
+        }
+
+        // The caller's own approval only (the record is per user), and only while their consent is on: taking it back
+        // takes back what it allowed.
+        if (consent?.IsAllowed(caller.Sid) != true)
+        {
+            return new HelperReply(false, NotApproved);
+        }
+
+        if (approved is null || !ApprovedBuilds.IsProfileId(profileId) || approved.Get(caller.Sid.Value, profileId!) is not { } build)
+        {
+            return new HelperReply(false, NotApproved);
+        }
+
+        if (ApprovedBuilds.Verify(build, installDir) is { } problem)
+        {
+            return new HelperReply(false, problem);
+        }
+
+        var active = registry.GetActive();
+        if (active is not null && !IsBundled(active))
+        {
+            registry.SetRecorded(active);
+        }
+
+        registry.SetActive(build.Manifest);
         return new HelperReply(true);
     }
 
@@ -388,13 +527,19 @@ public sealed class HelperHandler
         }
     }
 
-    /// <summary>Whether <paramref name="manifest"/> is the bundled one: the same full path, ignoring case.</summary>
+    /// <summary>
+    /// Whether <paramref name="manifest"/> is Mirador's: a version of the bundled Monado, or an approved copy.
+    /// </summary>
     private bool IsBundled(string manifest) =>
-        string.Equals(Path.GetFullPath(manifest), bundledManifest, StringComparison.OrdinalIgnoreCase);
+        monado?.IsMiradors(manifest) == true
+        || Path.GetFullPath(manifest).StartsWith(ApprovedBuilds.Root(installDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Keeps a reply within one protocol line.</summary>
     private static string Shorten(string message) =>
         message.Length <= MaxErrorLength ? message : message[..(MaxErrorLength - 3)] + "...";
+
+    /// <summary>The helper's version as numbers only, for GitHub's User-Agent.</summary>
+    public static string OwnVersionNumber() => OwnVersion().Split('+')[0];
 
     private static string OwnVersion() =>
         typeof(HelperHandler).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion

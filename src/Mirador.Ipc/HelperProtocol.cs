@@ -13,7 +13,8 @@ public enum HelperCommand
     Ping,
 
     /// <summary>
-    /// Makes the Monado that came with Mirador the active OpenXR runtime, remembering the one it replaces. Putting that
+    /// Makes Mirador's Monado (its current version; on an older install, the Monado that came with Mirador) the active
+    /// OpenXR runtime, remembering the one it replaces. Putting that
     /// one back is not a command: only the uninstaller does it (<c>Mirador.Helper.exe --restore-runtime</c>), because
     /// the remembered runtime may be one in a folder any user can change.
     /// </summary>
@@ -58,12 +59,45 @@ public enum HelperCommand
     WaitMonadoElevated,
 
     /// <summary>
-    /// Answers with the folder the helper starts Monado as administrator for: its own install folder, one above its
-    /// program's, where the installed <c>Mirador.exe</c> is (<see cref="HelperReply.Value"/>). Mirador compares its own
+    /// Answers with the folder the helper starts Monado as administrator for: its own install folder, where the
+    /// installed <c>Mirador.exe</c> is beside it (<see cref="HelperReply.Value"/>). Mirador compares its own
     /// path with it through <see cref="InstalledMirador.IsInstalledCopy"/>, the test the helper applies to the caller,
     /// so a copy the helper would refuse runs Monado as the user instead (Mirador.md section 4.10 item 46).
     /// </summary>
     GetInstallFolder,
+
+    /// <summary>
+    /// Installs the version of Mirador's Monado named by <see cref="HelperRequest.Version"/> and makes it current
+    /// (Mirador.md §4.11 item 55). The helper fetches the list of Mirador's releases itself and takes the download and
+    /// its SHA-256 only from there: the request carries the version's name and nothing else. The reply's
+    /// <see cref="HelperReply.Value"/> is the version now current.
+    /// </summary>
+    InstallMonado,
+
+    /// <summary>Makes the previous version of Mirador's Monado current again ("Roll back"); the reply's value is it.</summary>
+    RollBackMonado,
+
+    /// <summary>
+    /// Makes the approved copy of the build of the profile named by <see cref="HelperRequest.Build"/> the active OpenXR
+    /// runtime (Mirador.md §4.11 item 51), once every file is checked against the hashes recorded at the approval.
+    /// </summary>
+    SetRuntimeApproved,
+
+    /// <summary>
+    /// Answers with the profiles the caller has an approved build for (Mirador.md §4.11 item 51), as
+    /// <see cref="HelperReply.Value"/>: their ids separated by commas (an id has none), empty for none. With
+    /// <see cref="ForgetApprovedBuild"/>, Mirador takes back what no profile asks for any more: a request never carries
+    /// a list, a reply may.
+    /// </summary>
+    ListApprovedBuilds,
+
+    /// <summary>
+    /// Takes back the caller's own approval of the build of the profile <see cref="HelperRequest.Build"/> names: its
+    /// record, then its copy. Mirador sends it once a profile no longer runs that build as administrator (its switch
+    /// off, its Monado changed, the profile deleted), so an approval never outlives the choice that made it. A copy that
+    /// is the active OpenXR runtime hands that over to Mirador's Monado first. Taking a right away needs no prompt.
+    /// </summary>
+    ForgetApprovedBuild,
 }
 
 /// <summary>
@@ -76,16 +110,31 @@ public enum HelperCommand
 /// <param name="RenderScalePercent">Compositor render scale; <see cref="MonadoSettingsEnvironment.RenderScaleRange"/>.</param>
 /// <param name="CompositorMinTimeMs">Compositor minimum frame time; <see cref="MonadoSettingsEnvironment.CompositorMinTimeRange"/>.</param>
 /// <param name="ExitOnDisconnect">Whether Monado exits when the last app disconnects.</param>
-/// <param name="Module">The headset module's name: <c>""</c> for none, or <c>"dreamair"</c>.</param>
+/// <param name="Module">The headset module's table: <c>""</c> for none, or <c>"pimax"</c> (a Dream Air plugged in).</param>
+/// <param name="Build">
+/// <c>""</c> for Mirador's Monado; else the id of the profile whose approved build runs (Mirador.md §4.11 item 51). The
+/// helper finds that build in its own record and checks every file's hash; the request names no path.
+/// </param>
+/// <param name="Headless">
+/// For "Verify build for Windows" (Mirador.md §4.11 item 49): Monado's null compositor and its simulated headset
+/// (<c>XRT_COMPOSITOR_NULL=1</c>, <c>SIMULATED_ENABLE=1</c>), so it opens sessions without touching a headset or a
+/// display. Only with no module.
+/// </param>
 public sealed record ElevatedStart(
     [property: JsonRequired] int LighthouseWaitMs,
     [property: JsonRequired] int RenderScalePercent,
     [property: JsonRequired] int CompositorMinTimeMs,
     [property: JsonRequired] bool ExitOnDisconnect,
-    [property: JsonRequired] string Module);
+    [property: JsonRequired] string Module,
+    string Build = "",
+    bool Headless = false);
 
-/// <summary>A request: a command, and the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>.</summary>
-public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null);
+/// <summary>
+/// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and
+/// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a weekly build's name, checked by the helper), and
+/// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper).
+/// </summary>
+public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null);
 
 /// <summary>
 /// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing

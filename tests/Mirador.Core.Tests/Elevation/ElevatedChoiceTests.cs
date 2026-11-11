@@ -6,7 +6,7 @@ namespace Mirador.Core.Tests.Elevation;
 public class ElevatedChoiceTests
 {
     private static Profile Custom(BuildSource? monado = null, params EnvVar[] extra) =>
-        new("p", "Custom", null, monado ?? BuildSource.Bundled, extra, new Dictionary<string, string>());
+        new("p", "Custom", null, monado ?? BuildSource.Mirador, extra, new Dictionary<string, string>());
 
     [Fact]
     public void Installed_copy_with_a_plain_bundled_profile_may_run_elevated() =>
@@ -28,5 +28,12 @@ public class ElevatedChoiceTests
         Assert.Equal(
             ElevatedChoice.ExtraVariables,
             ElevatedChoice.RunsAsYouReason(Custom(null, new EnvVar("XRT_LOG", "debug")), null, installedCopy: true));
+    }
+
+    [Fact]
+    public void The_consent_is_kept_only_while_a_profile_runs_as_administrator()
+    {
+        Assert.False(ElevatedChoice.ConsentNeeded(new ProfileSet([Custom()], "p")));
+        Assert.True(ElevatedChoice.ConsentNeeded(new ProfileSet([Custom(), Custom() with { Id = "q", RunAsAdministrator = true }], "p")));
     }
 }

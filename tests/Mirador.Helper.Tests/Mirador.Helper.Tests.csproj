@@ -13,5 +13,8 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\Shared\TempDir.cs" Link="Shared\TempDir.cs" />
+    <Compile Include="..\Shared\TestThreadPool.cs" Link="Shared\TestThreadPool.cs" />
+    <Using Include="Mirador.Tests" />
   </ItemGroup>
 </Project>

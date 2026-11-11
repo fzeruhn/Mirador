@@ -26,7 +26,7 @@ public class ProfileStoreTests
         Assert.Equal("custom", loaded.SelectedId);
         Assert.Equal(set.Profiles.Select(p => p.Id), loaded.Profiles.Select(p => p.Id));
         Assert.Equal(["Dream Air", "Custom", "Workshop"], loaded.Profiles.Select(p => p.Name));
-        Assert.Equal(["dreamair", null, null], loaded.Profiles.Select(p => p.ModuleId));
+        Assert.Equal(["pimax", null, null], loaded.Profiles.Select(p => p.ModuleId));
 
         var first = loaded.Profiles[0];
         Assert.Equal(SourceKind.Folder, first.Monado.Kind);
@@ -35,7 +35,7 @@ public class ProfileStoreTests
         Assert.Equal(@"D:\layer folder", first.ModuleOptions["layerFolder"]);
         Assert.Single(first.ModuleOptions);
 
-        Assert.Equal(BuildSource.Bundled, loaded.Profiles[1].Monado);
+        Assert.Equal(BuildSource.Mirador, loaded.Profiles[1].Monado);
         Assert.Empty(loaded.Profiles[1].ExtraEnvironment);
         Assert.Empty(loaded.Profiles[1].ModuleOptions);
     }
@@ -104,9 +104,9 @@ public class ProfileStoreTests
         const string text = """
             {"profiles":[
               {"id":"a","name":"Mine","monado":{"kind":"Folder","folder":"D:\\monado\\build"}},
-              {"id":"b","name":"","monado":{"kind":"Bundled"}},
-              {"id":"c","name":"Other","monado":{"kind":"Bundled"}},
-              {"id":"a","name":"Same id","monado":{"kind":"Bundled"}}
+              {"id":"b","name":"","monado":{"kind":"Mirador"}},
+              {"id":"c","name":"Other","monado":{"kind":"Mirador"}},
+              {"id":"a","name":"Same id","monado":{"kind":"Mirador"}}
             ],"selectedId":"c"}
             """;
         File.WriteAllText(path, text);
@@ -126,7 +126,7 @@ public class ProfileStoreTests
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
         File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"},
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Mirador"},
               "extraEnvironment":[null,{"value":"1"},{"name":"KEPT","value":"2"},{"name":"NO_VALUE"}],
               "moduleOptions":{"layerFolder":null,"other":"x"}}],"selectedId":"a"}
             """);
@@ -156,7 +156,7 @@ public class ProfileStoreTests
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
         File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}},{"id":"b","name":"B","monado":{"kind":"Bundled"}}],"selectedId":"gone"}
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Mirador"}},{"id":"b","name":"B","monado":{"kind":"Mirador"}}],"selectedId":"gone"}
             """);
 
         var loaded = new ProfileStore(path).Load();
@@ -215,7 +215,7 @@ public class ProfileStoreTests
         using var dir = new TempDir();
         var path = dir.File("profiles.json");
         File.WriteAllText(path, """
-            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Bundled"}}],"selectedId":"a"}
+            {"profiles":[{"id":"a","name":"A","monado":{"kind":"Mirador"}}],"selectedId":"a"}
             """);
 
         Assert.Null(new ProfileStore(path).Load().Profiles[0].Lighthouse);
@@ -243,6 +243,6 @@ public class ProfileStoreTests
         Assert.Equal(defaults.Profiles.Select(p => p.Name), loaded.Profiles.Select(p => p.Name));
         Assert.Equal(defaults.Profiles.Select(p => p.ModuleId), loaded.Profiles.Select(p => p.ModuleId));
         Assert.Equal(defaults.SelectedId, loaded.SelectedId);
-        Assert.All(loaded.Profiles, p => Assert.Equal(BuildSource.Bundled, p.Monado));
+        Assert.All(loaded.Profiles, p => Assert.Equal(BuildSource.Mirador, p.Monado));
     }
 }

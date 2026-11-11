@@ -1,3 +1,4 @@
+using Mirador.Core.DirectMode;
 using System.Globalization;
 using Mirador.Core.Lighthouse;
 using Mirador.Core.Modules;
@@ -22,7 +23,6 @@ public enum StartReason
     Button,
     Tray,
     Game,
-    Check,
 }
 
 /// <summary>How a Start ended.</summary>
@@ -186,7 +186,7 @@ public sealed class SessionController(SessionDeps deps)
     /// it; else null. Read fresh from the registry each time, so it goes once the runtime is set.
     /// </summary>
     public string? RuntimeNotice =>
-        CurrentInstall is { } install && !deps.Runtime.IsActive(install.Manifest) ? NotActiveNotice : null;
+        CurrentInstall is { } install && !deps.Runtime.IsActive(install) ? NotActiveNotice : null;
 
     /// <summary>
     /// The profile and headset module of the session that is starting (once the Start has read the profile), running or
@@ -308,14 +308,16 @@ public sealed class SessionController(SessionDeps deps)
     /// Does nothing for the bundled Monado (its stand-in is the installer's) or a build that can't be found (its Start
     /// says why).
     /// </summary>
-    public void PlaceStandIn()
+    public void PlaceStandIn() => PlaceStandIn(deps.Profiles.Load().Selected);
+
+    /// <summary>Puts the stand-in below <paramref name="profile"/>'s build folder (Verify's game start needs it there).</summary>
+    public void PlaceStandIn(Profile profile)
     {
         try
         {
-            var profile = deps.Profiles.Load().Selected;
-            if (profile.Monado.Kind == SourceKind.Folder)
+            if (profile.Monado.Kind is SourceKind.Folder or SourceKind.Branch)
             {
-                var install = deps.Locator.Locate(profile.Monado);
+                var install = deps.Locator.Locate(profile);
                 StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe);
             }
         }
@@ -528,7 +530,7 @@ public sealed class SessionController(SessionDeps deps)
     /// </summary>
     private async Task UndoLeftSessionAsync(string? moduleId, IReadOnlyDictionary<string, string> data, CancellationToken ct)
     {
-        if (moduleId is not null && deps.Modules.TryGetValue(moduleId, out var module))
+        if (FindModule(moduleId) is { } module)
         {
             await module.RecoverAsync(deps.Context, data, ct).ConfigureAwait(false);
         }
@@ -651,19 +653,19 @@ public sealed class SessionController(SessionDeps deps)
 
         var profile = deps.Profiles.Load().Selected;
         IHeadsetModule? module = null;
-        if (profile.ModuleId is { } moduleId && !deps.Modules.TryGetValue(moduleId, out module))
+        if (profile.ModuleId is { } moduleId && (module = FindModule(moduleId)) is null)
         {
             return Fail($"This profile uses a headset Mirador doesn't know ({moduleId}).");
         }
 
-        var install = deps.Locator.Locate(profile.Monado);
+        var install = deps.Locator.Locate(profile);
         if (run.GameStandIn is { } gameStandIn && !StandIn.BelongsTo(gameStandIn, install))
         {
             return Fail(OtherMonado(gameStandIn, install, profile));
         }
 
         // A game that only asks whether a headset is there starts Monado (OpenComposite does, Mirador.md §4.6 item 25):
-        // with the headset unplugged, refuse before any step, so Pimax is never touched and the game goes on without VR.
+        // with the headset unplugged, refuse before any step, so the headset's own software is never touched and the game goes on without VR.
         if (run.ForGame && module is not null && !module.IsPresent(deps.Context.Usb.Present()))
         {
             return Fail($"Monado wasn't started: the {module.DisplayName} isn't connected.");
@@ -724,6 +726,13 @@ public sealed class SessionController(SessionDeps deps)
         run.WroteSessionFile = true;
 
         var moduleEnvironment = run.Session?.Environment ?? [];
+        if (module?.UsesNvidiaDirectMode == true)
+        {
+            // The layer, turned on by the core for a headset that uses NVIDIA direct mode (Mirador.md §4.11 item 52);
+            // the module's own variables come after it.
+            moduleEnvironment = [.. DirectModeLayer.Environment(deps.BundledLayerDir ?? ""), .. moduleEnvironment];
+        }
+
         var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
         var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
         var standIn = install.IsBundled
@@ -1108,21 +1117,26 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>
-    /// Which launcher starts this Start: the helper's elevated one when the user allowed it and
-    /// <see cref="Elevation.ElevatedChoice.RunsAsYouReason"/> (shared with Home's line) finds no reason against it: this
-    /// is the installed Mirador, the profile runs the bundled Monado, it sets no extra environment variables and its
-    /// module points at no folder of its own; otherwise the job launcher, which runs Monado as the user. The elevated
+    /// Which launcher starts this Start: the helper's elevated one when the profile has "Run as administrator" on, the
+    /// user allowed it, and <see cref="Elevation.ElevatedChoice.RunsAsYouReason"/> (shared with Home's line) finds no
+    /// reason against it: this is the installed Mirador, the profile runs Mirador's Monado (or an approved build), it
+    /// sets no extra environment variables and its module has administrator settings for the headset; otherwise the job
+    /// launcher, which runs Monado as the user. The elevated
     /// launcher itself runs the Start through the job launcher when the helper says SteamVR's Lighthouse driver changed
     /// since the consent (<see cref="HelperProcessLauncher"/>).
     /// Whatever the choice, the rest of the session is the same.
     /// </summary>
     private IProcessLauncher ChooseLauncher(MonadoInstall install, Profile profile, IHeadsetModule? module, MonadoSettings settings)
     {
-        // install is the profile's own bundled Monado exactly when the profile's kind is Bundled (MonadoLocator).
+        // install is in Mirador's admin-only folder exactly when the profile runs Mirador's (or the bundled) Monado
+        // (MonadoLocator). A branch or build folder runs elevated only as its approved copy, which the helper checks.
+        var approvedBuild = !install.IsBundled && profile.RunAsAdministrator
+            && (install.Approved is not null || deps.ApprovedBuildCurrent?.Invoke(profile) == true);
         var eligible = deps.ElevatedLauncher is not null
+            && profile.RunAsAdministrator
             && deps.ElevatedConsented?.Invoke() == true
-            && install.IsBundled
-            && Elevation.ElevatedChoice.RunsAsYouReason(profile, module, deps.ElevatedInstalledCopy?.Invoke() == true) is null;
+            && (install.IsBundled || approvedBuild)
+            && Elevation.ElevatedChoice.RunsAsYouReason(profile, module, deps.ElevatedInstalledCopy?.Invoke() == true, approvedBuild) is null;
 
         if (!eligible)
         {
@@ -1134,11 +1148,14 @@ public sealed class SessionController(SessionDeps deps)
             settings.RenderScalePercent,
             settings.CompositorMinTimeMs,
             settings.StopWhenLastAppCloses,
-            module?.Id ?? "");
+            module?.ElevatedModuleId ?? "",
+            approvedBuild ? profile.Id : "");
         return deps.ElevatedLauncher!(start);
     }
 
     private static StartOutcome Fail(string message) => new(false, message);
+
+    private IHeadsetModule? FindModule(string? id) => id is not null && deps.Modules.TryGetValue(id, out var module) ? module : null;
 
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
 

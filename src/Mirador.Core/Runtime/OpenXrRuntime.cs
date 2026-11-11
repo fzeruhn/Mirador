@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using Mirador.Core.Monado;
 
 namespace Mirador.Core.Runtime;
 
@@ -57,6 +58,12 @@ public sealed class OpenXrRuntime(IRuntimeRegistryReader reader)
         var wanted = FullPathOf(manifest);
         return active is not null && wanted is not null && string.Equals(active, wanted, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Whether <paramref name="install"/> is the active runtime: its own manifest, or its approved copy's (which is what
+    /// "Set as OpenXR runtime" sets for a branch or build folder).
+    /// </summary>
+    public bool IsActive(MonadoInstall install) => install.RuntimeManifests.Any(IsActive);
 
     /// <summary>The value as a normalised full path, or null when it is not a full path (never throws).</summary>
     private static string? FullPathOf(string? value)

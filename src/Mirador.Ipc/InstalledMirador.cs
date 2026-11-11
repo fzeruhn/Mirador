@@ -8,8 +8,8 @@ namespace Mirador.Ipc;
 public static class InstalledMirador
 {
     /// <summary>
-    /// Whether <paramref name="exePath"/> is <c>Mirador.exe</c> in <paramref name="installDir"/>, the folder above the
-    /// helper's own (where <c>HKLM\SOFTWARE\Mirador</c> <c>AppPath</c> points in a normal install). Compared as full
+    /// Whether <paramref name="exePath"/> is <c>Mirador.exe</c> in <paramref name="installDir"/>, the
+    /// helper's own folder (where <c>HKLM\SOFTWARE\Mirador</c> <c>AppPath</c> points in a normal install). Compared as full
     /// paths, ignoring case as Windows does; false for null or a path that can't be read.
     /// </summary>
     public static bool IsInstalledCopy(string? exePath, string? installDir)

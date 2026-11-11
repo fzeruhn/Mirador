@@ -115,6 +115,21 @@ internal sealed class FakeRuntimeRegistry : IRuntimeRegistry
 {
     public string? Active { get; set; }
     public string? Recorded { get; set; }
+
+    /// <summary>The manifests listed under AvailableRuntimes.</summary>
+    public HashSet<string> Available { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public void SetAvailable(string manifest, bool available)
+    {
+        if (available)
+        {
+            Available.Add(manifest);
+        }
+        else
+        {
+            Available.Remove(manifest);
+        }
+    }
     public Exception? Fails { get; set; }
     public int Writes { get; private set; }
 
@@ -136,7 +151,7 @@ internal sealed class FakeRuntimeRegistry : IRuntimeRegistry
         return Active;
     }
 
-    public void SetActive(string path)
+    public void SetActive(string? path)
     {
         Write();
         Active = path;

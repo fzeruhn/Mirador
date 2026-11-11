@@ -13,13 +13,18 @@ namespace Mirador.App.Services;
 /// <param name="NewerMirador">Mirador's latest full release when it is newer; null otherwise (also when GitHub couldn't be asked).</param>
 /// <param name="OpenComposite">The OpenComposite in use: its release version (or commit); null when this build has none.</param>
 /// <param name="NewerOpenComposite">OpenComposite's latest full release when it is newer; null otherwise.</param>
+/// <param name="NewerMonado">
+/// Mirador's Monado's newest weekly build when it isn't the one installed (Mirador.md §4.11 item 50); null otherwise, and when
+/// no profile runs Mirador's Monado.
+/// </param>
 public sealed record UpdateReport(
     DateTimeOffset At,
     bool Reached,
     string Mirador,
     Release? NewerMirador,
     string? OpenComposite,
-    Release? NewerOpenComposite)
+    Release? NewerOpenComposite,
+    string? NewerMonado = null)
 {
     /// <summary>The report in words, for the "Updates" card.</summary>
     public string Describe()
@@ -40,6 +45,11 @@ public sealed record UpdateReport(
         else if (OpenComposite is not null)
         {
             parts.Add($"OpenComposite {OpenComposite} is up to date.");
+        }
+
+        if (NewerMonado is { } monado)
+        {
+            parts.Add($"The bundled Monado {monado} is out: update it on the Profiles page.");
         }
 
         parts.Add($"Checked at {At.ToLocalTime():HH:mm}.");
@@ -71,7 +81,7 @@ public sealed class Updates(AppHost host)
     /// <summary>
     /// The OpenComposite Mirador runs (the one place that says so): the per-user copy's, else the bundle's.
     /// </summary>
-    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.CopySource ?? host.OpenCompositeCopy.BundleSource;
+    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.CopySource;
 
     /// <summary>Whether OpenComposite can be updated from the notice and the Updates card.</summary>
     public bool CanUpdateOpenComposite => true;
@@ -107,30 +117,72 @@ public sealed class Updates(AppHost host)
         return message;
     }
 
-    /// <summary>"Use the bundled OpenComposite": puts the bundled one back and deletes the downloads, then asks GitHub again.</summary>
+    /// <summary>
+    /// "Get OpenComposite" (Mirador.md §4.11 item 56): the fork's latest release, downloaded and checked like an update.
+    /// </summary>
     /// <returns>What happened, in words for the user.</returns>
     /// <exception cref="MiradorException">Why nothing changed.</exception>
-    public async Task<string> UseBundledOpenCompositeAsync()
+    public async Task<string> GetOpenCompositeAsync()
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var (answered, latest) = await UpdateCheck.LatestAsync(http, UpdateCheck.OpenCompositeRepository, AppInfo.Version, CancellationToken.None);
+        if (!answered)
+        {
+            throw new MiradorException("Mirador couldn't reach GitHub. Try again later.");
+        }
+
+        return latest is null
+            ? throw new MiradorException("The OpenComposite fork has no release yet.")
+            : await UpdateOpenCompositeAsync(latest);
+    }
+
+    /// <summary>"Roll back": the OpenComposite before the one in use, then asks GitHub again.</summary>
+    /// <returns>What happened, in words for the user.</returns>
+    /// <exception cref="MiradorException">Why nothing changed.</exception>
+    public async Task<string> RollBackOpenCompositeAsync()
     {
         CopyOutcome outcome;
         try
         {
-            outcome = await Task.Run(host.OpenCompositeCopy.UseBundled);
+            outcome = await Task.Run(host.OpenCompositeCopy.RollBack);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new MiradorException($"Mirador couldn't put the bundled OpenComposite back ({e.Message.Trim().TrimEnd('.')})");
+            throw new MiradorException($"Mirador couldn't put the earlier OpenComposite back ({e.Message.Trim().TrimEnd('.')})");
         }
 
         var message = outcome switch
         {
             CopyOutcome.InUse => "A game is using OpenComposite. Close it and try again.",
-            CopyOutcome.NoBundle => "OpenComposite isn't in this Mirador build.",
-            _ => "The bundled OpenComposite is in place.",
+            CopyOutcome.NothingEarlier => "There is no earlier OpenComposite to go back to.",
+            _ => $"OpenComposite {host.OpenCompositeCopy.CopySource?.Describe()} is in place again.",
         };
         AppLog.Write(message);
         await CheckAsync();
         return message;
+    }
+
+    /// <summary>
+    /// The newest weekly build of Mirador's Monado when a profile runs Mirador's Monado and a newer one than the installed is
+    /// out; never installed from here (Mirador.md §4.11 item 50: "Never installed by itself").
+    /// </summary>
+    private async Task<string?> NewerMonadoAsync(HttpClient http)
+    {
+        try
+        {
+            if (!host.Profiles.Load().Profiles.Any(p => p.Monado.Kind == Core.Profiles.SourceKind.Mirador))
+            {
+                return null;
+            }
+
+            var newest = (await Ipc.MonadoReleaseList.FetchAsync(http, AppInfo.Version, CancellationToken.None))?.FirstOrDefault();
+            var current = Ipc.MiradorMonado.Read(host.Locator.MiradorRoot).Current;
+            return newest is not null && newest.Version != current ? newest.Version : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The daily check at launch: only when it is on and a day has passed since the last. Null when it didn't ask.</summary>
@@ -165,13 +217,15 @@ public sealed class Updates(AppHost host)
         var (mAnswered, mLatest) = await UpdateCheck.LatestAsync(http, UpdateCheck.MiradorRepository, AppInfo.Version, CancellationToken.None);
         var (oAnswered, oLatest) = await UpdateCheck.LatestAsync(http, UpdateCheck.OpenCompositeRepository, AppInfo.Version, CancellationToken.None);
 
+        var newerMonado = await NewerMonadoAsync(http);
         var report = new UpdateReport(
             now,
             mAnswered && oAnswered,
             AppInfo.Version,
             mLatest is { } m && UpdateCheck.IsNewer(AppInfo.Version, m.Tag) ? m : null,
             installed is null ? null : installed.Version ?? installed.Describe(),
-            oLatest is { } o && installed is not null && (installed.Version is null || UpdateCheck.IsNewer(installed.Version, o.Tag)) ? o : null);
+            oLatest is { } o && installed is not null && (installed.Version is null || UpdateCheck.IsNewer(installed.Version, o.Tag)) ? o : null,
+            newerMonado);
 
         if (report.Reached)
         {

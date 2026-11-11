@@ -4,7 +4,9 @@
     Removes the Mirador helper service that tools\dev-install-helper.ps1 installed. Run it as administrator.
 .DESCRIPTION
     Puts back the OpenXR runtime Mirador replaced (the helper's --restore-runtime, which does nothing when Mirador
-    replaced none), stops and deletes the MiradorHelper service, and deletes %ProgramFiles%\Mirador\helper\.
+    replaced none), stops and deletes the MiradorHelper service, and deletes the helper's files from
+    %ProgramFiles%\Mirador\: all of them when no Mirador is installed there, else only those the app doesn't use
+    (the app's Mirador.deps.json doesn't name them).
 #>
 [CmdletBinding()]
 param()
@@ -20,8 +22,7 @@ if (-not $isAdministrator) {
 
 $serviceName = 'MiradorHelper'
 $appDir = Join-Path $env:ProgramFiles 'Mirador'
-$helperDir = Join-Path $appDir 'helper'
-$helperExe = Join-Path $helperDir 'Mirador.Helper.exe'
+$helperExe = Join-Path $appDir 'Mirador.Helper.exe'
 
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if ($service -and $service.Status -ne 'Stopped') {
@@ -43,15 +44,27 @@ if ($service) {
     }
 }
 
-foreach ($folder in $helperDir, (Join-Path $appDir 'helper.new')) {
-    if (Test-Path -LiteralPath $folder) {
-        Remove-Item -LiteralPath $folder -Recurse -Force
+$helperDeps = Join-Path $appDir 'Mirador.Helper.deps.json'
+if (Test-Path -LiteralPath (Join-Path $appDir 'Mirador.exe')) {
+    # Beside an installed Mirador: the files only the helper's deps.json names, and the helper itself.
+    $names = { param($deps) (Get-Content -LiteralPath $deps -Raw | ConvertFrom-Json).targets.PSObject.Properties.Value |
+        ForEach-Object { $_.PSObject.Properties.Value } | ForEach-Object { @($_.runtime, $_.native) } |
+        Where-Object { $_ } | ForEach-Object { $_.PSObject.Properties.Name } | ForEach-Object { Split-Path $_ -Leaf } }
+    if (Test-Path -LiteralPath $helperDeps) {
+        $appNames = & $names (Join-Path $appDir 'Mirador.deps.json')
+        & $names $helperDeps | Where-Object { $appNames -notcontains $_ } | ForEach-Object {
+            Remove-Item -LiteralPath (Join-Path $appDir $_) -Force -ErrorAction SilentlyContinue
+        }
     }
+    Get-ChildItem -LiteralPath $appDir -Filter 'Mirador.Helper.*' -File | Remove-Item -Force
 }
-
-# The Mirador folder itself is left alone when anything else (a real install) is in it.
-if ((Test-Path -LiteralPath $appDir) -and -not (Get-ChildItem -LiteralPath $appDir -Force)) {
-    Remove-Item -LiteralPath $appDir
+elseif (Test-Path -LiteralPath $appDir) {
+    # Only the dev helper was there.
+    Remove-Item -LiteralPath $appDir -Recurse -Force
+}
+$staging = Join-Path $appDir 'helper.new'
+if (Test-Path -LiteralPath $staging) {
+    Remove-Item -LiteralPath $staging -Recurse -Force
 }
 
 Write-Host 'The Mirador helper service is removed.'

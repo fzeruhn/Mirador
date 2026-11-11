@@ -5,7 +5,7 @@ namespace Mirador.Core.Tests.Profiles;
 public class ProfileLighthouseTests
 {
     private static Profile Make(string? moduleId = null, bool? lighthouse = null, params EnvVar[] env) =>
-        new("p", "P", moduleId, BuildSource.Bundled, env, new Dictionary<string, string>(), lighthouse);
+        new("p", "P", moduleId, BuildSource.Mirador, env, new Dictionary<string, string>(), lighthouse);
 
     [Fact]
     public void Dream_air_means_on() =>

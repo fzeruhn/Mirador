@@ -1,3 +1,4 @@
+using Mirador.Core.DirectMode;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Time.Testing;
 using Mirador.Core.Modules;
@@ -33,58 +34,6 @@ internal sealed class Steps
             }
         }
     }
-}
-
-/// <summary>
-/// The fake clock, telling the test when a timer has been set, so that it moves the clock only once the controller
-/// waits on it (a timer set after the clock moved would be due later than the test means).
-/// </summary>
-internal sealed class TimerWatch(FakeTimeProvider clock) : TimeProvider
-{
-    private readonly List<TimeSpan> created = [];
-    private readonly List<(TimeSpan Due, int Count, TaskCompletionSource Done)> waiting = [];
-
-    public override TimeZoneInfo LocalTimeZone => clock.LocalTimeZone;
-
-    public override long TimestampFrequency => clock.TimestampFrequency;
-
-    public override DateTimeOffset GetUtcNow() => clock.GetUtcNow();
-
-    public override long GetTimestamp() => clock.GetTimestamp();
-
-    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-    {
-        var timer = clock.CreateTimer(callback, state, dueTime, period);
-        lock (created)
-        {
-            created.Add(dueTime);
-            foreach (var w in waiting.Where(w => Count(w.Due) >= w.Count).ToList())
-            {
-                waiting.Remove(w);
-                w.Done.TrySetResult();
-            }
-        }
-
-        return timer;
-    }
-
-    /// <summary>Completes once <paramref name="count"/> timers due after <paramref name="dueTime"/> have been set.</summary>
-    public Task Set(TimeSpan dueTime, int count = 1)
-    {
-        lock (created)
-        {
-            if (Count(dueTime) >= count)
-            {
-                return Task.CompletedTask;
-            }
-
-            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            waiting.Add((dueTime, count, done));
-            return done.Task;
-        }
-    }
-
-    private int Count(TimeSpan dueTime) => created.Count(d => d == dueTime);
 }
 
 internal sealed class FakeProcessList(Steps steps) : IProcessList
@@ -397,6 +346,10 @@ internal sealed class FakeModule(Steps steps) : IHeadsetModule
 
     public bool UsesSteamVrLighthouse { get; set; }
 
+    public bool UsesNvidiaDirectMode { get; set; }
+
+    public string? ElevatedModuleId { get; set; } = "fake";
+
     /// <summary>When set, BeforeStart throws it (after waiting at <see cref="Gate"/>).</summary>
     public Exception? Refusal { get; set; }
 
@@ -579,10 +532,17 @@ internal sealed class Harness : IAsyncDisposable
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
 
         var bundledRoot = Path.Combine(Root, "Mirador App", "monado");
-        var dll = Touch(bundledRoot, "runtime", "openxr_monado.dll");
-        BundledManifest = Path.Combine(bundledRoot, "runtime", "openxr_monado.json");
+        const string version = "monado-2026.11.10-1a2b3c4d5e";
+        var dll = Touch(bundledRoot, version, "bin", "openxr_monado.dll");
+        BundledManifest = Path.Combine(bundledRoot, version, "openxr_monado.json");
         File.WriteAllText(BundledManifest, TestManifest.Json(dll));
-        BundledServer = Touch(bundledRoot, "server", "monado-service.exe");
+        BundledServer = Touch(bundledRoot, version, "bin", "monado-service.exe");
+        MiradorMonado.Write(bundledRoot, new MiradorMonadoVersions(version, null));
+
+        BundledLayer = Path.Combine(Root, "Mirador App", "layer");
+        Touch(BundledLayer, DirectModeLayer.ManifestName);
+        Touch(BundledLayer, DirectModeLayer.DllName);
+        Touch(BundledLayer, DirectModeLayer.CheckExeName);
 
         StandInExe = Path.Combine(Root, "Mirador App", "standin", "monado-service.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(StandInExe)!);
@@ -618,7 +578,8 @@ internal sealed class Harness : IAsyncDisposable
                     ElevatedStarts.Enqueue(start);
                     return Launcher;
                 },
-                ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null),
+                ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null,
+                BundledLayerDir: BundledLayer),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);
@@ -632,7 +593,7 @@ internal sealed class Harness : IAsyncDisposable
     }
 
     public static Profile DreamAir { get; } =
-        new("p1", "Dream Air", "fake", BuildSource.Bundled, [], new Dictionary<string, string>());
+        new("p1", "Dream Air", "fake", BuildSource.Mirador, [], new Dictionary<string, string>());
 
     /// <summary>Program files under this folder count as Mirador's stand-in, nothing else does.</summary>
     public const string StandInImages = @"C:\Games\stand-ins\";
@@ -654,7 +615,13 @@ internal sealed class Harness : IAsyncDisposable
 
     public string BundledServer { get; }
 
+    /// <summary>The bundled Monado's runtime DLL folder, with the stand-in's <c>service</c> folder below it.</summary>
+    public string RuntimeDir => Path.GetDirectoryName(BundledServer)!;
+
     public string StandInExe { get; }
+
+    /// <summary>The direct-mode layer that "comes with Mirador" here.</summary>
+    public string BundledLayer { get; }
 
     public Steps Steps { get; } = new();
 

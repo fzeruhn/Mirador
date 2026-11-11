@@ -29,8 +29,6 @@ public sealed partial class EyeTrackingPage : Page
         base.OnNavigatedFrom(e);
     }
 
-    private void OnResultClosed(InfoBar sender, InfoBarClosedEventArgs args) => ViewModel.DismissResult();
-
     private void OnBackupMessageClosed(InfoBar sender, InfoBarClosedEventArgs args) => ViewModel.DismissBackupMessage();
 
     private async void OnRestore(object sender, RoutedEventArgs e)

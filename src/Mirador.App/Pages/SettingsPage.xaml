@@ -45,14 +45,6 @@
                 </StackPanel>
             </toolkit:SettingsCard>
 
-            <TextBlock Style="{StaticResource SectionHeader}" Text="Monado" />
-            <toolkit:SettingsCard
-                Description="{x:Bind ViewModel.RunMonadoAsAdministratorDescription, Mode=OneWay}"
-                Header="Run Monado as administrator"
-                IsEnabled="{x:Bind ViewModel.CanChangeRunMonadoAsAdministrator, Mode=OneWay}">
-                <ToggleSwitch IsOn="{x:Bind ViewModel.RunMonadoAsAdministrator, Mode=TwoWay}" />
-            </toolkit:SettingsCard>
-
             <TextBlock Style="{StaticResource SectionHeader}" Text="About" />
             <toolkit:SettingsCard Description="Runs Monado, the open-source OpenXR runtime, on Windows. Boost Software License 1.0." Header="{x:Bind ViewModel.Version}">
                 <HyperlinkButton Content="github.com/fzeruhn/Mirador" NavigateUri="https://github.com/fzeruhn/Mirador" />
@@ -60,8 +52,8 @@
             <toolkit:SettingsCard Description="{x:Bind ViewModel.OpenCompositeDescription, Mode=OneWay}" Header="OpenComposite">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <Button
-                        Command="{x:Bind ViewModel.UseBundledOpenCompositeCommand}"
-                        Content="Use the bundled OpenComposite"
+                        Command="{x:Bind ViewModel.RollBackOpenCompositeCommand}"
+                        Content="Roll back"
                         Visibility="{x:Bind ViewModel.HoldsDownload, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
                     <HyperlinkButton Content="github.com/fzeruhn/OpenComposite" NavigateUri="https://github.com/fzeruhn/OpenComposite" />
                 </StackPanel>

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Mirador.Pimax\Mirador.Pimax.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Compile Include="..\Shared\TempDir.cs" Link="Shared\TempDir.cs" />
+    <Compile Include="..\Shared\TestThreadPool.cs" Link="Shared\TestThreadPool.cs" />
+    <Compile Include="..\Shared\TimerWatch.cs" Link="Shared\TimerWatch.cs" />
+    <Using Include="Mirador.Tests" />
+    <Using Include="Mirador.Core.DirectMode" />
+    <Using Include="Mirador.Core.Tests.DirectMode" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The fake console programs, shared with the core's tests (the display check moved there with direct mode). -->
+    <Compile Include="..\Mirador.Core.Tests\DirectMode\FakeConsole.cs" Link="FakeConsole.cs" />
+  </ItemGroup>
+</Project>

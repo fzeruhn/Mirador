@@ -46,8 +46,7 @@ public sealed record UserFolders(string UserProfile, string AppData, string Loca
 /// Builds the environment the elevated <c>monado-service</c> is started with (Mirador.md section 4.10 item 46). The
 /// helper builds it from scratch: Windows' machine-wide variables (from the helper's own SYSTEM environment), the
 /// caller's own folders and temp, a <c>PATH</c> of System32, Windows and the server folder only, <c>STEAMVR_PATH</c>,
-/// <c>IPC_RELAXED_CONNECTION_SECURITY</c>, the range-checked settings and the module's fixed table, then any test
-/// lines. Nothing from the request becomes a path, and no <c>VK_*</c> (beyond the module's <c>VK_LOADER_LAYERS_ALLOW</c>)
+/// <c>IPC_RELAXED_CONNECTION_SECURITY</c>, the range-checked settings and the module's fixed table. Nothing from the request becomes a path, and no <c>VK_*</c> (beyond the module's <c>VK_LOADER_LAYERS_ALLOW</c>)
 /// or <c>XR_*</c> variable, nor the profile's own variables, ever reaches it.
 /// </summary>
 public static class ElevatedEnvironment
@@ -57,7 +56,7 @@ public static class ElevatedEnvironment
 
     /// <exception cref="ArgumentException">A setting is out of range, or the module name is unknown.</exception>
     public static IReadOnlyDictionary<string, string> Build(
-        ElevatedStart start, UserFolders folders, string serverDir, string steamVrPath, IReadOnlyList<string> testLines)
+        ElevatedStart start, UserFolders folders, string serverDir, string steamVrPath)
     {
         if (MonadoSettingsEnvironment.OutOfRange(start.LighthouseWaitMs, start.RenderScalePercent, start.CompositorMinTimeMs) is { } bad)
         {
@@ -106,13 +105,16 @@ public static class ElevatedEnvironment
             Set(env, name, value);
         }
 
-        foreach (var line in testLines)
+        // Verify's run: no headset and no display, fixed values only.
+        if (start.Headless)
         {
-            var eq = line.IndexOf('=');
-            if (eq > 0)
+            if (start.Module.Length > 0)
             {
-                Set(env, line[..eq], line[(eq + 1)..]);
+                throw new ArgumentException("A headless Monado runs without a headset module.", nameof(start));
             }
+
+            Set(env, "XRT_COMPOSITOR_NULL", "1");
+            Set(env, "SIMULATED_ENABLE", "1");
         }
 
         return env;
@@ -121,7 +123,7 @@ public static class ElevatedEnvironment
     private static IReadOnlyList<KeyValuePair<string, string>> ModuleFixed(string module) => module switch
     {
         "" => [],
-        DreamAirEnvironment.ModuleId => DreamAirEnvironment.FixedEnvironment,
+        PimaxEnvironment.ModuleId => DreamAirEnvironment.FixedEnvironment,
         _ => throw new ArgumentException($"Unknown headset module \"{module}\".", nameof(module)),
     };
 

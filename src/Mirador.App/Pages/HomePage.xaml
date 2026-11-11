@@ -186,6 +186,13 @@
                             Content="Set OpenComposite"
                             ToolTipService.ToolTip="Send OpenVR (SteamVR) games to Monado through OpenComposite"
                             Visibility="{x:Bind ViewModel.CanSetOpenComposite, Mode=OneWay}" />
+                        <Button
+                            Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Command="{x:Bind ViewModel.GetOpenCompositeCommand}"
+                            Content="Get OpenComposite"
+                            ToolTipService.ToolTip="Download OpenComposite from GitHub, so OpenVR (SteamVR) games can run on Monado"
+                            Visibility="{x:Bind ViewModel.CanGetOpenComposite, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>
             </Border>
@@ -279,13 +286,25 @@
                     Message="{x:Bind ViewModel.RunsAsYouNotice, Mode=OneWay}"
                     Severity="Informational"
                     Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
-                    <!-- Only when SteamVR's Lighthouse driver changed since the consent: the same UAC step, with today's files. -->
+                    <!-- When the consent isn't recorded, or SteamVR's Lighthouse driver changed since it was: the consent's UAC step, with today's files. -->
                     <InfoBar.ActionButton>
                         <Button
                             Command="{x:Bind ViewModel.AllowAgainCommand}"
-                            Content="Allow again"
+                            Content="{x:Bind ViewModel.AllowLabel, Mode=OneWay}"
                             IsEnabled="{x:Bind ViewModel.CanAllowAgain, Mode=OneWay}"
                             Visibility="{x:Bind ViewModel.OffersAllowAgain, Mode=OneWay, Converter={StaticResource VisibleWhenTrue}}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+
+                <InfoBar
+                    Title="GPU scheduling"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.HasGpuSchedulingNotice, Mode=OneWay}"
+                    Message="{x:Bind ViewModel.GpuSchedulingNotice, Mode=OneWay}"
+                    Severity="Warning"
+                    Visibility="{Binding IsOpen, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource VisibleWhenTrue}}">
+                    <InfoBar.ActionButton>
+                        <Button Click="OnGraphicsSettings" Content="Open graphics settings" />
                     </InfoBar.ActionButton>
                 </InfoBar>
 

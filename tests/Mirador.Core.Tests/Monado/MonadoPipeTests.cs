@@ -58,12 +58,12 @@ public class MonadoPipeTests
     [Fact]
     public void The_ansi_round_trip_keeps_ascii_and_loses_what_the_code_page_lacks()
     {
-        Assert.Equal(@"C:\Users\finn\AppData\Local\Temp\", Native.Win32.ThroughAnsiCodePage(@"C:\Users\finn\AppData\Local\Temp\"));
-        Assert.Equal("", Native.Win32.ThroughAnsiCodePage(""));
+        Assert.Equal(@"C:\Users\finn\AppData\Local\Temp\", Mirador.Ipc.AnsiCodePage.RoundTrip(@"C:\Users\finn\AppData\Local\Temp\"));
+        Assert.Equal("", Mirador.Ipc.AnsiCodePage.RoundTrip(""));
         if (GetACP() != 65001)
         {
             // No ANSI code page but UTF-8 has an emoji.
-            Assert.DoesNotContain("\U0001F600", Native.Win32.ThroughAnsiCodePage("C:\\Users\\\U0001F600\\Temp\\"));
+            Assert.DoesNotContain("\U0001F600", Mirador.Ipc.AnsiCodePage.RoundTrip("C:\\Users\\\U0001F600\\Temp\\"));
         }
     }
 

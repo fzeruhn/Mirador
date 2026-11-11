@@ -2,6 +2,8 @@ using System.Security.Principal;
 using Microsoft.Win32;
 using Mirador.Core;
 using Mirador.Core.BaseStations;
+using Mirador.Core.Build;
+using Mirador.Core.DirectMode;
 using Mirador.Core.Elevation;
 using Mirador.Core.Modules;
 using Mirador.Core.Monado;
@@ -9,7 +11,7 @@ using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
 using Mirador.Core.Runtime;
 using Mirador.Core.Session;
-using Mirador.DreamAir;
+using Mirador.Pimax;
 using Mirador.Ipc;
 
 namespace Mirador.App.Services;
@@ -23,6 +25,9 @@ public sealed class AppHost : IAsyncDisposable
 {
     /// <summary>How long quitting waits for the base stations' off.</summary>
     private static readonly TimeSpan StationsLimit = TimeSpan.FromSeconds(15);
+
+    /// <summary>The build tools' downloads: no overall timeout (CMake is 50 MB), each download gives up when idle.</summary>
+    private static readonly HttpClient ToolsHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     private readonly JobProcessLauncher launcher;
     private readonly List<string> notices = [];
@@ -38,6 +43,9 @@ public sealed class AppHost : IAsyncDisposable
     // answered. Asked at start and again at each elevated Start; Home only reads it.
     private volatile string? helperInstallDir;
 
+    // A profile's build is hashed to tell whether it is the approved one; kept while its files don't change.
+    private readonly FileHashCache buildHashes = new(Ipc.ApprovedBuilds.HashOf);
+
     private AppHost(string appDir, AppPaths paths)
     {
         AppDir = appDir;
@@ -47,7 +55,16 @@ public sealed class AppHost : IAsyncDisposable
         Settings = new AppSettingsStore(paths.SettingsFile);
         Helper = new HelperClient();
         Runtime = new OpenXrRuntime(new RegistryRuntimeReader());
-        Locator = new MonadoLocator(Path.Combine(appDir, "monado"));
+        Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir, ApprovedCopyOf);
+        Builds = new Builds(new MonadoBuilder(
+            new CommandRunner(), Locator, BuildTools.For(appDir, paths),
+            new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System));
+        BuildToolsSetup = new BuildToolsSetup(
+            new CommandRunner(), ToolsHttp, new UacLauncher(), paths.ToolsDir,
+            BuildToolsCheck.ReadPin(Path.Combine(appDir, "tools", "vcpkg-commit.txt")) ?? "",
+            VsWhere.DefaultPath,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft Visual Studio", "Installer"),
+            WinTrustSigner.SubjectOf, ToolPins.All);
         Usb = new WmiUsbDevices();
         Processes = new SystemProcessList();
         Context = new ModuleContext(paths, Helper, Processes, Usb, TimeProvider.System);
@@ -55,7 +72,7 @@ public sealed class AppHost : IAsyncDisposable
         Calibrations = new CalibrationStore(
             CalibrationStore.DefaultMonadoDir, paths.BackupsDir, TimeProvider.System, () => Session!.State != SessionState.Stopped);
 
-        var dreamAir = new DreamAirModule(new DreamAirDeps(
+        var dreamAir = new PimaxModule(new PimaxDeps(
             new WindowsRegistryReader(),
             ConsoleProcess.Start,
             new GeometryUploader(ConsoleProcess.Start, Usb, Processes, paths, TimeProvider.System),
@@ -64,10 +81,10 @@ public sealed class AppHost : IAsyncDisposable
             NvidiaDriver.CurrentWindowsVersion,
             DreamAirChecks.FindSteamVr,
             state => BlobChoice.Resolve(state, null).Variant,
-            Calibrations));
+            Calibrations,
+            () => Usb.Present()));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
-        CalibrationCheck = new CalibrationCheck(ConsoleProcess.Start, DreamAirState, TimeProvider.System);
-        OpenCompositeCopy = new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), paths.OpenCompositeDir);
+        OpenCompositeCopy = new OpenCompositeCopy(paths.OpenCompositeDir);
         OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir), OpenCompositeCopy);
 
         radio = new WinRtStationRadio(text => AppLog.Write(text));
@@ -76,8 +93,11 @@ public sealed class AppHost : IAsyncDisposable
 
         launcher = new JobProcessLauncher();
         ElevatedConsent = new ElevatedConsent(new RegistryConsentValues());
-        var elevatedLogPath = Path.Combine(
+        var elevatedLogPath = ElevatedLogPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado", CurrentSid() + ".log");
+        Pipe = new MonadoPipe();
+        InheritedEnvironment = UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e));
+        Verify = new VerifyBuild(new CommandRunner(), Path.Combine(appDir, "tools", "xr-check.exe"), TimeProvider.System);
         Session = new SessionController(new SessionDeps(
             Profiles,
             MonadoSettings,
@@ -85,22 +105,46 @@ public sealed class AppHost : IAsyncDisposable
             Context,
             Locator,
             launcher,
-            new MonadoPipe(),
+            Pipe,
             Runtime,
             StandInExe,
-            UserEnvironment.Default(e => AppLog.Write("Windows didn't give the user's environment; Monado gets Mirador's own", e)),
+            InheritedEnvironment,
             Stations,
             ElevatedConsented: ElevatedMonadoAllowed,
+            ApprovedBuildCurrent: ApprovedBuildCurrent,
             ElevatedLauncher: start => new HelperProcessLauncher(Helper, start, elevatedLogPath, launcher)
             {
                 SteamVrChecked = OnSteamVrChecked,
             },
-            ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true)));
+            ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true),
+            BundledLayerDir: Path.Combine(appDir, "layer")));
     }
 
     /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>
     public const string SteamVrChangedReason =
         "Runs as you: SteamVR's Lighthouse driver changed since you allowed Monado as administrator.";
+
+    /// <summary>Home's line when the profile has "Run as administrator" on but the user's consent isn't recorded (any more).</summary>
+    public const string NotAllowedReason =
+        "Runs as you: Windows hasn't been asked yet for Monado to run as administrator.";
+
+    /// <summary>
+    /// Whether Mirador started with no profiles file (its first run for this user): the window then asks where Monado
+    /// comes from (Mirador.md §4.11 item 55). Taken before the launch's migrations, which may save the file.
+    /// </summary>
+    public bool FirstRun { get; private set; }
+
+    private readonly TaskCompletionSource<bool> firstRunAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Done once the first run's question is answered (or failed to show), true when the answer was the bundled Monado:
+    /// nothing is downloaded for the profiles before the user said where their Monado comes from, nor after they picked
+    /// another. True at once when this isn't a first run.
+    /// </summary>
+    public Task<bool> FirstRunAnswered => FirstRun ? firstRunAnswered.Task : Task.FromResult(true);
+
+    /// <summary>The first run's question was answered (<see cref="FirstRunAnswered"/>): <paramref name="bundled"/> when with the bundled Monado.</summary>
+    public void AnswerFirstRun(bool bundled) => firstRunAnswered.TrySetResult(bundled);
 
     /// <summary>The folder Mirador.exe is in.</summary>
     public string AppDir { get; }
@@ -120,6 +164,65 @@ public sealed class AppHost : IAsyncDisposable
 
     public MonadoLocator Locator { get; }
 
+    /// <summary>The branch builds.</summary>
+    public Builds Builds { get; }
+
+    /// <summary>The build tools' check and "Install what's missing".</summary>
+    public BuildToolsSetup BuildToolsSetup { get; }
+
+    /// <summary>"Verify build for Windows".</summary>
+    public VerifyBuild Verify { get; }
+
+    /// <summary>Where the helper writes an elevated Monado's output for this user (the session and Verify follow it).</summary>
+    public string ElevatedLogPath { get; }
+
+    /// <summary>Monado's pipe, as the session watches it.</summary>
+    public IMonadoPipe Pipe { get; }
+
+    /// <summary>The user's environment, which Monado's started from.</summary>
+    public IReadOnlyDictionary<string, string> InheritedEnvironment { get; }
+
+    /// <summary>Starts Monado as the user (in a job object, ended with Mirador).</summary>
+    public IProcessLauncher Launcher => launcher;
+
+    /// <summary>Where a profile's last verify result is kept (by the build's key inside).</summary>
+    public string VerifyResultFile(string profileId) => Path.Combine(Paths.ChecksDir, $"verify-{profileId}.json");
+
+    private StandInWait? standInExpected;
+
+    /// <summary>While Verify waits for a stand-in, that stand-in's START goes to <paramref name="wait"/>.</summary>
+    public void ExpectStandIn(StandInWait wait)
+    {
+        wait.Ended = () => Interlocked.CompareExchange(ref standInExpected, null, wait);
+        Volatile.Write(ref standInExpected, wait);
+    }
+
+    /// <summary>Whether "Verify build for Windows" runs (a branch build waits meanwhile).</summary>
+    public bool Verifying { get; set; }
+
+    /// <summary>
+    /// The app pipe's answer to a stand-in Verify is waiting for (it gets a headless Monado), or null when the START is
+    /// a game's own and goes to the session.
+    /// </summary>
+    public async Task<string?> TryAnswerStandInAsync(string? standIn, CancellationToken ct)
+    {
+        if (Volatile.Read(ref standInExpected) is not { } expected || standIn is null || !StandIn.BelongsTo(standIn, expected.Install))
+        {
+            return null;
+        }
+
+        try
+        {
+            await expected.StartAsync(ct);
+            return AppPipe.Ok;
+        }
+        catch (MiradorException e)
+        {
+            AppLog.Write($"Verify couldn't start Monado for the stand-in: {e.Message}");
+            return AppPipe.FailPrefix + e.Message;
+        }
+    }
+
     public IUsbDevices Usb { get; }
 
     public IProcessList Processes { get; }
@@ -131,12 +234,6 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>The eye calibrations Monado uses, and Mirador's copies of them.</summary>
     public CalibrationStore Calibrations { get; }
 
-    /// <summary>The Dream Air's gaze check ("Check my calibration").</summary>
-    public CalibrationCheck CalibrationCheck { get; }
-
-    /// <summary><c>gaze_world</c>, which shows the check's dots (<c>{app}\tools\gaze_world.exe</c>).</summary>
-    public string GazeWorldExe => Path.Combine(AppDir, "tools", "gaze_world.exe");
-
     /// <summary>Raised on the UI thread after the profiles or the selected one changed (Home, the Profiles page).</summary>
     public event Action? ProfilesChanged;
 
@@ -147,12 +244,33 @@ public sealed class AppHost : IAsyncDisposable
     /// Says that devices were plugged in or out; call on the UI thread. With no Bluetooth found so far, Mirador looks
     /// for it again: an adapter may just have been plugged in or its driver installed.
     /// </summary>
-    public void NotifyDevicesChanged()
+    public void NotifyDevicesChanged() => _ = OnDevicesChangedAsync();
+
+    private async Task OnDevicesChangedAsync()
     {
+        // The Pimax module's model, looked up once per change before the pages read it: listing the USB devices is a
+        // WMI query (up to seconds), so off the UI thread; the pages hear of the change once it is known.
+        await Task.Run(RefreshModels);
         DevicesChanged?.Invoke();
         if (radio.State == BluetoothState.Missing)
         {
             _ = Task.Run(StartRadioAsync);
+        }
+    }
+
+    /// <summary>Looks the Pimax module's model up again (a WMI query: not on the UI thread). Never throws.</summary>
+    private void RefreshModels()
+    {
+        foreach (var pimax in Modules.Values.OfType<PimaxModule>())
+        {
+            try
+            {
+                pimax.RefreshModel();
+            }
+            catch (Exception e)
+            {
+                AppLog.Write("Couldn't look the Pimax headset's model up", e);
+            }
         }
     }
 
@@ -163,12 +281,17 @@ public sealed class AppHost : IAsyncDisposable
         _ = Task.Run(Session.PlaceStandIn);
     }
 
-    /// <summary>Whether the selected profile is a Dream Air's; false when the profiles can't be read.</summary>
+    /// <summary>
+    /// Whether the selected profile's headset gets Mirador's eye steps (the Pimax module, with a Dream Air plugged in or
+    /// no Pimax at all); false when the profiles can't be read.
+    /// </summary>
     public bool SelectedIsDreamAir()
     {
         try
         {
-            return Profiles.Load().Selected.ModuleId == DreamAirModule.ModuleId;
+            return Profiles.Load().Selected.ModuleId == PimaxModule.ModuleId
+                && Modules.GetValueOrDefault(PimaxModule.ModuleId) is PimaxModule pimax
+                && pimax.Model().EyeSteps;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -208,6 +331,70 @@ public sealed class AppHost : IAsyncDisposable
     /// Start runs as administrator, and Home's line goes.
     /// </summary>
     public void SteamVrAllowedAgain() => steamVrChanged = false;
+
+    /// <summary>
+    /// Takes the user's consent for Monado as administrator back through the helper (no prompt) once no profile has
+    /// "Run as administrator" on (<see cref="ElevatedChoice.ConsentNeeded"/>), so it never outlives the profiles that
+    /// asked for it. Returns what went wrong, or null.
+    /// </summary>
+    public async Task<string?> TakeBackUnneededConsentAsync()
+    {
+        try
+        {
+            if (!ElevatedMonadoAllowed() || ElevatedChoice.ConsentNeeded(Profiles.Load()))
+            {
+                return null;
+            }
+
+            var reply = await Helper.SendAsync(HelperCommand.RevokeElevatedMonado, CancellationToken.None);
+            return reply.Ok ? null : $"Mirador couldn't take back the consent for Monado to run as administrator: {reply.Error}";
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Taking back the consent for Monado as administrator failed", e);
+            return $"Mirador couldn't take back the consent for Monado to run as administrator ({e.Message.Trim().TrimEnd('.')}).";
+        }
+    }
+
+    /// <summary>
+    /// Takes back, through the helper (no prompt), the approval of every build no profile runs as administrator any more:
+    /// a profile deleted, its "Run as administrator" turned off, or its Monado no longer a branch or a build folder
+    /// (Mirador.md §4.11 item 51). The helper keeps the approvals of the profiles still asking. Returns what went wrong,
+    /// or null.
+    /// </summary>
+    public async Task<string?> ForgetUnneededApprovalsAsync()
+    {
+        try
+        {
+            var keep = Profiles.Load().Profiles
+                .Where(p => p.RunAsAdministrator && p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
+                .Select(p => p.Id)
+                .ToHashSet(StringComparer.Ordinal);
+            var listed = await Helper.SendAsync(new HelperRequest(HelperCommand.ListApprovedBuilds), CancellationToken.None);
+            if (!listed.Ok)
+            {
+                AppLog.Write($"Listing the approved builds failed: {listed.Error}");
+                return null; // an older helper, or none: nothing it knows of to take back
+            }
+
+            foreach (var id in (listed.Value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Where(id => !keep.Contains(id)))
+            {
+                var reply = await Helper.SendAsync(new HelperRequest(HelperCommand.ForgetApprovedBuild, Build: id), CancellationToken.None);
+                if (!reply.Ok)
+                {
+                    AppLog.Write($"Taking back the approval of profile {id} failed: {reply.Error}");
+                    return $"Mirador couldn't take back an approved build no profile runs as administrator any more: {reply.Error}";
+                }
+            }
+
+            return null;
+        }
+        catch (Exception e)
+        {
+            AppLog.Write("Taking back the approvals no profile needs failed", e);
+            return null; // no helper (a copy that isn't installed): it has no approvals to take back
+        }
+    }
 
     /// <summary>
     /// Whether this Mirador is the installed one, the only caller the helper starts Monado as administrator for: its
@@ -268,24 +455,32 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Home's Monado card line while consent is on and the selected profile still runs as the user: because this copy
-    /// of Mirador isn't the installed one, the profile uses a build folder (or a module folder such as the Dream Air
-    /// layer) or sets extra environment variables (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own
-    /// test), or because SteamVR's Lighthouse driver changed since the user allowed it (<see cref="SteamVrChangedReason"/>).
-    /// Null when the profile would run as administrator, or consent is off (Mirador.md §4.10 items 45 and 46).
+    /// Home's Monado card line while the selected profile has "Run as administrator" on but still runs as the user:
+    /// because this copy of Mirador isn't the installed one (before the consent: allowing it there wouldn't help), the
+    /// user's consent isn't recorded (<see cref="NotAllowedReason"/>), the profile uses a build that isn't approved or
+    /// sets extra environment variables (<see cref="ElevatedChoice.RunsAsYouReason"/>, the session's own test), or
+    /// because SteamVR's Lighthouse driver
+    /// changed since the user allowed it (<see cref="SteamVrChangedReason"/>). Null when the profile runs as
+    /// administrator, or doesn't ask to (Mirador.md §4.10 items 45 and 46).
     /// </summary>
     public string? RunsAsYouReason()
     {
-        if (!ElevatedMonadoAllowed())
-        {
-            return null;
-        }
-
         try
         {
             var profile = Profiles.Load().Selected;
+            if (!profile.RunAsAdministrator)
+            {
+                return null;
+            }
+
+            if (!ElevatedMonadoAllowed())
+            {
+                // "Allow" only where allowing helps: the helper starts Monado as administrator for the installed copy alone.
+                return IsInstalledCopy(askHelper: false) ? NotAllowedReason : ElevatedChoice.NotInstalledCopy;
+            }
+
             var module = profile.ModuleId is { } id ? Modules.GetValueOrDefault(id) : null;
-            return ElevatedChoice.RunsAsYouReason(profile, module, IsInstalledCopy(askHelper: false))
+            return ElevatedChoice.RunsAsYouReason(profile, module, IsInstalledCopy(askHelper: false), ApprovedBuildCurrent(profile))
                 ?? (steamVrChanged ? SteamVrChangedReason : null);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -346,7 +541,21 @@ public sealed class AppHost : IAsyncDisposable
     public static AppHost Create(string appDir, AppPaths paths)
     {
         var host = new AppHost(appDir, paths);
+
+        // The Pimax module's model, looked up early and off the UI thread, so the window's first reads find it known.
+        _ = Task.Run(host.RefreshModels);
+
+        host.FirstRun = !File.Exists(paths.ProfilesFile);
         host.CheckStore("profiles", paths.ProfilesFile, () => host.Profiles.Load());
+
+        // A consent no profile uses (one an older installer's task recorded, or left after a failed take-back) goes.
+        _ = Task.Run(async () =>
+        {
+            if (await host.TakeBackUnneededConsentAsync() is { } problem)
+            {
+                AppLog.Write(problem);
+            }
+        });
         host.CheckStore("Monado settings", paths.MonadoSettingsFile, () => host.MonadoSettings.Load());
         host.CheckStore("settings", paths.SettingsFile, () => host.Settings.Load());
 
@@ -357,6 +566,128 @@ public sealed class AppHost : IAsyncDisposable
         _ = Task.Run(() => host.IsInstalledCopy(askHelper: true));
         host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="profile"/> has "Run as administrator" on and its build as it is now is the approved one
+    /// (Mirador.md §4.11 item 51). The helper checks the approved copy's every file again at the Start.
+    /// </summary>
+    public bool ApprovedBuildCurrent(Profile profile)
+    {
+        if (!profile.RunAsAdministrator || profile.Monado.Kind is not (SourceKind.Branch or SourceKind.Folder))
+        {
+            return false;
+        }
+
+        try
+        {
+            return Locator.Locate(profile).Approved is not null;
+        }
+        catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The approved copy of <paramref name="install"/>, <paramref name="profile"/>'s build as it is now, or null when it
+    /// isn't the approved one (the locator's lookup). The build's DLL and service are hashed only when they changed.
+    /// </summary>
+    private ApprovedBuild? ApprovedCopyOf(Profile profile, MonadoInstall install)
+    {
+        try
+        {
+            return AllowElevatedCommand.CurrentUser()?.Value is { } owner
+                && new RegistryApprovedBuildStore().Get(owner, profile.Id) is { } approved
+                && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(install.Manifest)!, buildHashes.HashOf)
+                ? approved
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Runs <c>Mirador.exe --approve-build</c> through one UAC prompt for <paramref name="profile"/>'s build as it is now.
+    /// Null when it is approved, else why not.
+    /// </summary>
+    public async Task<string?> ApproveBuildAsync(Profile profile)
+    {
+        MonadoInstall install;
+        try
+        {
+            install = Locator.Locate(profile);
+        }
+        catch (MiradorException e)
+        {
+            return e.Message;
+        }
+
+        var folder = Path.GetDirectoryName(install.Manifest)!;
+        if (!File.Exists(Path.Combine(folder, "bin", "monado-service.exe")))
+        {
+            return "Only an installed build can be approved (Monado's install layout, as Mirador's branch builds are). Build it with \"cmake --install\", or let Mirador build the branch.";
+        }
+
+        var commit = Core.Build.BuildInfo.Load(folder)?.Commit is { Length: >= 7 } c ? c : "folder";
+        var info = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Mirador.exe"))
+        {
+            Verb = "runas",
+            UseShellExecute = true,
+        };
+        foreach (var argument in new[] { AppArgs.ApproveBuildFlag, profile.Id, commit, folder })
+        {
+            info.ArgumentList.Add(argument);
+        }
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(info);
+            if (process is null)
+            {
+                return "The approval couldn't be started.";
+            }
+
+            await process.WaitForExitAsync();
+            return process.ExitCode == 0 ? null : "The build couldn't be approved; mirador.log says why.";
+        }
+        catch (System.ComponentModel.Win32Exception e) when (e.NativeErrorCode == ElevatedRuntime.PromptCancelled)
+        {
+            return "You cancelled the prompt; the build runs as you.";
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            return $"The approval couldn't be started ({e.Message.TrimEnd('.')}).";
+        }
+    }
+
+    /// <summary>
+    /// When a profile runs Mirador's Monado and none is installed: the helper installs the newest weekly build (Mirador.md
+    /// §4.11 item 55: the first run). What happened, for Home; null when
+    /// nothing was needed.
+    /// </summary>
+    public async Task<(string Message, bool Ok)?> InstallMiradorsMonadoIfNeededAsync()
+    {
+        if (!Profiles.Load().Profiles.Any(p => p.Monado.Kind == SourceKind.Mirador)
+            || Ipc.MiradorMonado.Read(Locator.MiradorRoot).Current is not null)
+        {
+            return null;
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var newest = (await Ipc.MonadoReleaseList.FetchAsync(http, AppInfo.Version, CancellationToken.None))?.FirstOrDefault();
+        if (newest is null)
+        {
+            return ("The bundled Monado couldn't be downloaded: GitHub didn't answer, or no build is published yet. Try again on the Profiles page.", false);
+        }
+
+        var reply = await Helper.SendAsync(new Ipc.HelperRequest(Ipc.HelperCommand.InstallMonado, Version: newest.Version), CancellationToken.None);
+        NotifyProfilesChanged();
+        return reply.Ok
+            ? ($"The bundled Monado {newest.Version} is installed.", true)
+            : ($"The bundled Monado couldn't be installed: {reply.Error}", false);
     }
 
     /// <summary>Records <c>HKCU\Software\Mirador</c> <c>AppPath</c>, where the stand-in finds Mirador to start it.</summary>

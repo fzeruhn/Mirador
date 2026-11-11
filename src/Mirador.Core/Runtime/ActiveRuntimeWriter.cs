@@ -2,7 +2,7 @@ using Microsoft.Win32;
 
 namespace Mirador.Core.Runtime;
 
-/// <summary>Writes the machine-wide active OpenXR runtime. Needs an administrator: only <c>Mirador.exe --set-runtime</c> calls it.</summary>
+/// <summary>Writes the machine-wide active OpenXR runtime. Needs an administrator: only the elevated <c>Mirador.exe --approve-build</c> step calls it, for the copy it just approved.</summary>
 public static class ActiveRuntimeWriter
 {
     /// <summary>Sets <c>ActiveRuntime</c> in the 64-bit <c>HKLM\SOFTWARE\Khronos\OpenXR\1</c> to <paramref name="manifest"/>.</summary>

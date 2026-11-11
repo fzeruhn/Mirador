@@ -2,6 +2,7 @@ using Mirador.Ipc;
 
 namespace Mirador.Helper.Tests;
 
+[Trait("Category", "Hardware")]
 public class InstalledHelperTests
 {
     /// <summary>

@@ -10,20 +10,13 @@ public class ProfileSetTests
         var s = ProfileSet.Defaults();
         Assert.Equal(["dreamair", "custom"], s.Profiles.Select(p => p.Id));
         Assert.Equal("Dream Air", s.Profiles[0].Name);
-        Assert.Equal("dreamair", s.Profiles[0].ModuleId);
+        Assert.Equal("pimax", s.Profiles[0].ModuleId); // the module's id now, so nothing migrates (or saves) at first run
         Assert.Null(s.Profiles[1].ModuleId);
         Assert.Equal("dreamair", s.SelectedId);
         Assert.Same(s.Profiles[0], s.Selected);
-        Assert.All(s.Profiles, p => Assert.Equal(SourceKind.Bundled, p.Monado.Kind));
+        Assert.All(s.Profiles, p => Assert.Equal(SourceKind.Mirador, p.Monado.Kind));
         Assert.All(s.Profiles, p => Assert.Empty(p.ExtraEnvironment));
         Assert.All(s.Profiles, p => Assert.Empty(p.ModuleOptions));
-    }
-
-    [Fact]
-    public void Bundled_source_has_no_folder()
-    {
-        Assert.Equal(SourceKind.Bundled, BuildSource.Bundled.Kind);
-        Assert.Null(BuildSource.Bundled.Folder);
     }
 
     [Fact]
@@ -44,7 +37,7 @@ public class ProfileSetTests
         Assert.NotEqual("dreamair", copy.Id);
         Assert.Matches("^[0-9a-f]{32}$", copy.Id);
         Assert.Equal("Dev", copy.Name);
-        Assert.Equal("dreamair", copy.ModuleId);
+        Assert.Equal("pimax", copy.ModuleId);
         Assert.Equal(original.Monado, copy.Monado);
         Assert.Equal(original.ExtraEnvironment, copy.ExtraEnvironment);
         Assert.Equal(original.ModuleOptions, copy.ModuleOptions);
@@ -108,7 +101,7 @@ public class ProfileSetTests
     [Fact]
     public void Add_appends_a_profile()
     {
-        var p = new Profile(Profile.NewId(), "Lab", null, BuildSource.Bundled, [], new Dictionary<string, string>());
+        var p = new Profile(Profile.NewId(), "Lab", null, BuildSource.Mirador, [], new Dictionary<string, string>());
         var s = ProfileSet.Defaults().Add(p);
         Assert.Equal(3, s.Profiles.Count);
         Assert.Equal(p, s.Profiles[^1]);

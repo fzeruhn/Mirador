@@ -37,14 +37,15 @@ public static class StandIn
         processId is { } id && imagePathOf(id) is { } path && IsStandIn(path) ? path : null;
 
     /// <summary>
-    /// Whether <paramref name="standIn"/> is the stand-in of <paramref name="install"/> (in its <see cref="MonadoInstall.StandInDir"/>):
-    /// the same file, however the two paths are written; by the paths when either file can't be opened.
+    /// Whether <paramref name="standIn"/> is the stand-in of <paramref name="install"/> (in one of its
+    /// <see cref="MonadoInstall.StandInDirs"/>: its own, or its approved copy's): the same file, however the two paths
+    /// are written; by the paths when either file can't be opened.
     /// </summary>
-    public static bool BelongsTo(string standIn, MonadoInstall install)
-    {
-        var expected = Path.Combine(install.StandInDir, FileName);
-        return Native.Win32.FileIdentity(standIn) is { } a && Native.Win32.FileIdentity(expected) is { } b
+    public static bool BelongsTo(string standIn, MonadoInstall install) =>
+        install.StandInDirs.Any(dir => IsFile(standIn, Path.Combine(dir, FileName)));
+
+    private static bool IsFile(string standIn, string expected) =>
+        Native.Win32.FileIdentity(standIn) is { } a && Native.Win32.FileIdentity(expected) is { } b
             ? a == b
             : string.Equals(Path.GetFullPath(standIn), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase);
-    }
 }

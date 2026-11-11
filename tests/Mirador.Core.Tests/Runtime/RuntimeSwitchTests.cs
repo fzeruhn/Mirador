@@ -32,17 +32,6 @@ public class RuntimeSwitchTests
         }
     }
 
-    private sealed class FakeElevated(int exitCode)
-    {
-        public List<string> Manifests { get; } = [];
-
-        public Task<int> Run(string manifest)
-        {
-            Manifests.Add(manifest);
-            return Task.FromResult(exitCode);
-        }
-    }
-
     private static MonadoInstall Install(bool bundled) =>
         new(Manifest, Path.Combine(Build, "openxr_monado.dll"), Path.Combine(Build, "monado-service.exe"), Path.Combine(Build, "service"), bundled);
 
@@ -50,13 +39,11 @@ public class RuntimeSwitchTests
     public async Task The_bundled_monado_goes_through_the_helper_and_never_asks_for_a_prompt()
     {
         var helper = new FakeHelper(new HelperReply(true));
-        var elevated = new FakeElevated(0);
 
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), helper, elevated.Run, Runtime);
+        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), helper, Runtime);
 
         Assert.Null(problem);
         Assert.Equal([HelperCommand.SetRuntimeBundled], helper.Sent);
-        Assert.Empty(elevated.Manifests);
     }
 
     [Fact]
@@ -64,7 +51,7 @@ public class RuntimeSwitchTests
     {
         var helper = new FakeHelper(new HelperReply(false, "Mirador's helper service isn't running. Reinstall Mirador."));
 
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), helper, new FakeElevated(0).Run, Runtime);
+        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), helper, Runtime);
 
         Assert.Equal("Mirador's helper service isn't running. Reinstall Mirador.", problem);
     }
@@ -74,23 +61,10 @@ public class RuntimeSwitchTests
     {
         var helper = new FakeHelper(new HelperReply(false));
 
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), helper, new FakeElevated(0).Run, Runtime);
+        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), helper, Runtime);
 
         Assert.False(string.IsNullOrWhiteSpace(problem));
         Assert.Contains("unchanged", problem);
-    }
-
-    [Fact]
-    public async Task A_build_folder_runs_the_elevated_step_with_its_manifest_and_never_asks_the_helper()
-    {
-        var helper = new FakeHelper(new HelperReply(true));
-        var elevated = new FakeElevated(0);
-
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), helper, elevated.Run, Runtime);
-
-        Assert.Null(problem);
-        Assert.Equal([Manifest], elevated.Manifests);
-        Assert.Empty(helper.Sent);
     }
 
     [Fact]
@@ -99,7 +73,7 @@ public class RuntimeSwitchTests
         var other = Path.Combine(Path.GetTempPath(), "Program Files", "Mirador", "monado", "runtime", "openxr_monado.json");
         registry.Active = other;
 
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), new FakeHelper(new HelperReply(true)), new FakeElevated(0).Run, Runtime);
+        var problem = await RuntimeSwitch.SetAsync(Install(bundled: true), new FakeHelper(new HelperReply(true)), Runtime);
 
         Assert.NotNull(problem);
         Assert.Contains(other, problem);
@@ -107,39 +81,25 @@ public class RuntimeSwitchTests
     }
 
     [Fact]
-    public async Task An_elevated_step_that_reports_success_while_another_runtime_is_active_is_a_problem()
+    public async Task A_build_folder_without_an_approval_is_never_made_the_runtime()
     {
-        registry.Active = null;
+        var helper = new FakeHelper(new HelperReply(true));
 
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), new FakeHelper(new HelperReply(true)), new FakeElevated(0).Run, Runtime);
+        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), helper, Runtime);
 
-        Assert.Equal($"The OpenXR runtime was set, but it is none now, not this build's {Manifest}. Another program may have changed it; try again.", problem);
+        Assert.Contains("Run as administrator", problem);
+        Assert.Empty(helper.Sent);
     }
 
     [Fact]
-    public async Task A_cancelled_prompt_leaves_the_runtime_unchanged()
+    public async Task An_approved_build_goes_through_the_helper()
     {
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), new FakeHelper(new HelperReply(true)), new FakeElevated(1223).Run, Runtime);
+        var helper = new FakeHelper(new HelperReply(true));
 
-        Assert.Equal("You cancelled the prompt; the runtime is unchanged.", problem);
-    }
+        Assert.Null(await RuntimeSwitch.SetAsync(Install(bundled: false), helper, Runtime, approvedProfileId: "p1"));
+        Assert.Equal([HelperCommand.SetRuntimeApproved], helper.Sent);
 
-    [Fact]
-    public async Task A_refused_manifest_says_the_build_is_not_usable()
-    {
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), new FakeHelper(new HelperReply(true)), new FakeElevated(1).Run, Runtime);
-
-        Assert.Equal("That Monado build's runtime manifest isn't usable, so the runtime is unchanged.", problem);
-    }
-
-    [Theory]
-    [InlineData(2)]
-    [InlineData(5)]
-    [InlineData(-1)]
-    public async Task Any_other_exit_code_is_reported_with_the_code(int exitCode)
-    {
-        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), new FakeHelper(new HelperReply(true)), new FakeElevated(exitCode).Run, Runtime);
-
-        Assert.Equal($"Setting the OpenXR runtime failed (code {exitCode}); the runtime is unchanged.", problem);
+        var refusing = new FakeHelper(new HelperReply(false, "The approved build changed since it was approved."));
+        Assert.Equal("The approved build changed since it was approved.", await RuntimeSwitch.SetAsync(Install(bundled: false), refusing, Runtime, "p1"));
     }
 }

@@ -2,8 +2,11 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using Mirador.Core;
+using Mirador.Core.Build;
+using Mirador.Core.Monado;
 using Mirador.Core.OpenVr;
 using Mirador.Core.Profiles;
+using Mirador.Ipc;
 
 namespace Mirador.App.Services;
 
@@ -41,27 +44,35 @@ public static class AppInfo
         }
     }
 
-    /// <summary>Which Monado the profile runs: the bundled one's <c>VERSION.txt</c>, or the build folder.</summary>
+    /// <summary>
+    /// Which Monado the profile runs: the bundled Monado's version, a branch with the commit it was built from, or a
+    /// build folder.
+    /// </summary>
     public static string Monado(Profile profile, string appDir)
     {
-        if (profile.Monado.Kind == SourceKind.Folder)
+        switch (profile.Monado.Kind)
         {
-            return $"build folder {profile.Monado.Folder}";
+            case SourceKind.Folder:
+                return $"build folder {profile.Monado.Folder}";
+            case SourceKind.Mirador:
+                return $"the bundled Monado {MiradorMonado.Read(Path.Combine(appDir, "monado")).Current ?? "(not installed)"}";
+            case SourceKind.Branch:
+                return $"{profile.Monado.Describe()}{BuiltCommit(profile)}";
         }
 
-        try
-        {
-            return "bundled " + File.ReadAllText(Path.Combine(appDir, "monado", "VERSION.txt")).Trim();
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return "bundled (no VERSION.txt: a development build without a bundled Monado)";
-        }
+        return profile.Monado.Describe();
+    }
+
+    /// <summary>The commit and compiler of a branch profile's build, from its <c>build-info.json</c>.</summary>
+    private static string BuiltCommit(Profile profile)
+    {
+        var info = BuildInfo.Load(Path.Combine(AppPaths.Default.BuildsDir, profile.Id, "install"));
+        return info is null ? " (not built yet)" : $" at {info.ShortCommit}, {info.Compiler}";
     }
 
     /// <summary>The lines of versions.txt and the Diagnostics page.</summary>
     public static string Versions(Profile profile, string appDir) =>
         $"Mirador {Version}\n{Windows()}\nMonado: {Monado(profile, appDir)}\n" +
-        $"{new OpenCompositeCopy(Path.Combine(appDir, "opencomposite"), AppPaths.Default.OpenCompositeDir).VersionLine()}\n" +
+        $"{new OpenCompositeCopy(AppPaths.Default.OpenCompositeDir).VersionLine()}\n" +
         $"Profile: {profile.Name}\n";
 }

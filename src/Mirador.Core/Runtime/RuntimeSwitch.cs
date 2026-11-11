@@ -3,46 +3,47 @@ using Mirador.Ipc;
 
 namespace Mirador.Core.Runtime;
 
-/// <summary>Makes a Monado install the active OpenXR runtime: the bundled one through the helper service, a build folder's through an elevated step.</summary>
+/// <summary>Makes a Monado install the active OpenXR runtime, through the helper service.</summary>
 public static class RuntimeSwitch
 {
-    /// <summary>The exit code of a process whose elevation prompt (UAC) was cancelled: ERROR_CANCELLED.</summary>
-    private const int PromptCancelled = 1223;
-
     /// <summary>
-    /// Sets <paramref name="install"/> as the active runtime. The bundled install goes through the helper service. A build
-    /// folder's is run through <paramref name="runElevated"/>, given its manifest path, which starts
-    /// <c>Mirador.exe --set-runtime</c> elevated and returns its exit code. Either way <paramref name="runtime"/> is read
-    /// afterwards: success means the install's own manifest is active now. (The helper sets the bundled Monado of the
-    /// install it belongs to, which isn't this Mirador's when the helper comes from another install.)
+    /// Sets <paramref name="install"/> as the active runtime, always through the helper service: Mirador's Monado (or an
+    /// older install's bundled one), or the approved copy of a branch or build folder (Mirador.md §4.11 item 51). A build
+    /// in a folder the user can write is never made the runtime itself: every OpenXR program, elevated ones and other
+    /// users' included, loads it. Afterwards <paramref name="runtime"/> is read for Mirador's Monado: success means its
+    /// manifest is active now.
     /// </summary>
+    /// <param name="approvedProfileId">
+    /// For a branch or build folder: the profile whose approved copy becomes the runtime (Mirador.md §4.11 item 51), or
+    /// null when it has none. Without one, a build in a folder the user can write is never made the runtime.
+    /// </param>
+    /// <param name="runsAsAdministrator">Whether the profile has "Run as administrator" on: then a build without an approval is one that changed since.</param>
     /// <returns>Null when the runtime was set, else what went wrong in plain words.</returns>
     public static async Task<string?> SetAsync(
-        MonadoInstall install, IHelperClient helper, Func<string, Task<int>> runElevated, OpenXrRuntime runtime)
+        MonadoInstall install, IHelperClient helper, OpenXrRuntime runtime, string? approvedProfileId = null, bool runsAsAdministrator = false)
     {
-        if (install.IsBundled)
+        if (!install.IsBundled)
         {
-            var reply = await helper.SendAsync(HelperCommand.SetRuntimeBundled, CancellationToken.None).ConfigureAwait(false);
-            if (!reply.Ok)
+            if (approvedProfileId is null)
             {
-                return reply.Error ?? "Mirador's helper service couldn't set the OpenXR runtime, so the runtime is unchanged.";
+                return runsAsAdministrator
+                    ? "This build changed since it was approved: approve it again on the Profiles page, then set it as the runtime."
+                    : "Turn on \"Run as administrator\" on the profile and approve this build first: every OpenXR program loads the runtime, so it can't be in a folder you can change.";
             }
 
-            return runtime.IsActive(install.Manifest)
-                ? null
-                : $"Mirador's helper service made another Monado the OpenXR runtime ({Describe(runtime.Active())}), not this Mirador's ({install.Manifest}): the helper belongs to another Mirador install. Reinstall Mirador, or pick a Monado build folder in the profile.";
+            var approved = await helper.SendAsync(new HelperRequest(HelperCommand.SetRuntimeApproved, Build: approvedProfileId), CancellationToken.None).ConfigureAwait(false);
+            return approved.Ok ? null : approved.Error ?? "Mirador's helper service couldn't set the OpenXR runtime, so the runtime is unchanged.";
         }
 
-        var exitCode = await runElevated(install.Manifest).ConfigureAwait(false);
-        return exitCode switch
+        var reply = await helper.SendAsync(HelperCommand.SetRuntimeBundled, CancellationToken.None).ConfigureAwait(false);
+        if (!reply.Ok)
         {
-            SetRuntimeCommand.Done when !runtime.IsActive(install.Manifest) =>
-                $"The OpenXR runtime was set, but it is {Describe(runtime.Active())} now, not this build's {install.Manifest}. Another program may have changed it; try again.",
-            SetRuntimeCommand.Done => null,
-            PromptCancelled => "You cancelled the prompt; the runtime is unchanged.",
-            SetRuntimeCommand.ManifestRefused => "That Monado build's runtime manifest isn't usable, so the runtime is unchanged.",
-            _ => $"Setting the OpenXR runtime failed (code {exitCode}); the runtime is unchanged.",
-        };
+            return reply.Error ?? "Mirador's helper service couldn't set the OpenXR runtime, so the runtime is unchanged.";
+        }
+
+        return runtime.IsActive(install.Manifest)
+            ? null
+            : $"Mirador's helper service made another Monado the OpenXR runtime ({Describe(runtime.Active())}), not this Mirador's ({install.Manifest}): the helper belongs to another Mirador install. Reinstall Mirador, or pick a Monado build folder in the profile.";
     }
 
     private static string Describe(string? active) => active ?? "none";

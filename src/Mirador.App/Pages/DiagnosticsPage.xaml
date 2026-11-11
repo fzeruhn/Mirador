@@ -56,6 +56,21 @@
                     <Button Command="{x:Bind ViewModel.CheckDisplayCommand}" Content="Check" />
                 </StackPanel>
             </toolkit:SettingsCard>
+            <!-- The newest "Verify build for Windows" result, step by step; the run's log is the Verify tab below. -->
+            <toolkit:SettingsExpander
+                x:Name="VerifyExpander"
+                Description="{x:Bind ViewModel.VerifySummary, Mode=OneWay}"
+                Header="Verify build for Windows"
+                Visibility="{x:Bind ViewModel.HasVerify, Mode=OneWay}">
+                <toolkit:SettingsExpander.Items>
+                    <toolkit:SettingsCard ContentAlignment="Left">
+                        <TextBlock
+                            IsTextSelectionEnabled="True"
+                            Text="{x:Bind ViewModel.VerifySteps, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </toolkit:SettingsCard>
+                </toolkit:SettingsExpander.Items>
+            </toolkit:SettingsExpander>
         </StackPanel>
 
         <!-- Outcomes of the buttons above: each happened once, so each can be closed. -->
@@ -106,6 +121,7 @@
             <SelectorBar x:Name="LogPicker" SelectionChanged="OnLogPicked">
                 <SelectorBarItem IsSelected="True" Text="Monado" />
                 <SelectorBarItem Text="Mirador" />
+                <SelectorBarItem Text="Verify" />
             </SelectorBar>
             <TextBox
                 x:Name="MonadoBox"
@@ -130,6 +146,19 @@
                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 SelectionChanged="OnSelectionChanged"
+                TextWrapping="NoWrap"
+                Visibility="Collapsed" />
+            <TextBox
+                x:Name="VerifyBox"
+                Grid.Row="1"
+                AutomationProperties.Name="The last Verify run's log"
+                FontFamily="Cascadia Mono, Consolas"
+                FontSize="12"
+                AcceptsReturn="True"
+                IsReadOnly="True"
+                ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                Text="{x:Bind ViewModel.VerifyLog, Mode=OneWay}"
                 TextWrapping="NoWrap"
                 Visibility="Collapsed" />
         </Grid>
