@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 // Built into dvl_layer_for_tests.dll only, never into mirador_direct_mode.dll: the seam through which the tests put a
-// display session on a fake NVAPI in place of the process's (the controller's ruling for Task 9), so that no test
+// display session on a fake NVAPI in place of the process's, so that no test
 // reaches the real driver.
 
 #include "layer/exit.hpp"
@@ -77,7 +77,7 @@ int on_device(VkDevice device, const char* name, Trial&& trial)
 
 } // namespace
 
-// What Task 11's vkCreateSwapchainKHR on our surface asks first: the trial import of a device that did not exist at
+// What vkCreateSwapchainKHR on our surface asks first: the trial import of a device that did not exist at
 // the display query (design 6.3).
 extern "C" __declspec(dllexport) int dvl_test_trial_import_at_swapchain(VkDevice device)
 {

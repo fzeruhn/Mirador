@@ -51,7 +51,7 @@ const std::initializer_list<std::string_view> kIntercepted = {
     "vkGetPhysicalDeviceSurfaceFormats2KHR", "vkGetPhysicalDeviceSurfaceCapabilities2EXT",
     "vkGetPhysicalDevicePresentRectanglesKHR", "vkGetDeviceGroupSurfacePresentModesKHR",
     // VK_EXT_full_screen_exclusive's two queries are surface queries too (present modes with a
-    // VkPhysicalDeviceSurfaceInfo2KHR, as ...Formats2KHR has); acquire and release are Task 11's.
+    // VkPhysicalDeviceSurfaceInfo2KHR, as ...Formats2KHR has); acquire and release are below.
     "vkGetPhysicalDeviceSurfacePresentModes2EXT", "vkGetDeviceGroupSurfacePresentModes2EXT",
     // The swapchain (swapchain.cpp), acquire, present and present-wait (present.cpp). A swapchain of the
     // layer's is never shared presentable (vkGetSwapchainStatusKHR: VK_SUCCESS).

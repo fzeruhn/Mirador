@@ -9,8 +9,8 @@
   #define AppVersion "0.1.0"
 #endif
 #define Bundle "..\artifacts\bundle"
-; Monado is optional in the bundle (tools\build-bundle.ps1; Mirador.md section 4.11 items 48 and 54): what isn't there
-; is not registered. The layer is always in a bundle that tools\build-bundle.ps1 made (item 52).
+; The bundle (tools\build-bundle.ps1) has no Monado or OpenComposite: the helper and the app download them (Mirador.md
+; section 4.11 items 55 and 56).
 #define ServiceName "MiradorHelper"
 
 [Setup]

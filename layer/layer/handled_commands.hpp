@@ -26,7 +26,7 @@ struct HandleCommand {
 // The generated list. Lives for the process.
 const std::vector<HandleCommand>& handle_commands();
 
-// True for the commands the layer intercepts now, and for those that Tasks 9-11 will (planned_commands()).
+// True for the commands the layer intercepts.
 bool handled_command(std::string_view name);
 
 // A one-line reason if the command can never be handed our objects in this layer (another window system or platform),

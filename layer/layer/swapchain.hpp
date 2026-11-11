@@ -114,7 +114,7 @@ private:
 };
 
 // The display loop's frame fences (vkWaitForFences and vkGetFenceStatus on a slot's VkFence), on the one device of an
-// epoch. With vkDestroyDevice's handshake (design 6.10, the Task 6 review): leave() makes every later call fail at
+// epoch. With vkDestroyDevice's handshake (design 6.10): leave() makes every later call fail at
 // once without touching the device, and waits for a call in progress, which ends by its deadline (~1 ms before the
 // predicted refresh, so within a refresh period).
 class LayerFenceOps : public nvdm::FenceOps {

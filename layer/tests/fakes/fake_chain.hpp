@@ -8,7 +8,7 @@
 //    planes, that records every call it gets;
 //  - ChainRig: the test build of the layer DLL (it exports the display-session seam), negotiated, with a display
 //    session on a FakeApi put in place of the process's, and an instance created down a chain to the fake driver.
-// No test here reaches nvdm::process_session(): the controller's ruling for Task 9 (Pimax runs on this machine).
+// No test here reaches nvdm::process_session(): Pimax may run on the machine.
 
 #include <windows.h>
 
@@ -161,7 +161,7 @@ inline VkDeviceMemory driver_memory(size_t n)
 
 // The driver stand-in. One per process (the C callbacks cannot capture); ChainRig resets it.
 struct FakeDriver {
-    // --- Configuration ---------------------------------------------------------------------------------------------
+    // --- Configuration -----------------------------------------------------------------------------------------------
     std::vector<FakeGpu> gpus;
     VkResult create_device_result = VK_SUCCESS;
     VkResult set_loader_data_result = VK_SUCCESS;
@@ -202,7 +202,7 @@ struct FakeDriver {
         return it == per_name->second.end() ? VK_SUCCESS : it->second;
     }
 
-    // --- What the import got ---------------------------------------------------------------------------------------
+    // --- What the import got -----------------------------------------------------------------------------------------
     struct FormatQuery {
         VkFormat format;
         VkImageType type;
@@ -288,7 +288,7 @@ struct FakeDriver {
     std::deque<Dispatchable> queue_objects; // what vkGetDeviceQueue handed out
     std::vector<void*> loader_data_set;     // the objects vkSetDeviceLoaderData was called on
 
-    // --- Fences, submits and the driver's own swapchains ------------------------------------------------
+    // --- Fences, submits and the driver's own swapchains -------------------------------------------------------------
     // Fences live in `fences` (by handle value) from vkCreateFence to vkDestroyFence. A submit's fence signals at once
     // (the GPU is done), unless hold_fences: then it signals at the next vkQueueWaitIdle or signal_held(). Every call
     // that names a fence is in the call log with the fence's handle.
@@ -544,7 +544,7 @@ inline VkSurfaceCapabilitiesKHR driver_caps()
     return c;
 }
 
-// --- Instance level ---------------------------------------------------------------------------------------------------
+// --- Instance level --------------------------------------------------------------------------------------------------
 
 inline VkResult VKAPI_CALL CreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance* out)
 {
@@ -923,7 +923,7 @@ inline VkResult VKAPI_CALL GetPhysicalDeviceImageFormatProperties2KHR(VkPhysical
     return VK_SUCCESS;
 }
 
-// --- Device level -----------------------------------------------------------------------------------------------------
+// --- Device level ----------------------------------------------------------------------------------------------------
 
 inline void VKAPI_CALL DestroyDevice(VkDevice device, const VkAllocationCallbacks*)
 {
@@ -1029,7 +1029,7 @@ inline VkResult VKAPI_CALL BindImageMemory(VkDevice, VkImage image, VkDeviceMemo
     return g_driver.scripted("vkBindImageMemory");
 }
 
-// --- Fences, submits, queues ---------------------------------------------------------------------------------
+// --- Fences, submits, queues -----------------------------------------------------------------------------------------
 
 inline VkFence driver_fence(size_t n)
 {
@@ -1186,7 +1186,7 @@ inline VkResult VKAPI_CALL SignalSemaphoreKHR(VkDevice, const VkSemaphoreSignalI
     return VK_SUCCESS;
 }
 
-// --- The driver's own swapchains (Monado's peek window) ----------------------------------------------------------------
+// --- The driver's own swapchains (Monado's peek window) --------------------------------------------------------------
 
 inline VkSwapchainKHR driver_swapchain(size_t n)
 {
@@ -1641,7 +1641,7 @@ public:
         return queue;
     }
 
-    // What vkCreateSwapchainKHR on our surface asks first (Task 11 calls it there): the trial import of a device that
+    // What vkCreateSwapchainKHR on our surface asks first: the trial import of a device that
     // did not exist at the display query, once (design 6.3). Through the test DLL's export; -1 without it.
     int trial_import_at_swapchain(VkDevice device) const
     {

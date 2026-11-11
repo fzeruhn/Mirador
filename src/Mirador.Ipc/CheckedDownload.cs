@@ -19,9 +19,10 @@ public static class CheckedDownload
     /// SHA-256 when one is given; any failure deletes the file.
     /// </summary>
     /// <param name="what">What is downloaded, as a sentence names it: "the bundled Monado", "CMake".</param>
+    /// <param name="hashFrom">Where <paramref name="sha256"/> comes from, as the mismatch's message says it.</param>
     public static async Task ToFileAsync(
         HttpClient http, Uri url, string file, long maxBytes, string? sha256, string what, Func<string, Exception> fail,
-        CancellationToken userCt, TimeSpan? idle = null)
+        CancellationToken userCt, TimeSpan? idle = null, string hashFrom = "GitHub lists for it")
     {
         var wait = idle ?? IdleTimeout;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(userCt);
@@ -64,7 +65,7 @@ public static class CheckedDownload
             hash.TransformFinalBlock([], 0, 0);
             if (sha256 is not null && !string.Equals(Convert.ToHexString(hash.Hash!), sha256, StringComparison.OrdinalIgnoreCase))
             {
-                throw fail($"{Its(what)} download doesn't match its SHA-256, so it was not used.");
+                throw fail($"{Its(what)} download doesn't match the SHA-256 {hashFrom}, so it was not used.");
             }
         }
         catch (Exception e) when (e is HttpRequestException or IOException || (e is OperationCanceledException && !userCt.IsCancellationRequested))

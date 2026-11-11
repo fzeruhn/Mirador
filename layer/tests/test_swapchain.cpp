@@ -1077,7 +1077,7 @@ TEST_CASE("the_fence_fallback_line_is_written_at_most_once_a_second")
 
 TEST_CASE("a_present_whose_submit_fails_releases_its_image_for_a_later_acquire")
 {
-    // Final review m2: after a failed vkQueuePresentKHR Monado acquires again and never presents that image. Its frame
+    // After a failed vkQueuePresentKHR Monado acquires again and never presents that image. Its frame
     // is released, as a failed acquire's is (design 6.10), so the image comes back to a later acquire instead of
     // staying acquired for good. Here all three are acquired, so only the released one can come back.
     Monado m;

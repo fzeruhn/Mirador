@@ -3,6 +3,9 @@ using System.Security.Principal;
 using Mirador.Helper.ElevatedMonado;
 using Mirador.Ipc;
 
+// The helper runs as LocalSystem beside the app's files: every DLL it loads by name is Windows' own, from System32 only.
+[assembly: System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+
 namespace Mirador.Helper;
 
 /// <summary>Services on this machine: just what the helper needs to know and do with Pimax's.</summary>

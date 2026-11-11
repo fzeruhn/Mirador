@@ -4,7 +4,7 @@
 #pragma once
 
 // The layer's intercepts outside layer_main.cpp, for its proc-address tables: device.cpp, display_intercepts.cpp,
-// surface_intercepts.cpp, Task 11's swapchain.cpp, present.cpp, events.cpp and misc_intercepts.cpp, and
+// surface_intercepts.cpp, swapchain.cpp, present.cpp, events.cpp and misc_intercepts.cpp, and
 // present_timing_intercepts.cpp (design 6.11). Each is declared from its Vulkan PFN type, so a definition whose
 // signature differs from the command's does not link.
 
@@ -50,7 +50,7 @@ namespace dvl {
     X(GetPhysicalDeviceSurfacePresentModes2EXT)
 
 // Device-level commands (vkGetDeviceProcAddr, and vkGetInstanceProcAddr too): device.cpp, surface_intercepts.cpp,
-// Task 11's swapchain.cpp, present.cpp, events.cpp and misc_intercepts.cpp, and present_timing_intercepts.cpp.
+// swapchain.cpp, present.cpp, events.cpp and misc_intercepts.cpp, and present_timing_intercepts.cpp.
 #define DVL_DEVICE_INTERCEPTS(X)                    \
     X(DestroyDevice)                                \
     X(DeviceWaitIdle)                               \
@@ -119,7 +119,7 @@ DVL_DEVICE_INTERCEPTS(DVL_DECLARE_INTERCEPT)
 // use, unless a test has put another in its place.
 nvdm::DisplaySession& display_session();
 
-// The test seam (the controller's ruling for Task 9): every later display_session() is `session` (a session on a fake
+// The test seam: every later display_session() is `session` (a session on a fake
 // NVAPI) instead of the process's; null puts the process's back. Only the test build of the DLL exports it
 // (test_hooks.cpp), so no test reaches the real NVAPI. The caller keeps `session` alive while it is in place.
 void set_display_session_for_tests(nvdm::DisplaySession* session);

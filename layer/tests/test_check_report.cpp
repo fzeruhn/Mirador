@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 // The check tool's pure parts (design 7): its arguments, the holder findings, the verdict, the lines it prints for the
-// display session's result, and what it takes from the layer's log. Nothing here touches NVAPI, the board or Vulkan.
+// display session's result, and the advice for a failed step. Nothing here touches NVAPI, the board or Vulkan.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -353,24 +353,6 @@ TEST_CASE("verdict_fails_a_run_that_stopped_early")
     CHECK(contains(v.line, "20"));
 }
 
-TEST_CASE("verdict_counts_display_event_timeouts_when_the_mode_has_them")
-{
-    dvl::RunCounts c = counts(1800, 1800);
-    c.have_events = true;
-    c.events_ok = 1799;
-    CHECK(dvl::judge(true, "", c).pass);
-    CHECK(contains(dvl::judge(true, "", c).line, "display events"));
-
-    c.events_ok = 1700;
-    c.events_timeout = 99; // 5 %: the vblank thread would starve the pacer
-    const dvl::Verdict v = dvl::judge(true, "", c);
-    CHECK_FALSE(v.pass);
-    CHECK(contains(v.line, "display event"));
-
-    // A mode without events (NVAPI) says nothing of them.
-    CHECK_FALSE(contains(dvl::judge(true, "", counts(1800, 1800)).line, "display events"));
-}
-
 TEST_CASE("verdict_scales_with_the_requested_time")
 {
     CHECK(dvl::expected_flips(1.0) == 90);
@@ -484,7 +466,7 @@ TEST_CASE("every other failing step says what to do itself")
     CHECK(contains(advice("EnableDirectMode: refused (code -5)"), "another program holds the display"));
     CHECK(contains(advice("Holders: Pimax or SteamVR is running"), "PiServiceLauncher"));
     CHECK(contains(advice("LoadNvapi: nvapi64.dll is missing"), "NVIDIA's driver"));
-    CHECK(contains(advice("D3D11: no device"), "NVIDIA's driver"));
+    CHECK(contains(advice("D3D11: no device"), "restart Windows"));
     CHECK(contains(advice("Enumerate: no direct-mode display of vendor PVR"), "DisplayPort and USB"));
     CHECK(contains(advice("Luid: the display is on adapter 2"), "NVIDIA GPU Monado uses"));
     for (const char* line : {"CheckIds: this driver has no NVAPI call 0x1", "CreateBackBuffers: refused", "SetDisplayMode: refused"}) {

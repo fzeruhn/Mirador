@@ -17,8 +17,8 @@ namespace dvl {
 
 // --- Output ------------------------------------------------------------------------------------------------------
 
-// Where the tool's lines go, one call per line, no trailing newline. Thread safe: the display thread's stats lines and
-// the vblank thread's results arrive from other threads.
+// Where the tool's lines go, one call per line, no trailing newline. Thread safe: the display thread's stats lines
+// arrive from another thread.
 class Output {
 public:
     virtual ~Output() = default;
@@ -79,9 +79,6 @@ struct RunCounts {
     double seconds = 0;      // The window, measured.
     double refresh_hz = kRefreshHz; // The rate of the mode that was opened (an untested headset's is its EDID's).
     double requested_seconds = 0;
-    bool have_events = false; // Display events counted (none in the NVAPI mode).
-    uint64_t events_ok = 0;
-    uint64_t events_timeout = 0;
 };
 
 // 90 Hz for `seconds`, rounded: 1800 for 20 s.
@@ -95,8 +92,7 @@ struct Verdict {
 
 // Judges a run. `steps_ok` false: a step failed first, named by `failed_step`; the counts are not looked at. Otherwise
 // presents and flips must each be within 1 % (at least 3) of 90 Hz for the measured time, no present may have failed,
-// the run must not have stopped before 98 % of the requested time, and display events must not time out more than
-// 1 % (at least 2).
+// and the run must not have stopped before 98 % of the requested time.
 Verdict judge(bool steps_ok, const std::string& failed_step, const RunCounts& counts);
 
 // --- Lines about the display session and the layer --------------------------------------------------------------

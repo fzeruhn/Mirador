@@ -102,7 +102,7 @@ TEST_CASE("surface_caps_values")
     CHECK(c.minImageExtent.height == 3840);
     CHECK(c.maxImageExtent.width == 7104);
     CHECK(c.supportedUsageFlags == dvl::kSurfaceUsage);
-    // The usage comes from the spec (Task 10 gives the trial import's).
+    // The usage comes from the spec (the trial import gives its own).
     CHECK(dvl::surface_capabilities({{7104, 3840}, VK_IMAGE_USAGE_STORAGE_BIT}).supportedUsageFlags ==
           VK_IMAGE_USAGE_STORAGE_BIT);
 

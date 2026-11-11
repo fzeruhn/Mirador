@@ -355,7 +355,8 @@ TEST_CASE("the commands monado needs are intercepted")
     for (const char* name :
          {"vkDeviceWaitIdle", "vkAcquireWinrtDisplayNV", "vkGetWinrtDisplayNV", "vkReleaseDisplayEXT",
           "vkGetPhysicalDeviceSurfacePresentModes2EXT", "vkGetDeviceGroupSurfacePresentModes2EXT",
-          "vkGetPhysicalDeviceSurfaceCapabilities2EXT", "vkCreateDisplayPlaneSurfaceKHR", "vkCreateSwapchainKHR", "vkDestroySwapchainKHR", "vkGetSwapchainImagesKHR", "vkGetSwapchainStatusKHR",
+          "vkGetPhysicalDeviceSurfaceCapabilities2EXT", "vkCreateDisplayPlaneSurfaceKHR", "vkCreateSwapchainKHR",
+          "vkDestroySwapchainKHR", "vkGetSwapchainImagesKHR", "vkGetSwapchainStatusKHR",
           "vkAcquireNextImageKHR", "vkAcquireNextImage2KHR", "vkQueuePresentKHR", "vkWaitForPresentKHR",
           "vkRegisterDisplayEventEXT", "vkDisplayPowerControlEXT", "vkGetSwapchainCounterEXT",
           "vkRegisterDeviceEventEXT", "vkWaitForFences", "vkGetFenceStatus", "vkResetFences", "vkDestroyFence",

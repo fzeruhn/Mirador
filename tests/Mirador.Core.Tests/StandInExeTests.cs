@@ -32,6 +32,12 @@ public sealed class UnelevatedStandInFactAttribute : StandInFactAttribute
     }
 }
 
+/// <summary>The theory form of <see cref="UnelevatedStandInFactAttribute"/>.</summary>
+public sealed class UnelevatedStandInTheoryAttribute : TheoryAttribute
+{
+    public UnelevatedStandInTheoryAttribute() => Skip = new UnelevatedStandInFactAttribute().Skip;
+}
+
 public class StandInExeTests
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);
@@ -120,12 +126,14 @@ public class StandInExeTests
         Assert.Contains("couldn't be started", error);
     }
 
-    [UnelevatedStandInFact]
-    public async Task An_installed_stand_in_starts_the_mirador_it_came_with()
+    [UnelevatedStandInTheory]
+    [InlineData("monado", "monado-2026.11.10-1a2b3c4d5e", "bin", "service")]
+    [InlineData("builds", "S-1-5-21-1-2-3-1001", "p1", "abc1234", "bin", "service")]
+    public async Task An_installed_stand_in_starts_the_mirador_it_came_with(params string[] below)
     {
         using var dir = new TempDir();
         var app = dir.File("Mirador App");
-        var service = Path.Combine(app, "monado", "runtime", "service");
+        var service = Path.Combine([app, .. below]);
         Directory.CreateDirectory(service);
         var standIn = Path.Combine(service, "monado-service.exe");
         File.Copy(Exe, standIn);

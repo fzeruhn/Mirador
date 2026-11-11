@@ -1,7 +1,7 @@
 // Copyright 2026, Finn Zeruhn
 // SPDX-License-Identifier: BSL-1.0
 
-// The layer's variables, renamed for Mirador (MIRADOR_DIRECT_MODE*); the Dream Air names are still read for one release.
+// The layer's variables (MIRADOR_DIRECT_MODE*); their Dream Air names are no longer read.
 
 #include <catch2/catch_test_macros.hpp>
 

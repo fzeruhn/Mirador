@@ -4,7 +4,7 @@ using Mirador.Ipc;
 
 namespace Mirador.Core.Tests.Monado;
 
-/// <summary>Mirador's Monado, a built branch and an install folder (Mirador_Plan.md Task 60).</summary>
+/// <summary>The bundled Monado, a built branch and an install folder.</summary>
 public class MonadoSourcesLocatorTests
 {
     private const string Version = "monado-2026.11.10-1a2b3c4d5e";

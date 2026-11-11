@@ -91,7 +91,6 @@ TEST_CASE("nvapi_mode_presents_and_counts_flips_against_the_fake")
     CHECK(result.counts.flips >= expected * 9 / 10);
     CHECK(result.counts.flips <= expected * 11 / 10);
     CHECK(result.counts.failures == 0);
-    CHECK_FALSE(result.counts.have_events);
     const dvl::Verdict verdict = dvl::judge(result.steps_ok, result.failed_step, result.counts);
     INFO(verdict.line);
     CHECK(verdict.pass);
@@ -241,7 +240,7 @@ TEST_CASE("nvapi_mode_gives_a_failing_verdict_instead_of_hanging_when_the_displa
     CHECK(result.counts.presents <= 2); // NVAPI is given one Present while flips are stopped, no more
 }
 
-// --- Closing the console ----------------------------------------------------------------------------
+// --- Closing the console ---------------------------------------------------------------------------------------------
 
 TEST_CASE("closing_the_console_runs_the_stop_hook_and_waits_at_most_100_ms")
 {

@@ -145,7 +145,7 @@ void start_display_thread(Presenter& p, DeviceData& device)
     for (uint32_t i = 0; i < kImageCount; ++i) {
         config.tags.push_back(p.session.back_buffer(i).tag);
     }
-    config.refresh_ns = p.refresh_ns; // == the frame model's (Task 6 review)
+    config.refresh_ns = p.refresh_ns; // == the frame model's
     Presenter* const pp = &p;
     config.log = [pp](const std::string& line) {
         pp->pending.flush();
@@ -244,7 +244,7 @@ VkResult create_our_swapchain(VkDevice device, const VkSwapchainCreateInfoKHR& c
     Presenter& p = presenter();
     std::lock_guard<std::mutex> life(p.lifecycle);
 
-    // The checks of design 6.3, 6.4 and the Task 10 review, each one of design 6.10's exceptions.
+    // The checks of design 6.3 and 6.4, each one of design 6.10's exceptions.
     if (d.instance == nullptr || !display_listed_now(*d.instance, d.physical_device)) {
         return refuse_swapchain("device " + describe_device(d) +
                                 " is not on the GPU that drives the headset (its instance did not list the display "
@@ -596,7 +596,7 @@ Presenter::Presenter(nvdm::DisplaySession& s)
                 to_utf8(trace_path).c_str());
         }
     }
-    // Once.
+    // Said once: there is one Presenter per process.
     if (waiter.high_resolution()) {
         log(Level::Info, "display thread: high-resolution waitable timer; refresh period %lld ns",
             static_cast<long long>(refresh_ns));

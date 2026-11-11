@@ -198,8 +198,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
     }
 
     /// <summary>
-    /// Mirador's runtime stays the active one across an update or a roll back, when it was; and so does the bundled
-    /// Monado of an older install (<c>{app}\monado\runtime</c>), whose files that install's update removed.
+    /// The bundled Monado stays the active runtime across an update or a roll back, when it was.
     /// </summary>
     private void FollowActive(string? from, string to)
     {

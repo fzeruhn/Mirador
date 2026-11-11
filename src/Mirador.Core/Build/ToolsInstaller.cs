@@ -40,7 +40,7 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
         try
         {
             onLine($"Downloading {pin.Name} {pin.Version} from GitHub…");
-            await CheckedDownload.ToFileAsync(http, url, zipFile, MaxDownloadBytes, pin.Sha256, pin.Name, Fail, ct).ConfigureAwait(false);
+            await CheckedDownload.ToFileAsync(http, url, zipFile, MaxDownloadBytes, pin.Sha256, pin.Name, Fail, ct, hashFrom: "Mirador pins for it").ConfigureAwait(false);
 
             onLine($"Unpacking {pin.Name}…");
             DeleteFolder(staging);

@@ -875,7 +875,7 @@ TEST_CASE("display loop: stats lines go to the log")
 
 TEST_CASE("display loop: no line is written between a frame's fence being seen and its Present")
 {
-    // Final review m1: the stats line made by the Present that closes a window (and any line pending then) is written
+    // The stats line made by the Present that closes a window (and any line pending then) is written
     // after that Present and its return time, so no file, console or debugger write delays a Present whose fence has
     // signalled.
     Rig r;

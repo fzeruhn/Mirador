@@ -182,14 +182,6 @@ Verdict judge(bool steps_ok, const std::string& failed_step, const RunCounts& c)
         reasons.push_back(format("%llu presents failed, were never confirmed or timed out in present-wait",
                                  static_cast<unsigned long long>(c.failures)));
     }
-    if (c.have_events) {
-        const uint64_t total = c.events_ok + c.events_timeout;
-        if (c.events_timeout > std::max<uint64_t>(2, total / 100)) {
-            reasons.push_back(format("%llu of %llu display event waits timed out",
-                                     static_cast<unsigned long long>(c.events_timeout),
-                                     static_cast<unsigned long long>(total)));
-        }
-    }
 
     if (!reasons.empty()) {
         verdict.line = "FAIL: ";
@@ -203,10 +195,6 @@ Verdict judge(bool steps_ok, const std::string& failed_step, const RunCounts& c)
     verdict.line = format("PASS: %llu presents, %llu flips in %.1f s (%.1f Hz)", static_cast<unsigned long long>(c.presents),
                           static_cast<unsigned long long>(c.flips), c.seconds,
                           c.seconds > 0 ? static_cast<double>(c.flips) / c.seconds : 0.0);
-    if (c.have_events) {
-        verdict.line += format(", display events %llu ok / %llu timed out", static_cast<unsigned long long>(c.events_ok),
-                               static_cast<unsigned long long>(c.events_timeout));
-    }
     if (c.link_drops > 0) {
         verdict.line += format(", %llu link drops recovered", static_cast<unsigned long long>(c.link_drops));
     }
@@ -302,15 +290,19 @@ std::vector<std::string> explain_failure(const std::string& line)
         return {"what to do: quit Pimax Play and SteamVR and stop the PiServiceLauncher service (Mirador does this when "
                 "it starts Monado), then try again"};
     }
-    if (is(OpenStep::LoadNvapi) || is(OpenStep::D3D11)) {
-        return {"what to do: install or update NVIDIA's driver; AMD and Intel GPUs are not supported"};
+    if (is(OpenStep::LoadNvapi)) {
+        return {"what to do: install NVIDIA's driver; AMD and Intel GPUs are not supported"};
+    }
+    if (is(OpenStep::D3D11)) {
+        return {"what to do: reinstall or update NVIDIA's driver, then restart Windows"};
     }
     if (is(OpenStep::Enumerate)) {
         return {"what to do: check that the headset is switched on and connected by DisplayPort and USB, and that "
                 "nothing else holds it; unplug and replug it, then try again"};
     }
     if (is(OpenStep::Luid)) {
-        return {"what to do: connect the headset to the NVIDIA GPU Monado uses (on a laptop, the port wired to it)"};
+        return {"what to do: connect the headset to the NVIDIA GPU Monado uses (on a laptop, the port wired to it; with "
+                "two NVIDIA GPUs, the one Monado picks)"};
     }
     if (is(OpenStep::EnableDirectMode) || is(OpenStep::BindDevice)) {
         return {"what to do: another program holds the display (Pimax, SteamVR or a second Monado): stop it and try "

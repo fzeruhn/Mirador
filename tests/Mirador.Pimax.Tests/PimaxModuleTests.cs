@@ -743,7 +743,7 @@ public sealed class PimaxModuleTests : IDisposable
         }
     }
 
-    // --- Pimax models (Mirador_Plan.md Task 67) ---
+    // --- Pimax models ---
 
     private void Plug(PimaxModel model)
     {

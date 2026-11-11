@@ -328,7 +328,7 @@ VkResult present_ours(VkQueue queue, const VkPresentInfoKHR& info, const std::sh
     if (r != VK_SUCCESS) {
         if (slot != nvdm::kNoFence) {
             Locked lk(p);
-            d.fence_pool.give_back(slot); // never submitted: not lost (Task 5 review)
+            d.fence_pool.give_back(slot); // never submitted: not lost
         }
         log(Level::Error, "vkQueuePresentKHR: the present's submit returned %d; image %u is released",
             static_cast<int>(r), index);
@@ -385,7 +385,7 @@ VkResult present_ours(VkQueue queue, const VkPresentInfoKHR& info, const std::sh
         }
         note_state_locked(p, now);
     }
-    p.waiter.signal_frame_queued(); // after model.queue(), outside the lock (Task 6 review)
+    p.waiter.signal_frame_queued(); // after model.queue(), outside the lock
     p.note(nvdm::TraceKind::PresentReturn, present_id);
     set_results(info, VK_SUCCESS);
     return VK_SUCCESS;

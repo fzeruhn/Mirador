@@ -47,9 +47,22 @@ if ($service -and $service.Status -ne 'Stopped') {
     $service.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
 }
 
-# 3. Put the files in place, beside the app's (copied over them, never mirrored: the app's own files stay).
+# 3. Put the files in place, beside the app's. A file the app has too must be the same bytes (they share one .NET
+#    runtime), or nothing is copied: a helper from another commit would change the installed app's files. Never while
+#    Mirador runs (its files are locked); robocopy doesn't retry, so a locked file fails the copy at once.
+if (Get-Process -Name 'Mirador' -ErrorAction SilentlyContinue) {
+    throw 'Mirador is running: quit it (tray icon > Quit), then run this again.'
+}
+$clash = Get-ChildItem -LiteralPath $stagingDir -Recurse -File | Where-Object {
+    $installed = Join-Path $appDir ([IO.Path]::GetRelativePath($stagingDir, $_.FullName))
+    $_.Name -notlike 'Mirador.Helper.*' -and (Test-Path -LiteralPath $installed) -and
+        (Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $_.FullName).Hash
+}
+if ($clash) {
+    throw "The installed Mirador has other copies of $(($clash | ForEach-Object Name) -join ', '): build the helper from the installed Mirador's commit, or install Mirador from this one. Nothing was copied."
+}
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
-robocopy $stagingDir $appDir /E /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy $stagingDir $appDir /E /R:0 /W:0 /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) {
     throw "Copying the helper into $appDir failed (robocopy exit code $LASTEXITCODE)."
 }

@@ -420,7 +420,7 @@ TEST_CASE("FakeApi calls the on_call hook at entry, before the call is recorded"
     CHECK(recorded_when_seen == std::vector<size_t>{0, 1});
 }
 
-// --- Fixes to Task 3's code that Task 4 folded in ---------------------------------------------------------------
+// --- Fixes folded in later -------------------------------------------------------------------------------------------
 
 TEST_CASE("FakeApi strict_bind refuses the calls that need the bound display until bind_device succeeds")
 {

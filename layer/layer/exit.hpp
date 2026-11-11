@@ -17,7 +17,7 @@ namespace dvl {
 // How long the console handler waits for the stop hook (design 6.10).
 inline constexpr DWORD kConsoleHookWaitMs = 100;
 
-// The hook the console handler calls: "stop the display thread and wait for it to leave NVAPI" (Task 11 sets it once
+// The hook the console handler calls: "stop the display thread and wait for it to leave NVAPI" (set once
 // the thread exists). The hook is expected to bound its own wait; the handler runs it on a helper thread and gives it
 // kConsoleHookWaitMs in all, so a hook that hangs cannot hold the exit. Any thread; an empty function clears it.
 void set_console_stop_hook(std::function<void()> hook);
