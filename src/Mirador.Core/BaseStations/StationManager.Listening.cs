@@ -11,6 +11,7 @@ public sealed partial class StationManager
     private long _adverts;
     private bool _watching;
     private ITimer? _tickTimer;
+    private ITimer? _followTimer;
     private TaskCompletionSource _newlyHeard = NewSignal();
 
     // Under _watchGate.
@@ -133,7 +134,7 @@ public sealed partial class StationManager
                     : $"Base stations: couldn't scan ({missed})");
             }
 
-            UpdateWatch();
+            Follow();
             Raise();
         }
     }
@@ -239,6 +240,9 @@ public sealed partial class StationManager
             if (stateChanged)
             {
                 CheckWakes();
+
+                // Not from this Bluetooth callback: the watch it comes from may be the one to stop.
+                FollowSoon();
             }
 
             if (changed)
@@ -254,8 +258,8 @@ public sealed partial class StationManager
     }
 
     /// <summary>
-    /// Watches the radio while a scan runs, a command runs or one has just run, or a listener is open in "Live while
-    /// shown"; stops otherwise.
+    /// Watches the radio while a scan runs, a command runs or one has just run, a listener is open in "Live while
+    /// shown", or a station is waking up or going to sleep (<see cref="FollowTime"/>); stops otherwise.
     /// </summary>
     private void UpdateWatch()
     {
@@ -264,7 +268,7 @@ public sealed partial class StationManager
             bool want;
             lock (_lock)
             {
-                want = _scans > 0 || _commandRunning || _settling || _live;
+                want = _scans > 0 || _commandRunning || _settling || _live || FollowLocked(_time.GetTimestamp()) is not null;
             }
 
             if (want == (_watch is not null))
@@ -310,6 +314,64 @@ public sealed partial class StationManager
         }
 
         Raise();
+    }
+
+    /// <summary>
+    /// Under the lock: while a station's last advert says it is waking up or going to sleep, for less than
+    /// <see cref="FollowTime"/>, how long until the first of them reaches it; null when none is.
+    /// </summary>
+    private TimeSpan? FollowLocked(long now)
+    {
+        TimeSpan? due = null;
+        foreach (var entry in _stations ?? [])
+        {
+            if (entry.Power == StationPower.Waking)
+            {
+                Earliest(ref due, FollowTime - _time.GetElapsedTime(entry.StateSince, now));
+            }
+        }
+
+        return due;
+    }
+
+    /// <summary>
+    /// Looks again at once, from a timer: whether a station is still changing, and until when. The timer is set outside
+    /// the lock: its callback takes the watch's lock first, as everything else does.
+    /// </summary>
+    private void FollowSoon() => FollowTimer().Change(TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+
+    /// <summary>
+    /// Starts or stops listening for a station that is changing (<see cref="UpdateWatch"/>), and sets the timer for when
+    /// the first of them has been followed for <see cref="FollowTime"/>.
+    /// </summary>
+    private void Follow()
+    {
+        try
+        {
+            UpdateWatch();
+            TimeSpan? due;
+            lock (_lock)
+            {
+                due = FollowLocked(_time.GetTimestamp());
+            }
+
+            if (due is { } wait)
+            {
+                FollowTimer().Change(wait, Timeout.InfiniteTimeSpan);
+            }
+        }
+        catch (Exception e)
+        {
+            Log($"Base stations: {Reason(e)}");
+        }
+    }
+
+    private ITimer FollowTimer()
+    {
+        lock (_lock)
+        {
+            return _followTimer ??= _time.CreateTimer(_ => Follow(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        }
     }
 
     private void StopListening()

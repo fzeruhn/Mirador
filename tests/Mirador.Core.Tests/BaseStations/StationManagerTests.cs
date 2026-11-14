@@ -402,12 +402,83 @@ public class StationManagerTests
         await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
 
         Assert.True(h.Radio.Watching);
-        h.Hear(Left, LeftName, 0x01);
+        h.Hear(Left, LeftName, 0x03);
         h.Clock.Advance(StationManager.SettleTime - TimeSpan.FromSeconds(1));
         Assert.True(h.Radio.Watching);
         h.Clock.Advance(TimeSpan.FromSeconds(1));
         Assert.False(h.Radio.Watching);
-        Assert.Equal(StationPower.Waking, h.View(Left).Power);
+        Assert.Equal(StationPower.On, h.View(Left).Power);
+    }
+
+    [Fact]
+    public async Task A_station_still_waking_up_is_listened_to_until_it_is_on()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true), new KnownStation(RightAddress, RightName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Left, LeftName, 0x00);
+            h.Hear(Right, RightName, 0x00);
+        }
+
+        h.WhenRelevant();
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x02);
+        h.Hear(Right, RightName, 0x02);
+        h.Clock.Advance(StationManager.SettleTime);
+
+        // The settle time is over, but both last said they were waking up: Mirador goes on listening.
+        Assert.True(h.Radio.Watching);
+        h.Hear(Left, LeftName, 0x03);
+        h.Clock.Advance(TimeSpan.Zero);
+        Assert.True(h.Radio.Watching);
+        Assert.Equal(StationPower.Waking, h.View(Right).Power);
+
+        h.Hear(Right, RightName, 0x03);
+        h.Clock.Advance(TimeSpan.Zero);
+        Assert.False(h.Radio.Watching);
+        Assert.Equal(new StationsSummary("2/2 Powered", StatusLevel.Ok, false), h.Manager.Summary);
+    }
+
+    [Fact]
+    public async Task A_station_that_goes_quiet_while_waking_up_is_not_listened_for_forever()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true));
+        using (h.Manager.Listen())
+        {
+            h.Hear(Left, LeftName, 0x00);
+        }
+
+        h.WhenRelevant();
+
+        await h.Manager.SwitchSelectedAsync(StationCommand.On, CancellationToken.None).WaitAsync(Limit);
+        h.Hear(Left, LeftName, 0x02);
+        h.Clock.Advance(StationManager.SettleTime);
+        Assert.True(h.Radio.Watching);
+
+        h.Clock.Advance(StationManager.FollowTime - StationManager.SettleTime);
+        Assert.False(h.Radio.Watching);
+    }
+
+    [Fact]
+    public async Task A_scan_that_ends_with_a_station_going_to_sleep_listens_until_it_is_asleep()
+    {
+        using var h = new StationHarness();
+        h.Known(new KnownStation(LeftAddress, LeftName, Selected: true));
+        h.WhenRelevant();
+
+        var scan = h.Manager.ScanAsync(CancellationToken.None);
+        h.Hear(Left, LeftName, 0x02);
+        h.Clock.Advance(StationManager.ScanTime);
+        await scan.WaitAsync(Limit);
+        Assert.True(h.Radio.Watching);
+
+        h.Hear(Left, LeftName, 0x00);
+        h.Clock.Advance(TimeSpan.Zero);
+        Assert.False(h.Radio.Watching);
+        Assert.Equal(StationPower.Asleep, h.View(Left).Power);
     }
 
     [Fact]
@@ -1536,11 +1607,13 @@ public class StationManagerTests
             await h.QueueDrained();
         }
 
-        // Still stuck: nothing more, and listening ends as after any command.
+        // Still stuck: nothing more. Mirador listens while it still says it is waking up, then gives up.
         h.Clock.Advance(StationManager.StallTime);
         await h.QueueDrained();
         h.Clock.Advance(StationManager.SettleTime);
         await h.QueueDrained();
+        Assert.True(h.Radio.Watching);
+        h.Clock.Advance(StationManager.FollowTime);
 
         Assert.Equal(["01", "01", "01"], h.Radio.WritesTo(Right));
         Assert.Equal(2, h.Logged.Count(l => l.EndsWith("sent again (stuck waking up)", StringComparison.Ordinal)));
