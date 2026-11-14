@@ -20,13 +20,14 @@ public sealed record BuildOutcome(bool Ok, string Message, string? Commit, Build
 /// (a build cancelled during them stays: it built).
 /// Each build's log is kept in <c>…\logs</c>. One build at a time per profile.
 /// </summary>
-/// <param name="toolsProblem">
-/// Checks the build tools before a build starts (the "Check build tools" page's check): null when every part is there,
-/// else what is missing, in a sentence. Null: not checked (the recipe then finds its tools itself, as on CI).
+/// <param name="prepareTools">
+/// Gets the build tools ready before a build starts (<see cref="BuildToolsSetup.PrepareAsync"/>: what is missing is
+/// installed, its lines in the build's log): null when they are, else why not. Null: not done (the recipe then finds
+/// its tools itself, as on CI).
 /// </param>
 public sealed class MonadoBuilder(
     ICommandRunner runner, MonadoLocator locator, BuildTools tools, BuildChecks checks, TimeProvider time,
-    Func<CancellationToken, Task<string?>>? toolsProblem = null)
+    Func<Action<string>, CancellationToken, Task<string?>>? prepareTools = null)
 {
     /// <summary>How many build logs are kept per profile.</summary>
     public const int KeptLogs = 10;
@@ -36,9 +37,6 @@ public sealed class MonadoBuilder(
     /// builds anything.
     /// </summary>
     public const int ToolsExitCode = 3;
-
-    /// <summary>What a build stopped by its tools says; the "Check build tools" button is on the same card.</summary>
-    public const string CheckToolsAdvice = "Check build tools, then build again.";
 
     private readonly HashSet<string> building = [];
 
@@ -121,12 +119,11 @@ public sealed class MonadoBuilder(
             return new BuildOutcome(false, problem, null, null, logPath);
         }
 
-        // 0. The tools first: without them the recipe would stop after the fetch with a developer's message.
-        if (toolsProblem is not null && await toolsProblem(ct).ConfigureAwait(false) is { } missing)
+        // 0. The tools first, installed when missing: without them the recipe would stop after the fetch.
+        if (prepareTools is not null && await prepareTools(Line, ct).ConfigureAwait(false) is { } notReady)
         {
-            var refused = $"{missing.Trim().TrimEnd('.')}. {CheckToolsAdvice}";
-            Line(refused);
-            return new BuildOutcome(false, refused, null, null, logPath);
+            Line(notReady);
+            return new BuildOutcome(false, notReady, null, null, logPath);
         }
 
         Line($"Building {source.Url} {source.Ref} for this profile.");
@@ -176,7 +173,7 @@ public sealed class MonadoBuilder(
         {
             TryDeleteFolder(fresh);
             var failed = code == ToolsExitCode
-                ? $"The build couldn't start: a build tool is missing or can't be used (the build log names it). The last good build stays. {CheckToolsAdvice}"
+                ? "The build couldn't start: a build tool is missing or can't be used; the build log names it. The last good build stays."
                 : $"The build failed (exit code {code}). The last good build stays; the build log says what went wrong.";
             Line(failed);
             return new BuildOutcome(false, failed, commit, null, logPath);

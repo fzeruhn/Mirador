@@ -72,12 +72,6 @@ public sealed partial class BuildViewModel : ObservableObject
             return;
         }
 
-        if (host.BuildToolsSetup.IsInstalling)
-        {
-            Status = "The build tools are being installed: build when that is done.";
-            return;
-        }
-
         if (profile is not null)
         {
             host.Builds.Start(profile);

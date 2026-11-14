@@ -59,7 +59,7 @@ public sealed class AppHost : IAsyncDisposable
         Builds = new Builds(new MonadoBuilder(
             new CommandRunner(), Locator, BuildTools.For(appDir, paths),
             new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System,
-            async ct => (await BuildToolsSetup!.CheckAsync(ct).ConfigureAwait(false)).Problem()));
+            (line, ct) => BuildToolsSetup!.PrepareAsync(line, ct)));
         BuildToolsSetup = new BuildToolsSetup(
             new CommandRunner(), ToolsHttp, new UacLauncher(), paths.ToolsDir,
             BuildToolsCheck.ReadPin(Path.Combine(appDir, "tools", "vcpkg-commit.txt")) ?? "",
@@ -171,7 +171,7 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>The branch builds.</summary>
     public Builds Builds { get; }
 
-    /// <summary>The build tools' check and "Install what's missing".</summary>
+    /// <summary>The build tools: their state, and their install at a branch build.</summary>
     public BuildToolsSetup BuildToolsSetup { get; }
 
     /// <summary>"Verify build for Windows".</summary>
