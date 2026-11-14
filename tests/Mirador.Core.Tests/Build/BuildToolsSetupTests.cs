@@ -74,6 +74,9 @@ public sealed class BuildToolsSetupTests : IDisposable
         Assert.Equal(["Visual Studio C++ tools", "Git", "CMake", "vcpkg"], report.Parts.Select(p => p.Name));
         Assert.Equal([ToolState.Fixable, ToolState.Missing, ToolState.Missing, ToolState.Missing], report.Parts.Select(p => p.State));
         Assert.False(report.AllFound);
+        Assert.Equal(
+            "Mirador's build tools aren't all ready (missing: Git, CMake, vcpkg; to update: Visual Studio C++ tools).",
+            report.Problem());
     }
 
     [Fact]
@@ -109,6 +112,7 @@ public sealed class BuildToolsSetupTests : IDisposable
         var failures = await setup.InstallMissingAsync(report, lines.Add, CancellationToken.None);
 
         Assert.True(report.AllFound);
+        Assert.Null(report.Problem());
         Assert.Empty(failures);
         Assert.Empty(files.Requested);
         Assert.Empty(elevated.Commands);

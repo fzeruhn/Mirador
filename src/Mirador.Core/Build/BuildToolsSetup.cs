@@ -21,6 +21,28 @@ public sealed record BuildToolsReport(VsPlan VisualStudio, IReadOnlyList<(ToolPi
 
     /// <summary>Whether a branch build has everything.</summary>
     public bool AllFound => Parts.All(p => p.State == ToolState.Found);
+
+    /// <summary>
+    /// Null when a branch build has everything; else, in a sentence, which parts are missing and which need updating
+    /// (at another version than the one Mirador's builds use).
+    /// </summary>
+    public string? Problem()
+    {
+        var missing = Parts.Where(p => p.State == ToolState.Missing).Select(p => p.Name).ToList();
+        var outdated = Parts.Where(p => p.State == ToolState.Fixable).Select(p => p.Name).ToList();
+        var parts = new List<string>();
+        if (missing.Count > 0)
+        {
+            parts.Add($"missing: {string.Join(", ", missing)}");
+        }
+
+        if (outdated.Count > 0)
+        {
+            parts.Add($"to update: {string.Join(", ", outdated)}");
+        }
+
+        return parts.Count == 0 ? null : $"Mirador's build tools aren't all ready ({string.Join("; ", parts)}).";
+    }
 }
 
 /// <summary>

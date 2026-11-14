@@ -138,6 +138,51 @@ public class MonadoBuilderTests : IDisposable
     }
 
     [Fact]
+    public async Task Missing_build_tools_refuse_the_build_before_anything_runs()
+    {
+        WriteInstall(dir.File("Builds", "p1", "install"), "old");
+        var checkedTools = new MonadoBuilder(
+            runner, locator, new BuildTools(dir.File("app", "tools", "build-monado.ps1"), null, "powershell.exe"),
+            new BuildChecks(runner, dir.File("system"), time), time,
+            _ => Task.FromResult<string?>("Mirador's build tools aren't all ready (missing: vcpkg)."));
+
+        var outcome = await checkedTools.BuildAsync(Fork, Lines.Add, CancellationToken.None);
+
+        Assert.False(outcome.Ok);
+        Assert.Equal("Mirador's build tools aren't all ready (missing: vcpkg). Check build tools, then build again.", outcome.Message);
+        Assert.Empty(runner.Commands);
+        Assert.Equal("old", File.ReadAllText(dir.File("Builds", "p1", "install", "marker.txt")));
+    }
+
+    [Fact]
+    public async Task Build_tools_that_are_ready_let_the_build_run()
+    {
+        var checkedTools = new MonadoBuilder(
+            runner, locator, new BuildTools(dir.File("app", "tools", "build-monado.ps1"), null, "powershell.exe"),
+            new BuildChecks(runner, dir.File("system"), time), time,
+            _ => Task.FromResult<string?>(null));
+
+        var outcome = await checkedTools.BuildAsync(Fork, Lines.Add, CancellationToken.None);
+
+        Assert.True(outcome.Ok, outcome.Message);
+    }
+
+    [Fact]
+    public async Task A_recipe_stopped_by_a_missing_tool_says_to_check_the_build_tools()
+    {
+        runner.Answer = spec => spec.FileName == "powershell.exe"
+            ? (["vcpkg is missing: give -Tools with a vcpkg folder, or set VCPKG_ROOT."], MonadoBuilder.ToolsExitCode)
+            : spec.Arguments.SequenceEqual(["rev-parse", "HEAD"]) ? ([Commit], 0) : ([], 0);
+
+        var outcome = await Build();
+
+        Assert.False(outcome.Ok);
+        Assert.EndsWith("Check build tools, then build again.", outcome.Message);
+        Assert.DoesNotContain("VCPKG_ROOT", outcome.Message);
+        Assert.Contains("VCPKG_ROOT", File.ReadAllText(outcome.Log));
+    }
+
+    [Fact]
     public async Task A_failed_fetch_runs_no_recipe()
     {
         runner.Answer = spec => spec.Arguments.Contains("fetch") ? (["fatal: couldn't find remote ref pimax-p3c"], 128) : ([], 0);

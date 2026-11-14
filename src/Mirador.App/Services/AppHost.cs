@@ -58,7 +58,8 @@ public sealed class AppHost : IAsyncDisposable
         Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir, ApprovedCopyOf);
         Builds = new Builds(new MonadoBuilder(
             new CommandRunner(), Locator, BuildTools.For(appDir, paths),
-            new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System));
+            new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System,
+            async ct => (await BuildToolsSetup!.CheckAsync(ct).ConfigureAwait(false)).Problem()));
         BuildToolsSetup = new BuildToolsSetup(
             new CommandRunner(), ToolsHttp, new UacLauncher(), paths.ToolsDir,
             BuildToolsCheck.ReadPin(Path.Combine(appDir, "tools", "vcpkg-commit.txt")) ?? "",
