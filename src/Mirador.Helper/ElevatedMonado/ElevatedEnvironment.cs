@@ -106,7 +106,7 @@ public static class ElevatedEnvironment
 
         MonadoSettingsEnvironment.Write(
             (name, value) => Set(env, name, value),
-            start.LighthouseWaitMs, start.RenderScalePercent, start.CompositorMinTimeMs, start.ExitOnDisconnect);
+            start.LighthouseWaitMs, start.RenderScalePercent, start.CompositorMinTimeMs, start.ExitOnDisconnect, start.StandbyOnExit);
 
         foreach (var (name, value) in moduleFixed)
         {

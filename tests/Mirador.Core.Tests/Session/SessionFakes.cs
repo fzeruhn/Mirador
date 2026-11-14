@@ -544,7 +544,7 @@ internal sealed class Harness : IAsyncDisposable
     /// <param name="elevationFix">Whether Verify found the elevation fix in a build; null: never.</param>
     public Harness(
         ISessionHook? hook = null, bool? installedCopy = null, Func<Profile, MonadoInstall, Mirador.Ipc.ApprovedBuild?>? approvedCopy = null,
-        Func<Profile, MonadoInstall, bool>? elevationFix = null)
+        Func<Profile, MonadoInstall, bool>? elevationFix = null, bool controllersOffAtStop = false)
     {
         Root = Path.Combine(dir.Path, "Zoë's data");
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
@@ -598,7 +598,8 @@ internal sealed class Harness : IAsyncDisposable
                 },
                 ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null,
                 BundledLayerDir: BundledLayer,
-                ElevationFixVerified: elevationFix),
+                ElevationFixVerified: elevationFix,
+                ControllersOffAtStop: () => controllersOffAtStop),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);

@@ -24,6 +24,7 @@ public static class MonadoSettingsEnvironment
     public const string RenderScale = "XRT_COMPOSITOR_SCALE_PERCENTAGE";
     public const string CompositorMinTime = "U_PACING_COMP_MIN_TIME_MS";
     public const string ExitOnDisconnect = "IPC_EXIT_ON_DISCONNECT";
+    public const string StandbyOnExit = "LH_STANDBY_ON_EXIT";
 
     /// <summary>Lighthouse discovery wait, 1000–30000 ms in steps of 1000 (default 3000).</summary>
     public static readonly SettingRange LighthouseWaitRange = new(1000, 30000, 1000);
@@ -38,9 +39,12 @@ public static class MonadoSettingsEnvironment
     /// Writes the settings' variables through <paramref name="set"/> (name, value — the value is never empty here), so
     /// each side keeps its own dictionary rules while the names, formatting and which variables are written stay here.
     /// <see cref="ExitOnDisconnect"/> is written only when <paramref name="exitOnDisconnect"/> is on, the way the setting
-    /// works (default off).
+    /// works (default off), and <see cref="StandbyOnExit"/> only when <paramref name="standbyOnExit"/> is (the Lighthouse
+    /// page's "Turn off controllers and trackers when Monado stops").
     /// </summary>
-    public static void Write(Action<string, string> set, int lighthouseWaitMs, int renderScalePercent, int compositorMinTimeMs, bool exitOnDisconnect)
+    public static void Write(
+        Action<string, string> set, int lighthouseWaitMs, int renderScalePercent, int compositorMinTimeMs, bool exitOnDisconnect,
+        bool standbyOnExit = false)
     {
         set(LighthouseWait, Number(lighthouseWaitMs));
         set(RenderScale, Number(renderScalePercent));
@@ -48,6 +52,11 @@ public static class MonadoSettingsEnvironment
         if (exitOnDisconnect)
         {
             set(ExitOnDisconnect, "1");
+        }
+
+        if (standbyOnExit)
+        {
+            set(StandbyOnExit, "1");
         }
     }
 

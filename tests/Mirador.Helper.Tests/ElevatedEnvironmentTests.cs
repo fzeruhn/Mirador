@@ -56,6 +56,13 @@ public class ElevatedEnvironmentTests
         }
     }
 
+    [Fact]
+    public void Standby_on_exit_only_when_asked()
+    {
+        Assert.Equal("1", Build(Start() with { StandbyOnExit = true })["LH_STANDBY_ON_EXIT"]);
+        Assert.False(Build().ContainsKey("LH_STANDBY_ON_EXIT"));
+    }
+
     [Theory]
     [InlineData(2, true)]
     [InlineData(1, false)]

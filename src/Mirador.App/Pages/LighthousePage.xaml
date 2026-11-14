@@ -173,6 +173,11 @@
             <toolkit:SettingsCard Header="Power off when Mirador quits">
                 <ToggleSwitch IsOn="{x:Bind ViewModel.PowerOffAtMiradorQuit, Mode=TwoWay}" />
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard
+                Description="Monado puts the controllers and trackers it tracks into standby when it stops normally, as SteamVR does when it exits. Not when it crashes or Windows ends it (signing out, Mirador ended from Task Manager). Takes effect from the next Start."
+                Header="Turn off controllers and trackers when Monado stops">
+                <ToggleSwitch IsOn="{x:Bind ViewModel.ControllersOffAtMonadoStop, Mode=TwoWay}" />
+            </toolkit:SettingsCard>
             <toolkit:SettingsCard Description="Constant: Scan base station state at all times. When Relevant: Scan base station state only when interacting with them from Mirador" Header="Station state tracking rate">
                 <!-- Below 700 wide the ComboBox goes under the text (the toolkit's default is 476), so the long description keeps its width. -->
                 <toolkit:SettingsCard.Resources>

@@ -20,7 +20,8 @@ public static class MonadoEnvironment
         IReadOnlyDictionary<string, string> inherited,
         MonadoSettings settings,
         Profile profile,
-        IReadOnlyList<EnvVar> moduleFixed)
+        IReadOnlyList<EnvVar> moduleFixed,
+        bool controllersOffAtStop = false)
     {
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -34,7 +35,8 @@ public static class MonadoEnvironment
             settings.LighthouseWaitMs,
             settings.RenderScalePercent,
             settings.CompositorMinTimeMs,
-            settings.StopWhenLastAppCloses);
+            settings.StopWhenLastAppCloses,
+            controllersOffAtStop);
 
         foreach (var v in moduleFixed)
         {

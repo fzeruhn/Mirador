@@ -167,6 +167,7 @@ public sealed partial class LighthouseViewModel : ObservableObject
         PowerOffAtMonadoStop = settings.BaseStationsOffAtStop;
         PowerOnAtMiradorStart = settings.BaseStationsOnAtMiradorStart;
         PowerOffAtMiradorQuit = settings.BaseStationsOffAtMiradorQuit;
+        ControllersOffAtMonadoStop = settings.ControllersOffAtStop;
         StationState = settings.BaseStationsState == StationStateMode.Live ? 0 : 1; // Constant first, When Relevant second
         loading = false;
     }
@@ -188,6 +189,10 @@ public sealed partial class LighthouseViewModel : ObservableObject
     /// <summary>"Power off when Mirador quits".</summary>
     [ObservableProperty]
     public partial bool PowerOffAtMiradorQuit { get; set; }
+
+    /// <summary>"Turn off controllers and trackers when Monado stops".</summary>
+    [ObservableProperty]
+    public partial bool ControllersOffAtMonadoStop { get; set; }
 
     /// <summary>The "Station state" drop-down: 0 from the last scan, 1 live while shown.</summary>
     [ObservableProperty]
@@ -298,6 +303,8 @@ public sealed partial class LighthouseViewModel : ObservableObject
     partial void OnPowerOnAtMiradorStartChanged(bool value) => SaveSetting(s => s with { BaseStationsOnAtMiradorStart = value });
 
     partial void OnPowerOffAtMiradorQuitChanged(bool value) => SaveSetting(s => s with { BaseStationsOffAtMiradorQuit = value });
+
+    partial void OnControllersOffAtMonadoStopChanged(bool value) => SaveSetting(s => s with { ControllersOffAtStop = value });
 
     partial void OnStationStateChanged(int value) =>
         SaveSetting(s => s with { BaseStationsState = value == 0 ? StationStateMode.Live : StationStateMode.LastScan });

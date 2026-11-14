@@ -738,8 +738,9 @@ public sealed class SessionController(SessionDeps deps)
             moduleEnvironment = [.. DirectModeLayer.Environment(deps.BundledLayerDir ?? ""), .. moduleEnvironment];
         }
 
-        var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
-        var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
+        var controllersOff = deps.ControllersOffAtStop?.Invoke() == true;
+        var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment, controllersOff);
+        var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment, controllersOff);
         var standIn = install.IsBundled
             ? null
             : StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe) ?? ServiceLaunch.Check(Path.GetDirectoryName(install.Manifest)!);
@@ -1161,7 +1162,8 @@ public sealed class SessionController(SessionDeps deps)
             settings.StopWhenLastAppCloses,
             module?.ElevatedModuleId ?? "",
             approvedBuild ? profile.Id : "",
-            ElevationFix: deps.ElevationFixVerified?.Invoke(profile, install) == true);
+            ElevationFix: deps.ElevationFixVerified?.Invoke(profile, install) == true,
+            StandbyOnExit: deps.ControllersOffAtStop?.Invoke() == true);
         return deps.ElevatedLauncher!(start);
     }
 

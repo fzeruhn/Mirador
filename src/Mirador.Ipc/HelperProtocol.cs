@@ -126,6 +126,7 @@ public enum HelperCommand
 /// <c>IPC_RELAXED_CONNECTION_SECURITY</c>, which lets any signed-in user's apps connect, unless Windows' Administrator
 /// protection is on (elevation then runs as another account, which the fix can't tell from the user).
 /// </param>
+/// <param name="StandbyOnExit">Whether Monado puts its Lighthouse devices in standby as it ends (<see cref="MonadoSettingsEnvironment.StandbyOnExit"/>).</param>
 public sealed record ElevatedStart(
     [property: JsonRequired] int LighthouseWaitMs,
     [property: JsonRequired] int RenderScalePercent,
@@ -134,7 +135,8 @@ public sealed record ElevatedStart(
     [property: JsonRequired] string Module,
     string Build = "",
     bool Headless = false,
-    bool ElevationFix = false);
+    bool ElevationFix = false,
+    bool StandbyOnExit = false);
 
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and

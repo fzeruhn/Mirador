@@ -98,6 +98,24 @@ public class SessionControllerTests
         Assert.True(steps.IndexOf("end cleanly") < steps.IndexOf("kill"));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Controllers_off_at_stop_asks_monado_for_standby_as_you_and_as_administrator(bool on)
+    {
+        await using (var h = new Harness(controllersOffAtStop: on))
+        {
+            await h.StartRunningAsync();
+            Assert.Equal(on, h.Launcher.Spec.Environment.TryGetValue("LH_STANDBY_ON_EXIT", out var value) && value == "1");
+        }
+
+        await using var elevated = new Harness(installedCopy: true, controllersOffAtStop: on);
+        elevated.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
+        await elevated.StartRunningAsync();
+        Assert.True(elevated.ElevatedStarts.TryDequeue(out var start));
+        Assert.Equal(on, start.StandbyOnExit);
+    }
+
     [Fact]
     public async Task A_profile_without_run_as_administrator_runs_as_you_whatever_the_consent()
     {

@@ -120,7 +120,8 @@ public sealed class AppHost : IAsyncDisposable
             },
             ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true),
             BundledLayerDir: Path.Combine(appDir, "layer"),
-            ElevationFixVerified: ElevationFixVerified));
+            ElevationFixVerified: ElevationFixVerified,
+            ControllersOffAtStop: () => StationSettings().ControllersOffAtStop));
     }
 
     /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>
