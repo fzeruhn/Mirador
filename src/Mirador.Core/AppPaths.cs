@@ -27,8 +27,8 @@ public sealed class AppPaths(string root)
     /// <summary>Mirador's own copies of the build tools (Mirador.md §4.11 item 49): <c>vcpkg</c>, <c>cmake</c>, <c>ninja</c>, <c>git</c>.</summary>
     public string ToolsDir { get; } = Path.Combine(root, "tools");
 
-    /// <summary>The per-user copy of the bundled OpenComposite, the runtime folder OpenVR games load it from.</summary>
-    public string OpenCompositeDir { get; } = Path.Combine(root, "OpenComposite");
+    /// <summary>Where OpenComposite's installer is downloaded to, and deleted from once it has run.</summary>
+    public string DownloadDir { get; } = Path.Combine(root, "download");
 
     /// <summary>The log file for a Monado session that starts at <paramref name="now"/>.</summary>
     public string NewMonadoLogFile(DateTime now) =>

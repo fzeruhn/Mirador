@@ -3,10 +3,10 @@ using System.Text.RegularExpressions;
 namespace Mirador.Core.OpenVr;
 
 /// <summary>
-/// Which OpenComposite a bundle holds, from the first line of its <c>SOURCE.txt</c>: the fork's release writes
-/// <c>OpenComposite 2026.11.06, commit &lt;40 hex&gt;</c>; the bundles before Phase 6 have the 40 hex alone.
+/// Which OpenComposite is installed, from the first line of its <c>SOURCE.txt</c>: the fork's release writes
+/// <c>OpenComposite 2026.11.06, commit &lt;40 hex&gt;</c>; a build of the commit alone has the 40 hex alone.
 /// </summary>
-/// <param name="Version">The release's date version, or null for a bundle that says only its commit.</param>
+/// <param name="Version">The release's date version, or null when SOURCE.txt names only the commit.</param>
 /// <param name="Commit">The 40-hex commit.</param>
 public sealed partial record OpenCompositeSource(string? Version, string? Commit)
 {

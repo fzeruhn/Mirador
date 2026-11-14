@@ -73,6 +73,6 @@ public static class AppInfo
     /// <summary>The lines of versions.txt and the Diagnostics page.</summary>
     public static string Versions(Profile profile, string appDir) =>
         $"Mirador {Version}\n{Windows()}\nMonado: {Monado(profile, appDir)}\n" +
-        $"{new OpenCompositeCopy(AppPaths.Default.OpenCompositeDir).VersionLine()}\n" +
+        $"{new OpenCompositeInstall(OpenCompositeInstall.DefaultFolder).VersionLine()}\n" +
         $"Profile: {profile.Name}\n";
 }

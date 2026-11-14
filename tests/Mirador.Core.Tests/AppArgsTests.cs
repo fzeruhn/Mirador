@@ -21,14 +21,6 @@ public class AppArgsTests
     }
 
     [Fact]
-    public void Parse_restore_openvr()
-    {
-        Assert.Equal(new AppArgs(false, false, RestoreOpenVr: true), AppArgs.Parse(["--restore-openvr"]));
-        Assert.True(AppArgs.Parse(["--Restore-OpenVR"]).RestoreOpenVr);
-        Assert.False(AppArgs.Parse(["--start"]).RestoreOpenVr);
-    }
-
-    [Fact]
     public void Parses_sign_in_and_remove_sign_in()
     {
         Assert.True(AppArgs.Parse(["--sign-in"]).SignIn);

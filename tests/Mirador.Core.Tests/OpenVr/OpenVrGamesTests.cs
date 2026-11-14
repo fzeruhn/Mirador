@@ -12,14 +12,13 @@ public class OpenVrGamesTests
     {
         private readonly TempDir dir = new();
 
-        public World(bool downloaded = true, params string[] runtimes)
+        public World(bool installed = true, params string[] runtimes)
         {
-            if (downloaded)
+            if (installed)
             {
-                Directory.CreateDirectory(Path.Combine(ReleaseDir, "bin"));
-                File.WriteAllBytes(Path.Combine(ReleaseDir, "bin", "vrclient_x64.dll"), [1, 2, 3]);
-                File.WriteAllBytes(Path.Combine(ReleaseDir, "bin", "version.txt"), []);
-                File.WriteAllText(Path.Combine(ReleaseDir, "SOURCE.txt"), "OpenComposite 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
+                Directory.CreateDirectory(Path.Combine(InstallDir, "bin"));
+                File.WriteAllBytes(Path.Combine(InstallDir, "bin", "vrclient_x64.dll"), [1, 2, 3]);
+                File.WriteAllText(Path.Combine(InstallDir, "SOURCE.txt"), "OpenComposite 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(PathsFile)!);
@@ -30,85 +29,65 @@ public class OpenVrGamesTests
                 ["version"] = 1,
             };
             File.WriteAllText(PathsFile, json.ToJsonString());
-            Games = new OpenVrGames(Paths, new OpenCompositeCopy(RuntimeDir));
+            Games = new OpenVrGames(Paths, new OpenCompositeInstall(InstallDir, new Build.FakeCommandRunner()));
         }
 
-        /// <summary>A downloaded release, as "Get OpenComposite" unpacks it.</summary>
-        public string ReleaseDir => Path.Combine(RuntimeDir, "download", "2026.11.06", "OpenComposite");
-
-        public string RuntimeDir => dir.File("Mirador", "OpenComposite");
+        /// <summary>OpenComposite as its installer puts it.</summary>
+        public string InstallDir => dir.File("Programs", "OpenComposite");
 
         public string PathsFile => dir.File("openvr", "openvrpaths.vrpath");
 
         /// <summary>The same file as another program sees it.</summary>
-        public OpenVrPaths Paths => new(PathsFile, RuntimeDir);
+        public OpenVrPaths Paths => new(PathsFile, InstallDir);
 
         public OpenVrGames Games { get; }
-
-        public string CopiedDll => Path.Combine(RuntimeDir, "bin", "vrclient_x64.dll");
 
         /// <summary>OpenComposite set, then SteamVR putting itself first again, as it does when it starts.</summary>
         public void SetThenSteamVrInFront()
         {
             Assert.Null(Games.UseMonado());
-            Assert.Null(Paths.UseSteamVr());
+            var json = JsonNode.Parse(File.ReadAllText(PathsFile))!;
+            json["runtime"] = new JsonArray(JsonValue.Create(SteamVr), JsonValue.Create(InstallDir));
+            File.WriteAllText(PathsFile, json.ToJsonString());
         }
 
         public void Dispose() => dir.Dispose();
     }
 
     [Fact]
-    public void Use_monado_copies_then_writes()
+    public void Use_monado_puts_the_installed_opencomposite_first()
     {
         using var w = new World();
 
+        Assert.True(w.Games.Available);
         Assert.Null(w.Games.UseMonado());
 
-        Assert.True(File.Exists(w.CopiedDll));
         Assert.Equal(OpenVrTarget.Monado, w.Paths.Read().Target);
     }
 
     [Fact]
-    public void No_copy_no_write()
+    public void Not_installed_no_write()
     {
-        using var w = new World();
-        Directory.CreateDirectory(w.RuntimeDir);
-        File.WriteAllText(Path.Combine(w.RuntimeDir, "bin"), "a file where the folder goes");
-        var before = File.ReadAllText(w.PathsFile);
-
-        var problem = w.Games.UseMonado();
-
-        Assert.NotNull(problem);
-        Assert.StartsWith("Mirador couldn't copy OpenComposite (", problem);
-        Assert.EndsWith("); OpenVR games are unchanged.", problem);
-        Assert.Equal(before, File.ReadAllText(w.PathsFile));
-    }
-
-    [Fact]
-    public void Nothing_downloaded_no_write()
-    {
-        using var w = new World(downloaded: false);
+        using var w = new World(installed: false);
         var before = File.ReadAllText(w.PathsFile);
 
         Assert.False(w.Games.Available);
-        Assert.Equal("Mirador has no OpenComposite yet: press \"Get OpenComposite\" first.", w.Games.UseMonado());
+        Assert.Equal("OpenComposite isn't installed yet: press \"Get OpenComposite\" first.", w.Games.UseMonado());
         Assert.Equal(before, File.ReadAllText(w.PathsFile));
     }
 
     [Fact]
-    public void Held_copy_still_switches()
+    public void A_dll_a_game_holds_still_switches()
     {
         using var w = new World();
         w.SetThenSteamVrInFront();
-        File.WriteAllBytes(Path.Combine(w.ReleaseDir, "bin", "vrclient_x64.dll"), [7]);
 
-        using (new FileStream(w.CopiedDll, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (new FileStream(Path.Combine(w.InstallDir, "bin", "vrclient_x64.dll"), FileMode.Open, FileAccess.Read, FileShare.None))
         {
             Assert.Null(w.Games.UseMonado());
         }
 
         Assert.Equal(OpenVrTarget.Monado, w.Paths.Read().Target);
-        Assert.Equal([1, 2, 3], File.ReadAllBytes(w.CopiedDll));
     }
 
     [Fact]
@@ -178,59 +157,17 @@ public class OpenVrGamesTests
     }
 
     [Fact]
-    public void Missing_copy_is_a_problem_while_named()
+    public void Uninstalled_while_named_is_a_problem()
     {
         using var w = new World();
         w.Games.UseMonado();
-        Directory.Delete(Path.Combine(w.RuntimeDir, "bin"), recursive: true); // a virus scanner took it, or the owner reset Mirador's folder
+        Directory.Delete(w.InstallDir, recursive: true); // uninstalled through Windows' Settings
 
         var view = w.Games.View(true, null);
 
         Assert.Equal(
-            "Mirador's copy of OpenComposite is missing, so OpenVR games can't start. Press \"Set OpenComposite\" to copy it again.",
+            "OpenComposite isn't installed any more, so OpenVR games can't start. Press \"Get OpenComposite\" to install it again.",
             view.Problem);
-        Assert.True(view.OffersOpenComposite);
-        Assert.Null(w.Games.UseMonado());
-        Assert.True(File.Exists(w.CopiedDll));
-    }
-
-    [Fact]
-    public void Update_at_launch_never_switches()
-    {
-        using var w = new World();
-        Assert.Null(w.Games.UpdateAtLaunch());
-        Assert.False(File.Exists(w.CopiedDll));
-        Assert.Equal(OpenVrTarget.SteamVr, w.Paths.Read().Target);
-
-        w.SetThenSteamVrInFront();
-        Assert.Null(w.Games.UpdateAtLaunch());
-        Assert.Equal(OpenVrTarget.SteamVr, w.Paths.Read().Target);
-    }
-
-    [Fact]
-    public void Update_at_launch_restores_a_missing_copy_while_named()
-    {
-        using var w = new World();
-        w.Games.UseMonado();
-        Directory.Delete(Path.Combine(w.RuntimeDir, "bin"), recursive: true);
-
-        Assert.Null(w.Games.UpdateAtLaunch());
-
-        Assert.True(File.Exists(w.CopiedDll));
-    }
-
-    [Fact]
-    public void Update_at_launch_brings_the_copy_up_to_date()
-    {
-        using var w = new World();
-        w.Games.UseMonado();
-        File.WriteAllBytes(Path.Combine(w.ReleaseDir, "bin", "vrclient_x64.dll"), [8, 8]);
-        using (new FileStream(w.CopiedDll, FileMode.Open, FileAccess.Read, FileShare.None))
-        {
-            Assert.Equal("OpenComposite will be updated when no game uses it.", w.Games.UpdateAtLaunch());
-        }
-
-        Assert.Null(w.Games.UpdateAtLaunch());
-        Assert.Equal([8, 8], File.ReadAllBytes(w.CopiedDll));
+        Assert.False(w.Games.Available);
     }
 }

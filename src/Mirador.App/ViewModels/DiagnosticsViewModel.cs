@@ -215,7 +215,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             var module = profile.ModuleId is { } id ? host.Modules.GetValueOrDefault(id) : null;
             var versions = AppInfo.Versions(profile, host.AppDir);
             var environment = host.Session.LastMiradorEnvironment;
-            var openVr = new OpenVrFiles(OpenVrPaths.DefaultFile, OpenCompositeCopy.LogFile);
+            var openVr = new OpenVrFiles(OpenVrPaths.DefaultFile, OpenCompositeInstall.LogFile);
             await Task.Run(() => DiagnosticsZip.Collect(host.Paths, profile, environment, versions, module, host.Context, openVr).Save(path));
             Saved = $"Saved {path}.";
         }

@@ -85,8 +85,8 @@ public sealed class AppHost : IAsyncDisposable
             Calibrations,
             () => Usb.Present()));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
-        OpenCompositeCopy = new OpenCompositeCopy(paths.OpenCompositeDir);
-        OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir), OpenCompositeCopy);
+        OpenComposite = new OpenCompositeInstall(OpenCompositeInstall.DefaultFolder);
+        OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, OpenComposite.Folder), OpenComposite);
 
         radio = new WinRtStationRadio(text => AppLog.Write(text));
         stationStore = new StationStore(paths.BaseStationsFile);
@@ -530,11 +530,8 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>Home's "OpenVR runtime" row and its "Set OpenComposite" (Mirador.md §4.6).</summary>
     public OpenVrGames OpenVr { get; }
 
-    /// <summary>Mirador's OpenComposite: the bundle and the per-user copy.</summary>
-    public OpenCompositeCopy OpenCompositeCopy { get; }
-
-    /// <summary>Why OpenVR games couldn't be put on Monado, or the copy brought up to date, at launch; null when all is well.</summary>
-    public string? OpenCompositeNotice { get; private set; }
+    /// <summary>Mirador's OpenComposite: OpenComposite as its installer put it.</summary>
+    public OpenCompositeInstall OpenComposite { get; }
 
     /// <summary>
     /// Puts Mirador together and reads its settings once, so that a file it had to set aside, or couldn't read, is
@@ -567,7 +564,6 @@ public sealed class AppHost : IAsyncDisposable
         host.CheckStore("base stations", paths.BaseStationsFile, () => host.stationStore.Load());
         _ = Task.Run(host.StartStationsAsync);
         _ = Task.Run(() => host.IsInstalledCopy(askHelper: true));
-        host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
     }
 

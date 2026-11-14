@@ -6,9 +6,9 @@ namespace Mirador.Core.Diagnostics;
 /// <summary>A full release from GitHub's <c>releases/latest</c>.</summary>
 /// <param name="Tag">The release's tag, such as <c>v0.2.0</c>.</param>
 /// <param name="Url">The release's page.</param>
-/// <param name="WindowsZipUrl">The download of the asset <c>OpenComposite-windows.zip</c>; null when the release has none or no digest.</param>
-/// <param name="WindowsZipSha256">That asset's SHA-256 from GitHub's <c>digest</c>, lower case without <c>sha256:</c>; null likewise.</param>
-public sealed record Release(string Tag, string Url, string? WindowsZipUrl, string? WindowsZipSha256);
+/// <param name="InstallerUrl">The download of the asset <c>OpenComposite-Setup.exe</c>; null when the release has none or no digest.</param>
+/// <param name="InstallerSha256">That asset's SHA-256 from GitHub's <c>digest</c>, lower case without <c>sha256:</c>; null likewise.</param>
+public sealed record Release(string Tag, string Url, string? InstallerUrl, string? InstallerSha256);
 
 /// <summary>Asks GitHub for the latest release of Mirador and of OpenComposite, to say so on Home. It never installs anything (Mirador.md §4.4 item 13).</summary>
 public static class UpdateCheck
@@ -17,7 +17,7 @@ public static class UpdateCheck
 
     public const string OpenCompositeRepository = "fzeruhn/OpenComposite";
 
-    private const string WindowsZip = "OpenComposite-windows.zip";
+    private const string Installer = "OpenComposite-Setup.exe";
 
     private const string DigestPrefix = "sha256:";
 
@@ -34,8 +34,8 @@ public static class UpdateCheck
                 && !(root.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True)
                 && !(root.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True))
             {
-                var (zip, sha) = FindZip(root);
-                return new Release(tag.GetString()!, url.GetString()!, zip, sha);
+                var (installer, sha) = FindInstaller(root);
+                return new Release(tag.GetString()!, url.GetString()!, installer, sha);
             }
         }
         catch (JsonException)
@@ -80,14 +80,14 @@ public static class UpdateCheck
         }
     }
 
-    private static (string? Url, string? Sha) FindZip(JsonElement release)
+    private static (string? Url, string? Sha) FindInstaller(JsonElement release)
     {
         if (release.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
         {
             foreach (var asset in assets.EnumerateArray())
             {
                 if (asset.ValueKind == JsonValueKind.Object
-                    && Text(asset, "name") == WindowsZip
+                    && Text(asset, "name") == Installer
                     && Text(asset, "browser_download_url") is { Length: > 0 } url
                     && Text(asset, "digest") is { } digest
                     && digest.StartsWith(DigestPrefix, StringComparison.OrdinalIgnoreCase)

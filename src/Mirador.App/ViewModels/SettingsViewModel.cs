@@ -83,12 +83,10 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     /// <summary>The "OpenComposite" card of About: the version and commit.</summary>
     public string OpenCompositeDescription =>
-        host.OpenCompositeCopy.CopySource is { } source
+        host.OpenComposite.Source is { } source
             ? $"{source.Describe()}. From GitHub."
-            : "Not downloaded yet: Home has \"Get OpenComposite\".";
-
-    /// <summary>Whether the copy holds a download, so "Roll back" shows.</summary>
-    public bool HoldsDownload => host.OpenCompositeCopy.HoldsDownload;
+            : host.OpenComposite.IsInstalled ? "Installed, version unknown."
+            : "Not installed yet: Home has \"Get OpenComposite\".";
 
     /// <summary>"today at 09:10" or "yesterday at 14:02", else "on 3 Nov at 14:02".</summary>
     internal static string DescribeLastCheck(DateTime last, DateTime now)
@@ -106,7 +104,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private void OpenCompositeChanged()
     {
         OnPropertyChanged(nameof(OpenCompositeDescription));
-        OnPropertyChanged(nameof(HoldsDownload));
     }
 
     public void Dispose() => App.Current.Updates.Changed -= OnUpdatesChanged;
@@ -197,7 +194,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         UpdatesText = outcome is null ? report.Describe() : $"{outcome} {report.Describe()}";
         MiradorReleaseUrl = report.NewerMirador is { } m && Uri.TryCreate(m.Url, UriKind.Absolute, out var url) ? url : null;
-        CanUpdateOpenComposite = report.NewerOpenComposite is { WindowsZipUrl: not null } && updates.CanUpdateOpenComposite;
+        CanUpdateOpenComposite = report.NewerOpenComposite is { InstallerUrl: not null } && updates.CanUpdateOpenComposite;
     }
 
     [RelayCommand]
@@ -216,24 +213,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception e)
         {
             AppLog.Write("Updating OpenComposite failed", e);
-            Problem = $"Updating OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
-        }
-
-        OpenCompositeChanged();
-    }
-
-    [RelayCommand]
-    private async Task RollBackOpenCompositeAsync()
-    {
-        try
-        {
-            Problem = null;
-            await ShowOutcome(App.Current.Updates.RollBackOpenCompositeAsync());
-        }
-        catch (Exception e)
-        {
-            AppLog.Write("Rolling OpenComposite back failed", e);
-            Problem = $"Rolling OpenComposite back failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
+            Problem = $"Updating OpenComposite failed: {e.Message.Trim()}";
         }
 
         OpenCompositeChanged();

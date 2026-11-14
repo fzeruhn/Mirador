@@ -78,40 +78,28 @@ public sealed class Updates(AppHost host)
     /// <summary>Raised, on whichever thread made the check, when <see cref="Last"/> changed.</summary>
     public event Action? Changed;
 
-    /// <summary>
-    /// The OpenComposite Mirador runs (the one place that says so): the per-user copy's, else the bundle's.
-    /// </summary>
-    private OpenCompositeSource? Installed() => host.OpenCompositeCopy.CopySource;
+    /// <summary>The OpenComposite installed for this user (the one place that says so).</summary>
+    private OpenCompositeSource? Installed() => host.OpenComposite.Source;
 
     /// <summary>Whether OpenComposite can be updated from the notice and the Updates card.</summary>
     public bool CanUpdateOpenComposite => true;
 
     /// <summary>
-    /// The "Update" buttons: downloads <paramref name="release"/>'s Windows zip, checks it against
-    /// <see cref="Release.WindowsZipSha256"/> and puts it in the per-user copy, then asks GitHub again.
+    /// The "Update" buttons and "Get OpenComposite": downloads <paramref name="release"/>'s installer, checks it against
+    /// <see cref="Release.InstallerSha256"/> and runs it silently, then asks GitHub again.
     /// </summary>
     /// <returns>What happened, in words for the user.</returns>
     /// <exception cref="MiradorException">Why nothing changed.</exception>
     public async Task<string> UpdateOpenCompositeAsync(Release release)
     {
-        var copy = host.OpenCompositeCopy;
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"Mirador/{AppInfo.Version}");
-        var folder = await OpenCompositeDownload.FetchAsync(http, release, copy.DownloadRoot, CancellationToken.None);
-
-        CopyOutcome outcome;
-        try
+        if (await host.OpenComposite.InstallAsync(http, release, host.Paths.DownloadDir, CancellationToken.None) == InstallOutcome.InUse)
         {
-            outcome = await Task.Run(() => copy.Install(folder));
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            throw new MiradorException($"Mirador couldn't put OpenComposite in place ({e.Message.Trim().TrimEnd('.')})");
+            throw new MiradorException("A game is using OpenComposite, so it wasn't changed. Close the game and try again.");
         }
 
-        var message = outcome == CopyOutcome.InUse
-            ? "OpenComposite will be updated when no game uses it."
-            : $"OpenComposite {UpdateReport.Plain(release.Tag)} is in place.";
+        var message = $"OpenComposite {UpdateReport.Plain(release.Tag)} is installed.";
         AppLog.Write(message);
         await CheckAsync();
         return message;
@@ -134,32 +122,6 @@ public sealed class Updates(AppHost host)
         return latest is null
             ? throw new MiradorException("The OpenComposite fork has no release yet.")
             : await UpdateOpenCompositeAsync(latest);
-    }
-
-    /// <summary>"Roll back": the OpenComposite before the one in use, then asks GitHub again.</summary>
-    /// <returns>What happened, in words for the user.</returns>
-    /// <exception cref="MiradorException">Why nothing changed.</exception>
-    public async Task<string> RollBackOpenCompositeAsync()
-    {
-        CopyOutcome outcome;
-        try
-        {
-            outcome = await Task.Run(host.OpenCompositeCopy.RollBack);
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            throw new MiradorException($"Mirador couldn't put the earlier OpenComposite back ({e.Message.Trim().TrimEnd('.')})");
-        }
-
-        var message = outcome switch
-        {
-            CopyOutcome.InUse => "A game is using OpenComposite. Close it and try again.",
-            CopyOutcome.NothingEarlier => "There is no earlier OpenComposite to go back to.",
-            _ => $"OpenComposite {host.OpenCompositeCopy.CopySource?.Describe()} is in place again.",
-        };
-        AppLog.Write(message);
-        await CheckAsync();
-        return message;
     }
 
     /// <summary>

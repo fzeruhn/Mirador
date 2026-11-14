@@ -41,9 +41,9 @@ public sealed partial class InstalledViewModel(AppHost host) : ObservableObject
             : current));
         Parts.Add(new InstalledItem(
             "OpenComposite",
-            host.OpenCompositeCopy.CopySource is { } source && source.Describe() is { Length: > 0 } described
-                ? described
-                : "Not installed: Home's OpenVR card gets it."));
+            host.OpenComposite.Source is { } source && source.Describe() is { Length: > 0 } described ? described
+            : host.OpenComposite.IsInstalled ? "Installed, version unknown"
+            : "Not installed: Home's OpenVR card gets it."));
         Parts.Add(new InstalledItem(
             "Direct-mode layer",
             File.Exists(Path.Combine(host.AppDir, "layer", DirectModeLayer.DllName))

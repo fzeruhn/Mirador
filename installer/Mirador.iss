@@ -9,8 +9,8 @@
   #define AppVersion "0.1.0"
 #endif
 #define Bundle "..\artifacts\bundle"
-; The bundle (tools\build-bundle.ps1) has no Monado or OpenComposite: the helper and the app download them (Mirador.md
-; section 4.11 items 55 and 56).
+; The bundle (tools\build-bundle.ps1) has no Monado or OpenComposite: the helper downloads Monado and the app installs
+; OpenComposite with its own installer.
 #define ServiceName "MiradorHelper"
 
 [Setup]
@@ -236,14 +236,6 @@ var
 begin
   if CurUninstallStep <> usUninstall then
     Exit;
-
-  { OpenVR games back on SteamVR, and OpenComposite's per-user copy gone, for the user who uninstalls (Mirador.md
-    section 4.6 item 24). It runs as the account that approved the prompt; other users' files stay. A failure only
-    leaves the copy where it is, so games still find their DLL. }
-  if not Exec(ExpandConstant('{app}\Mirador.exe'), '--restore-openvr', '', SW_HIDE, ewWaitUntilTerminated, Code) then
-    Log('Mirador.exe --restore-openvr could not be started.')
-  else if Code <> 0 then
-    Log(Format('Mirador.exe --restore-openvr: exit code %d (the OpenVR paths file could not be changed).', [Code]));
 
   { Mirador no longer starts at sign-in (Mirador.md section 4.8 item 33): the Run value is the uninstalling user's. }
   if not Exec(ExpandConstant('{app}\Mirador.exe'), '--remove-sign-in', '', SW_HIDE, ewWaitUntilTerminated, Code) then

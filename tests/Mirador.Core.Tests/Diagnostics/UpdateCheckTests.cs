@@ -39,8 +39,8 @@ public class UpdateCheckTests
               "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
             },
             {
-              "name": "OpenComposite-windows.zip",
-              "browser_download_url": "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-windows.zip",
+              "name": "OpenComposite-Setup.exe",
+              "browser_download_url": "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-Setup.exe",
               "digest": "sha256:ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789"
             }
           ]
@@ -48,7 +48,7 @@ public class UpdateCheckTests
         """;
 
     [Fact]
-    public void Parses_the_windows_zip_and_its_digest()
+    public void Parses_the_installer_and_its_digest()
     {
         var release = UpdateCheck.ParseLatest(WithAsset);
 
@@ -56,7 +56,7 @@ public class UpdateCheckTests
             new Release(
                 "v2026.11.20",
                 "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20",
-                "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-windows.zip",
+                "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-Setup.exe",
                 "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"),
             release);
     }
