@@ -9,8 +9,8 @@
   #define AppVersion "0.1.0"
 #endif
 #define Bundle "..\artifacts\bundle"
-; The bundle (tools\build-bundle.ps1) has no Monado or OpenComposite: the helper downloads Monado and the app installs
-; OpenComposite with its own installer.
+; The bundle (tools\build-bundle.ps1) has no Monado or OpenLamina: the helper downloads Monado and the app installs
+; OpenLamina with its own installer.
 #define ServiceName "MiradorHelper"
 
 [Setup]

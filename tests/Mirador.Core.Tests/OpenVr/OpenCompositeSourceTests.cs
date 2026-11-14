@@ -9,12 +9,22 @@ public class OpenCompositeSourceTests
     [Fact]
     public void Reads_a_release_source_txt()
     {
-        var source = OpenCompositeSource.Read($"OpenComposite 2026.11.06, commit {Commit}\nOpenComposite from the fork ...\n");
+        var source = OpenCompositeSource.Read($"OpenLamina 2026.11.06, commit {Commit}\nOpenComposite from the fork ...\n");
 
         Assert.NotNull(source);
         Assert.Equal("2026.11.06", source.Version);
         Assert.Equal(Commit, source.Commit);
         Assert.Equal("2026.11.06 (7534249)", source.Describe());
+    }
+
+    [Fact]
+    public void Reads_a_release_source_txt_from_before_the_rename()
+    {
+        var source = OpenCompositeSource.Read($"OpenComposite 2026.11.06, commit {Commit}\nFrom https://github.com/fzeruhn/OpenComposite\n");
+
+        Assert.NotNull(source);
+        Assert.Equal("2026.11.06", source.Version);
+        Assert.Equal(Commit, source.Commit);
     }
 
     [Fact]
@@ -32,7 +42,7 @@ public class OpenCompositeSourceTests
     [InlineData("")]
     [InlineData("\n")]
     [InlineData("something else")]
-    [InlineData("OpenComposite 2026.11.06, commit 7534249")]
+    [InlineData("OpenLamina 2026.11.06, commit 7534249")]
     [InlineData("7534249")]
     public void Other_text_is_null(string text)
     {

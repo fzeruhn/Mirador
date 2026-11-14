@@ -11,14 +11,14 @@ public enum InstallOutcome
     /// <summary>The release is installed.</summary>
     Installed,
 
-    /// <summary>A game holds OpenComposite's DLL: nothing was changed, and a later try may succeed.</summary>
+    /// <summary>A game holds OpenLamina's DLL: nothing was changed, and a later try may succeed.</summary>
     InUse,
 }
 
 /// <summary>
-/// OpenComposite as its own installer puts it for this user: <see cref="DefaultFolder"/>, with <c>bin\vrclient_x64.dll</c>
+/// OpenLamina as its own installer puts it for this user: <see cref="DefaultFolder"/>, with <c>bin\vrclient_x64.dll</c>
 /// and a <c>SOURCE.txt</c> whose first line names the release. Mirador gets and updates it by running the fork's
-/// <c>OpenComposite-Setup.exe</c> silently; OpenComposite's own uninstall entry removes it. Mirador keeps no copy.
+/// <c>OpenLamina-Setup.exe</c> silently; OpenLamina's own uninstall entry removes it. Mirador keeps no copy.
 /// </summary>
 /// <param name="folder">The installer's folder.</param>
 /// <param name="runner">Runs the installer; null: <see cref="CommandRunner"/>.</param>
@@ -41,20 +41,34 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
     private int installing;
 
     /// <summary>
-    /// Where the installer puts OpenComposite, always: <c>%LOCALAPPDATA%\Programs\OpenComposite</c>. The OpenVR paths file
-    /// names it once OpenComposite is in front.
+    /// Where the installer puts OpenLamina, always: <c>%LOCALAPPDATA%\Programs\OpenLamina</c>. The OpenVR paths file
+    /// names it once OpenLamina is in front.
     /// </summary>
     public static string DefaultFolder { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "OpenLamina");
+
+    /// <summary>
+    /// Where the OpenComposite before OpenLamina was installed: <c>%LOCALAPPDATA%\Programs\OpenComposite</c>. A different
+    /// app with its own uninstall entry, which Mirador never changes; Home says so when OpenVR games still go to it.
+    /// </summary>
+    public static string LegacyFolder { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "OpenComposite");
 
-    /// <summary>OpenComposite's own log: <c>%LOCALAPPDATA%\OpenComposite\logs\opencomposite.log</c>.</summary>
-    public static string LogFile { get; } = Path.Combine(
+    /// <summary>OpenLamina's own log: <c>%LOCALAPPDATA%\OpenLamina\logs\openlamina.log</c>.</summary>
+    public static string NewLogFile { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenLamina", "logs", "openlamina.log");
+
+    /// <summary>The log the OpenComposite before OpenLamina wrote: <c>%LOCALAPPDATA%\OpenComposite\logs\opencomposite.log</c>.</summary>
+    public static string LegacyLogFile { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenComposite", "logs", "opencomposite.log");
+
+    /// <summary>The log to give with a bug report: OpenLamina's, or, if it has written none, the older OpenComposite's.</summary>
+    public static string LogFile => !File.Exists(NewLogFile) && File.Exists(LegacyLogFile) ? LegacyLogFile : NewLogFile;
 
     /// <summary>The installer's folder.</summary>
     public string Folder => folder;
 
-    /// <summary>Whether OpenComposite is installed: its DLL is there.</summary>
+    /// <summary>Whether OpenLamina is installed: its DLL is there.</summary>
     public bool IsInstalled => File.Exists(DllPath);
 
     /// <summary>The installed release, from its <c>SOURCE.txt</c>; null when there is none or it can't be read.</summary>
@@ -74,7 +88,7 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
         }
     }
 
-    /// <summary>Whether a game holds one of OpenComposite's DLLs now (they can't be replaced then).</summary>
+    /// <summary>Whether a game holds one of OpenLamina's DLLs now (they can't be replaced then).</summary>
     public bool InUse => Dlls.Any(name => Held(Path.Combine(folder, "bin", name)));
 
     private static bool Held(string dll)
@@ -101,7 +115,7 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
 
     /// <summary>The line for <c>versions.txt</c> and Diagnostics.</summary>
     public string VersionLine() =>
-        Source is { } source ? $"OpenComposite: {source.Describe()}" : IsInstalled ? "OpenComposite: installed, version unknown" : "OpenComposite: not installed";
+        Source is { } source ? $"OpenLamina: {source.Describe()}" : IsInstalled ? "OpenLamina: installed, version unknown" : "OpenLamina: not installed";
 
     private string DllPath => Path.Combine(folder, "bin", Dll);
 
@@ -109,7 +123,7 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
     /// Downloads <paramref name="release"/>'s installer into <paramref name="downloadDir"/>, checks it against GitHub's
     /// SHA-256, runs it silently (<c>/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS</c>: it never closes a
     /// game, nor switches OpenVR games by itself) and checks that the release it names is installed. While a game holds
-    /// OpenComposite nothing is downloaded or run.
+    /// OpenLamina nothing is downloaded or run.
     /// </summary>
     /// <exception cref="MiradorException">
     /// The release can't be trusted, fetched or installed, or another install is running; the message says why.
@@ -118,7 +132,7 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
     {
         if (Interlocked.Exchange(ref installing, 1) == 1)
         {
-            throw new MiradorException("OpenComposite is being installed already: wait for that to finish.");
+            throw new MiradorException("OpenLamina is being installed already: wait for that to finish.");
         }
 
         try
@@ -135,7 +149,7 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
     {
         if (release.InstallerUrl is null || release.InstallerSha256 is null)
         {
-            throw new MiradorException($"OpenComposite {Plain(release.Tag)} has no installer that Mirador can check.");
+            throw new MiradorException($"OpenLamina {Plain(release.Tag)} has no installer that Mirador can check.");
         }
 
         // The requested address, not wherever GitHub redirects to: GitHub serves its release files from its own file host.
@@ -143,13 +157,13 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
             || url.Scheme != Uri.UriSchemeHttps
             || !string.Equals(url.Host, Host, StringComparison.OrdinalIgnoreCase))
         {
-            throw new MiradorException("OpenComposite's installer isn't on GitHub, so Mirador won't fetch it.");
+            throw new MiradorException("OpenLamina's installer isn't on GitHub, so Mirador won't fetch it.");
         }
 
         var version = Plain(release.Tag);
         if (!SafeName().IsMatch(version))
         {
-            throw new MiradorException($"OpenComposite's release name \"{release.Tag}\" isn't a version Mirador understands.");
+            throw new MiradorException($"OpenLamina's release name \"{release.Tag}\" isn't a version Mirador understands.");
         }
 
         if (InUse)
@@ -158,11 +172,11 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
         }
 
         Directory.CreateDirectory(downloadDir);
-        var setup = Path.Combine(downloadDir, $"OpenComposite-Setup-{version}.exe");
+        var setup = Path.Combine(downloadDir, $"OpenLamina-Setup-{version}.exe");
         var part = setup + ".tmp";
         try
         {
-            await CheckedDownload.ToFileAsync(http, url, part, MaxSetupBytes, release.InstallerSha256, "OpenComposite's installer", m => new MiradorException(m), ct)
+            await CheckedDownload.ToFileAsync(http, url, part, MaxSetupBytes, release.InstallerSha256, "OpenLamina's installer", m => new MiradorException(m), ct)
                 .ConfigureAwait(false);
             File.Move(part, setup, overwrite: true);
 
@@ -178,26 +192,26 @@ public sealed partial class OpenCompositeInstall(string folder, ICommandRunner? 
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                throw new MiradorException($"OpenComposite's installer didn't finish within {SetupLimit.TotalMinutes:0} minutes.");
+                throw new MiradorException($"OpenLamina's installer didn't finish within {SetupLimit.TotalMinutes:0} minutes.");
             }
 
             if (code != 0)
             {
                 throw new MiradorException(InUse
-                    ? "A game started using OpenComposite meanwhile, so it wasn't updated. Close the game and try again."
-                    : $"OpenComposite's installer ended with code {code}, so OpenComposite may not have changed. If OpenComposite's own window is open, close it and try again.");
+                    ? "A game started using OpenLamina meanwhile, so it wasn't updated. Close the game and try again."
+                    : $"OpenLamina's installer ended with code {code}, so OpenLamina may not have changed. If OpenLamina's own window is open, close it and try again.");
             }
 
             if (Source?.Version != version)
             {
-                throw new MiradorException($"OpenComposite's installer ran, but {Folder} doesn't hold OpenComposite {version}.");
+                throw new MiradorException($"OpenLamina's installer ran, but {Folder} doesn't hold OpenLamina {version}.");
             }
 
             return InstallOutcome.Installed;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new MiradorException($"Mirador couldn't run OpenComposite's installer ({e.Message.Trim().TrimEnd('.')}).");
+            throw new MiradorException($"Mirador couldn't run OpenLamina's installer ({e.Message.Trim().TrimEnd('.')}).");
         }
         finally
         {

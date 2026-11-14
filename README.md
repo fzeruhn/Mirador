@@ -33,7 +33,7 @@ Catch2 tests (skipped with a warning when the C++ tools are missing, except on C
 The installer: `tools\build-bundle.ps1` puts the install layout in `artifacts\bundle`, then
 `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
 `artifacts\Mirador-<version>-setup.exe` from it. The bundle has the layer, which it builds from `layer\`, and no Monado
-or OpenComposite: Mirador downloads Monado, and installs OpenComposite with OpenComposite's own installer.
+or OpenLamina: Mirador downloads Monado, and installs OpenLamina with OpenLamina's own installer.
 
 CI (`.github/workflows/`):
 - `build.yml` builds and tests every push and pull request on a Windows runner, leaving out tests marked
@@ -63,7 +63,7 @@ CI (`.github/workflows/`):
 
 Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`. Uninstalling leaves it there, with the branches Mirador built
 (`Builds\`) and its build tools (`tools\`), often several gigabytes: delete that folder by hand to remove them too.
-OpenComposite is an app of its own: Windows' Installed apps removes it.
+OpenLamina is an app of its own: Windows' Installed apps removes it. An OpenComposite installed before the rename is another app: Mirador leaves it alone, and Home says so when OpenVR games still go to it.
 
 The helper service is not part of a plain build. To try it on a development machine, run
 `tools\dev-install-helper.ps1` from an administrator PowerShell (it installs the service `MiradorHelper` from

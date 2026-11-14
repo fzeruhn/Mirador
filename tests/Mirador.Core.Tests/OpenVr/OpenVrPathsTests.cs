@@ -33,7 +33,7 @@ public class OpenVrPathsTests
         }
         """;
 
-    private static string Ours(TempDir dir) => dir.File("Mirador", "OpenComposite");
+    private static string Ours(TempDir dir) => dir.File("Mirador", "OpenLamina");
 
     private static OpenVrPaths With(TempDir dir, string? content, string? ours = null)
     {
@@ -172,14 +172,14 @@ public class OpenVrPathsTests
     public void Non_ascii_folder_round_trips()
     {
         using var dir = new TempDir();
-        const string zoe = @"C:\Users\Zoë Ann\AppData\Local\Mirador\OpenComposite";
+        const string zoe = @"C:\Users\Zoë Ann\AppData\Local\Mirador\OpenLamina";
         var paths = With(dir, FinnsFile, zoe);
 
         Assert.Null(paths.UseMonado());
 
         Assert.Equal([zoe, SteamVr], Runtimes(dir));
         Assert.Equal(OpenVrTarget.Monado, paths.Read().Target);
-        var sameFolder = new OpenVrPaths(dir.File("openvr", "openvrpaths.vrpath"), "c:/users/zoë ann/appdata/local/mirador/opencomposite/");
+        var sameFolder = new OpenVrPaths(dir.File("openvr", "openvrpaths.vrpath"), "c:/users/zoë ann/appdata/local/mirador/openlamina/");
         Assert.Equal(OpenVrTarget.Monado, sameFolder.Read().Target);
     }
 
@@ -188,9 +188,9 @@ public class OpenVrPathsTests
     {
         using var dir = new TempDir();
 
-        var state = With(dir, File3(@"D:\OpenComposite", SteamVr)).Read();
+        var state = With(dir, File3(@"D:\OpenLamina", SteamVr)).Read();
 
-        Assert.Equal(new OpenVrState(OpenVrTarget.Other, @"D:\OpenComposite", null), state);
+        Assert.Equal(new OpenVrState(OpenVrTarget.Other, @"D:\OpenLamina", null), state);
     }
 
     [Fact]
@@ -202,9 +202,9 @@ public class OpenVrPathsTests
     }
 
     [Theory]
-    [InlineData(@"C:\Mirador\OpenComposite", @"c:/mirador/opencomposite/", true)]
-    [InlineData(@"C:\Mirador\OpenComposite\", @"C:\Mirador\OpenComposite", true)]
-    [InlineData(@"C:\Mirador\OpenComposite", @"C:\Mirador\OpenComposite2", false)]
+    [InlineData(@"C:\Mirador\OpenLamina", @"c:/mirador/openlamina/", true)]
+    [InlineData(@"C:\Mirador\OpenLamina\", @"C:\Mirador\OpenLamina", true)]
+    [InlineData(@"C:\Mirador\OpenLamina", @"C:\Mirador\OpenComposite2", false)]
     public void Same_path(string a, string b, bool same)
     {
         Assert.Equal(same, OpenVrPaths.SamePath(a, b));

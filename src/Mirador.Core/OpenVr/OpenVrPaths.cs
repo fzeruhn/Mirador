@@ -11,7 +11,7 @@ public enum OpenVrTarget
     /// <summary>No file, an empty list, or a file Mirador can't read.</summary>
     None,
 
-    /// <summary>The installed OpenComposite, so OpenXR and Monado.</summary>
+    /// <summary>The installed OpenLamina, so OpenXR and Monado.</summary>
     Monado,
 
     /// <summary>SteamVR's own folder.</summary>
@@ -30,11 +30,11 @@ public sealed record OpenVrState(OpenVrTarget Target, string? First, string? Pro
 /// <summary>
 /// The user's <c>openvrpaths.vrpath</c>, which Valve's <c>openvr_api.dll</c> in every OpenVR game reads to find the
 /// runtime: the first folder of its <c>runtime</c> list, whose <c>bin\vrclient_x64.dll</c> it loads (Mirador.md §4.6).
-/// Switching keeps every other key and entry, as OpenComposite's own switcher does, and never writes over a file it
+/// Switching keeps every other key and entry, as OpenLamina's own switcher does, and never writes over a file it
 /// couldn't read.
 /// </summary>
 /// <param name="file">The paths file.</param>
-/// <param name="ourRuntimeDir">The installed OpenComposite: the runtime folder, with <c>bin\</c> below it.</param>
+/// <param name="ourRuntimeDir">The installed OpenLamina: the runtime folder, with <c>bin\</c> below it.</param>
 public sealed class OpenVrPaths(string file, string ourRuntimeDir)
 {
     private static readonly JsonWriterOptions WriterOptions = new()
@@ -62,7 +62,7 @@ public sealed class OpenVrPaths(string file, string ourRuntimeDir)
         return first is null ? new OpenVrState(OpenVrTarget.None, null, null) : new OpenVrState(Classify(first), first, null);
     }
 
-    /// <summary>Puts the installed OpenComposite first; every other entry follows in its order.</summary>
+    /// <summary>Puts the installed OpenLamina first; every other entry follows in its order.</summary>
     /// <returns>Null when written, else why nothing was written.</returns>
     public string? UseMonado()
     {

@@ -18,7 +18,7 @@ public class OpenVrGamesTests
             {
                 Directory.CreateDirectory(Path.Combine(InstallDir, "bin"));
                 File.WriteAllBytes(Path.Combine(InstallDir, "bin", "vrclient_x64.dll"), [1, 2, 3]);
-                File.WriteAllText(Path.Combine(InstallDir, "SOURCE.txt"), "OpenComposite 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
+                File.WriteAllText(Path.Combine(InstallDir, "SOURCE.txt"), "OpenLamina 2026.11.06, commit 75342495640501953fc2c17f73eeb4d124e8528e\n");
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(PathsFile)!);
@@ -32,8 +32,8 @@ public class OpenVrGamesTests
             Games = new OpenVrGames(Paths, new OpenCompositeInstall(InstallDir, new Build.FakeCommandRunner()));
         }
 
-        /// <summary>OpenComposite as its installer puts it.</summary>
-        public string InstallDir => dir.File("Programs", "OpenComposite");
+        /// <summary>OpenLamina as its installer puts it.</summary>
+        public string InstallDir => dir.File("Programs", "OpenLamina");
 
         public string PathsFile => dir.File("openvr", "openvrpaths.vrpath");
 
@@ -42,7 +42,7 @@ public class OpenVrGamesTests
 
         public OpenVrGames Games { get; }
 
-        /// <summary>OpenComposite set, then SteamVR putting itself first again, as it does when it starts.</summary>
+        /// <summary>OpenLamina set, then SteamVR putting itself first again, as it does when it starts.</summary>
         public void SetThenSteamVrInFront()
         {
             Assert.Null(Games.UseMonado());
@@ -55,7 +55,7 @@ public class OpenVrGamesTests
     }
 
     [Fact]
-    public void Use_monado_puts_the_installed_opencomposite_first()
+    public void Use_monado_puts_the_installed_openlamina_first()
     {
         using var w = new World();
 
@@ -72,7 +72,7 @@ public class OpenVrGamesTests
         var before = File.ReadAllText(w.PathsFile);
 
         Assert.False(w.Games.Available);
-        Assert.Equal("OpenComposite isn't installed yet: press \"Get OpenComposite\" first.", w.Games.UseMonado());
+        Assert.Equal("OpenLamina isn't installed yet: press \"Get OpenLamina\" first.", w.Games.UseMonado());
         Assert.Equal(before, File.ReadAllText(w.PathsFile));
     }
 
@@ -96,7 +96,23 @@ public class OpenVrGamesTests
         using var w = new World();
         w.Games.UseMonado();
 
-        Assert.Equal(new OpenVrView("OpenComposite", false, null, null), w.Games.View(true, null));
+        Assert.Equal(new OpenVrView("OpenLamina", false, null, null), w.Games.View(true, null));
+    }
+
+    [Fact]
+    public void The_old_opencomposite_in_front_is_named_and_the_button_offered()
+    {
+        using var w = new World(true, OpenCompositeInstall.LegacyFolder, SteamVr);
+
+        var view = w.Games.View(true, null);
+
+        Assert.Equal("OpenComposite (before OpenLamina)", view.Runtime);
+        Assert.True(view.OffersOpenComposite);
+        Assert.Contains("still go to the old OpenComposite", view.Warning);
+        Assert.Contains(OpenVrGames.SetOpenCompositeLabel, view.Warning);
+        Assert.Null(view.Problem);
+        Assert.Null(w.Games.UseMonado()); // and pressing it puts OpenLamina first, the old one after
+        Assert.Equal(OpenVrTarget.Monado, w.Paths.Read().Target);
     }
 
     [Fact]
@@ -166,7 +182,7 @@ public class OpenVrGamesTests
         var view = w.Games.View(true, null);
 
         Assert.Equal(
-            "OpenComposite isn't installed any more, so OpenVR games can't start. Press \"Get OpenComposite\" to install it again.",
+            "OpenLamina isn't installed any more, so OpenVR games can't start. Press \"Get OpenLamina\" to install it again.",
             view.Problem);
         Assert.False(w.Games.Available);
     }

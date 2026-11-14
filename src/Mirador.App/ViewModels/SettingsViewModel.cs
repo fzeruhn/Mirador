@@ -72,7 +72,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public bool HasMiradorRelease => MiradorReleaseUrl is not null;
 
-    /// <summary>Whether "Update OpenComposite" shows: a newer OpenComposite is out and Mirador can update it.</summary>
+    /// <summary>Whether "Update OpenLamina" shows: a newer OpenLamina is out and Mirador can update it.</summary>
     [ObservableProperty]
     public partial bool CanUpdateOpenComposite { get; set; }
 
@@ -81,12 +81,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(CheckNowCommand))]
     public partial bool Checking { get; set; }
 
-    /// <summary>The "OpenComposite" card of About: the version and commit.</summary>
+    /// <summary>The "OpenLamina" card of About: the version and commit.</summary>
     public string OpenCompositeDescription =>
         host.OpenComposite.Source is { } source
             ? $"{source.Describe()}. From GitHub."
             : host.OpenComposite.IsInstalled ? "Installed, version unknown."
-            : "Not installed yet: Home has \"Get OpenComposite\".";
+            : "Not installed yet: Home has \"Get OpenLamina\".";
 
     /// <summary>"today at 09:10" or "yesterday at 14:02", else "on 3 Nov at 14:02".</summary>
     internal static string DescribeLastCheck(DateTime last, DateTime now)
@@ -212,8 +212,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
         catch (Exception e)
         {
-            AppLog.Write("Updating OpenComposite failed", e);
-            Problem = $"Updating OpenComposite failed: {e.Message.Trim()}";
+            AppLog.Write("Updating OpenLamina failed", e);
+            Problem = $"Updating OpenLamina failed: {e.Message.Trim()}";
         }
 
         OpenCompositeChanged();

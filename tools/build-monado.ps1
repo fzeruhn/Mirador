@@ -150,7 +150,7 @@ $options = @(
     "-DCMAKE_INSTALL_PREFIX=$Install"
     '-DX_VCPKG_APPLOCAL_DEPS_INSTALL=ON'
     '-DXRT_SERVICE_EXECUTABLE=mirador-standin'
-    # Mirador never uses Monado's SteamVR driver (OpenVR games go through OpenComposite); with its PDB it was three
+    # Mirador never uses Monado's SteamVR driver (OpenVR games go through OpenLamina); with its PDB it was three
     # quarters of the download. A branch that wants it turns it back on with its extra options.
     '-DXRT_FEATURE_STEAMVR_PLUGIN=OFF'
     # Not linked incrementally, so unused code goes; no identical-function folding (it makes distinct functions compare equal).

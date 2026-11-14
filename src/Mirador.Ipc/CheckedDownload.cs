@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 namespace Mirador.Ipc;
 
 /// <summary>
-/// The one way Mirador fetches and unpacks a file from the internet (the bundled Monado, OpenComposite, the build tools):
+/// The one way Mirador fetches and unpacks a file from the internet (the bundled Monado, OpenLamina, the build tools):
 /// a size cap while it streams, the SHA-256 checked before anything uses it, a timeout that restarts with every bit of
 /// the body, and every zip entry checked to stay in its folder before anything is written. A failure's message is meant
 /// for the user as it is; <c>fail</c> makes the caller's own exception from it.

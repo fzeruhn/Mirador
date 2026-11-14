@@ -2,8 +2,8 @@
 <#
 .SYNOPSIS
     Builds Mirador's install bundle (artifacts\bundle): the app, the helper, the stand-in, the direct-mode layer and the
-    tools a branch build needs. Monado and OpenComposite aren't in it: the helper downloads the bundled Monado, and
-    "Get OpenComposite" the fork's release (Mirador.md §4.11 items 55 and 56).
+    tools a branch build needs. Monado and OpenLamina aren't in it: the helper downloads the bundled Monado, and
+    "Get OpenLamina" the fork's release (Mirador.md §4.11 items 55 and 56).
 .DESCRIPTION
     The bundle is the install layout of the plan's Global Constraints, which the installer (installer\Mirador.iss)
     copies to {app}:

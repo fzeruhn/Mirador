@@ -2,8 +2,8 @@ name: Installer
 
 # Builds Mirador's installer on every push, so a broken installer shows before a release; a v* tag also makes a draft
 # release with it (Mirador.md §4.11 item 54). The tests run in build.yml, for tags too. The installer has
-# no Monado and no OpenComposite: each profile gets its Monado from Mirador (§4.11 item 55), and Home offers
-# "Get OpenComposite" (item 56). Unsigned until §10.2 is settled.
+# no Monado and no OpenLamina: each profile gets its Monado from Mirador (§4.11 item 55), and Home offers
+# "Get OpenLamina" (item 56). Unsigned until §10.2 is settled.
 
 on:
   push:

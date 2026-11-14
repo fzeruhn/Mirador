@@ -169,7 +169,7 @@ public partial class App : Application
         MainWindow.ShowAndActivate();
     }
 
-    /// <summary>At most once a day, when on: a newer release of Mirador or of OpenComposite shows on Home.</summary>
+    /// <summary>At most once a day, when on: a newer release of Mirador or of OpenLamina shows on Home.</summary>
     private async Task CheckForUpdateAsync()
     {
         try
