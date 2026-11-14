@@ -36,9 +36,17 @@ public class HelperProcessLauncherTests
 
         private int pollsSinceStop;
 
+        /// <summary>The Clean flag of each Stop sent.</summary>
+        public ConcurrentQueue<bool> StopsClean { get; } = new();
+
         public Task<HelperReply> SendAsync(HelperRequest request, CancellationToken ct)
         {
             Commands.Enqueue(request.Command);
+            if (request.Command == HelperCommand.StopMonadoElevated)
+            {
+                StopsClean.Enqueue(request.Clean == true);
+            }
+
             return Task.FromResult(request.Command switch
             {
                 HelperCommand.StartMonadoElevated => Started(request.Start),
@@ -245,6 +253,21 @@ public class HelperProcessLauncherTests
         }
 
         Assert.Contains(HelperCommand.StopMonadoElevated, client.Commands);
+        Assert.Equal([false], client.StopsClean);
+    }
+
+    [Fact]
+    public async Task Ending_cleanly_asks_the_helper_for_the_clean_stop_and_waits_for_the_exit()
+    {
+        using var dir = new TempDir();
+        var client = new FakeElevatedClient { PollsAfterStop = 0 };
+
+        await using var process = Launcher(client, dir.File("log")).Start(Spec);
+
+        Assert.True(await process.EndCleanlyAsync(TimeSpan.FromSeconds(3)).WaitAsync(Limit));
+        Assert.Equal([true], client.StopsClean);
+        process.Kill(); // after the clean stop: nothing more is sent
+        Assert.Single(client.StopsClean);
     }
 
     [Fact]

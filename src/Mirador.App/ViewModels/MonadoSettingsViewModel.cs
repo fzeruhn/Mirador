@@ -109,7 +109,7 @@ public sealed partial class MonadoSettingsViewModel : ObservableObject
     private async Task RestartAsync()
     {
         Save();
-        await host.Session.StopAsync(CancellationToken.None);
+        await host.Session.StopAsync(CancellationToken.None, restart: true);
         var outcome = await App.Current.StartAsync(StartReason.Button);
         Problem = outcome.Ok ? null : $"Monado didn't start again: {outcome.Message}";
     }

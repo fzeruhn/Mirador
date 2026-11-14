@@ -682,6 +682,10 @@ public sealed class HelperHandlerTests : IDisposable
 
         Assert.True(reply.Ok);
         Assert.Equal(Alice, elevated.StopCaller?.Sid);
+        Assert.False(elevated.StopClean);
+
+        await ElevatedHandler(elevated).HandleAsync(new HelperRequest(HelperCommand.StopMonadoElevated, Clean: true), Caller(Alice));
+        Assert.True(elevated.StopClean);
     }
 
     [Fact]
@@ -711,9 +715,12 @@ public sealed class HelperHandlerTests : IDisposable
             return StartReply;
         }
 
-        public HelperReply Stop(CallerInfo caller)
+        public bool? StopClean { get; private set; }
+
+        public HelperReply Stop(CallerInfo caller, bool clean)
         {
             StopCaller = caller;
+            StopClean = clean;
             return new HelperReply(true);
         }
 

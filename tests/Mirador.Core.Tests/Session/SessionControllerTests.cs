@@ -59,6 +59,46 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task A_stop_lets_monado_end_by_itself_before_any_kill()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        h.Launcher.Last!.EndsCleanly = true;
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.False(h.Launcher.Last.Killed);
+        Assert.Contains("end cleanly", h.Steps.All);
+    }
+
+    [Fact]
+    public async Task A_restart_kills_monado_at_once_so_its_controllers_stay_on()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        h.Launcher.Last!.EndsCleanly = true;
+
+        await h.Controller.StopAsync(CancellationToken.None, restart: true).WaitAsync(Limit);
+
+        Assert.True(h.Launcher.Last.Killed);
+        Assert.DoesNotContain("end cleanly", h.Steps.All);
+    }
+
+    [Fact]
+    public async Task A_monado_that_does_not_end_by_itself_is_killed()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.True(h.Launcher.Last!.Killed);
+        var steps = h.Steps.All.ToList();
+        Assert.Contains("end cleanly", steps);
+        Assert.True(steps.IndexOf("end cleanly") < steps.IndexOf("kill"));
+    }
+
+    [Fact]
     public async Task A_profile_without_run_as_administrator_runs_as_you_whatever_the_consent()
     {
         await using var h = new Harness(installedCopy: true);

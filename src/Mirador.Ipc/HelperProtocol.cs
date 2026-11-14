@@ -139,9 +139,11 @@ public sealed record ElevatedStart(
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and
 /// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a weekly build's name, checked by the helper), and
-/// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper).
+/// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper), and
+/// <see cref="Clean"/> only with <see cref="HelperCommand.StopMonadoElevated"/> (Monado is asked to end by itself first).
 /// </summary>
-public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null);
+public sealed record HelperRequest(
+    [property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null, bool? Clean = null);
 
 /// <summary>
 /// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing

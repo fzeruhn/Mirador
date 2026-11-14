@@ -157,6 +157,20 @@ internal sealed class FakeProcess(Steps steps) : IRunningProcess
         exited.TrySetResult(KilledExitCode);
     }
 
+    /// <summary>Whether <see cref="EndCleanlyAsync"/> ends it (exit code 0), as Monado does on its exit key.</summary>
+    public bool EndsCleanly { get; set; }
+
+    public Task<bool> EndCleanlyAsync(TimeSpan limit)
+    {
+        steps.Add("end cleanly");
+        if (EndsCleanly)
+        {
+            exited.TrySetResult(0);
+        }
+
+        return Task.FromResult(EndsCleanly);
+    }
+
     public ValueTask DisposeAsync()
     {
         Disposed = true;

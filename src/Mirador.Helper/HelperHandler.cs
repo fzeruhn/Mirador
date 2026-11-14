@@ -171,6 +171,12 @@ public sealed class HelperHandler
             return WaitMonadoElevated(caller);
         }
 
+        // A clean stop takes seconds: it doesn't hold up the other commands (each elevated Monado has its own lock).
+        if (command == HelperCommand.StopMonadoElevated)
+        {
+            return StopMonadoElevated(caller, request.Clean == true);
+        }
+
         // A download takes minutes: it doesn't hold up the other commands (the installer takes its own lock).
         if (command == HelperCommand.InstallMonado)
         {
@@ -209,7 +215,6 @@ public sealed class HelperHandler
             HelperCommand.GetPimaxEyeBlob => GetPimaxEyeBlob(),
             HelperCommand.RevokeElevatedMonado => RevokeElevatedMonado(caller),
             HelperCommand.StartMonadoElevated => StartMonadoElevated(request.Start, caller),
-            HelperCommand.StopMonadoElevated => StopMonadoElevated(caller),
             HelperCommand.RollBackMonado =>
                 caller is null ? new HelperReply(false, NoCaller)
                 : !InstalledMirador.IsInstalledCopy(caller.ImagePath, installDir) ? new HelperReply(false, NotInstalledMirador)
@@ -237,15 +242,15 @@ public sealed class HelperHandler
         return start is null ? new HelperReply(false, NoStart) : elevated.Start(start, caller);
     }
 
-    /// <summary>Ends the elevated Monado this caller started.</summary>
-    private HelperReply StopMonadoElevated(CallerInfo? caller)
+    /// <summary>Ends the elevated Monado this caller started; with <paramref name="clean"/>, asking it to end by itself first.</summary>
+    private HelperReply StopMonadoElevated(CallerInfo? caller, bool clean)
     {
         if (caller is null)
         {
             return new HelperReply(false, NoCaller);
         }
 
-        return elevated is null ? new HelperReply(false, NoElevated) : elevated.Stop(caller);
+        return elevated is null ? new HelperReply(false, NoElevated) : elevated.Stop(caller, clean);
     }
 
     /// <summary>Whether this caller's elevated Monado has ended, and its exit code; outside the lock, answered at once.</summary>

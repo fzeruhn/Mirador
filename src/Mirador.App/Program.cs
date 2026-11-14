@@ -25,6 +25,12 @@ public static partial class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Ending Monado cleanly: a key into its console, from this short-lived process. No window, no log, no app.
+        if (ConsoleExitKey.Requested(args) is { } monado)
+        {
+            return ConsoleExitKey.Send(monado) is null ? 0 : 1;
+        }
+
         var parsed = AppArgs.Parse(args);
 
         // The elevated step of "Run Monado as administrator": records this user's consent, and SteamVR's Lighthouse DLLs

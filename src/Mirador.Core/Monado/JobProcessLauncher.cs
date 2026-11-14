@@ -14,11 +14,17 @@ public sealed class JobProcessLauncher : IProcessLauncher, IDisposable
 {
     private readonly object gate = new();
     private readonly SafeFileHandle job;
+    private readonly Func<int, bool>? exitKey;
     private bool disposed;
 
+    /// <param name="exitKey">
+    /// Writes the key that ends a process cleanly into its console (<see cref="Mirador.Ipc.ConsoleExitKey.RunSender"/>):
+    /// true when written. Null: <see cref="IRunningProcess.EndCleanlyAsync"/> never ends one.
+    /// </param>
     /// <exception cref="MiradorException">Windows would not create the job.</exception>
-    public JobProcessLauncher()
+    public JobProcessLauncher(Func<int, bool>? exitKey = null)
     {
+        this.exitKey = exitKey;
         try
         {
             job = Mirador.Ipc.ProcessJobs.CreateKillOnCloseJob();
@@ -53,7 +59,7 @@ public sealed class JobProcessLauncher : IProcessLauncher, IDisposable
                         $"Couldn't start {spec.FileName}: Windows wouldn't put it in the group that stops it when Mirador closes ({Reason(new Win32Exception(error))}).");
                 }
 
-                return new RunningProcess(process, job);
+                return new RunningProcess(process, job, exitKey: exitKey);
             }
             catch
             {

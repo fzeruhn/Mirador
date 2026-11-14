@@ -5,6 +5,13 @@ using Mirador.Ipc;
 using Mirador.Helper;
 using Mirador.Helper.ElevatedMonado;
 
+// `Mirador.Helper.exe --send-exit-key <pid>`: started by the helper with an elevated Monado's own token, in its session,
+// to end it cleanly (ConsoleExitKey). Writes one key into that Monado's console and exits.
+if (ConsoleExitKey.Requested(args) is { } monado)
+{
+    return ConsoleExitKey.Send(monado) is null ? 0 : 1; // no console left to say why: the exit code does
+}
+
 // `Mirador.Helper.exe --restore-runtime`: what the uninstaller runs. Puts back the OpenXR runtime Mirador replaced,
 // once, and exits.
 if (args is ["--restore-runtime"])

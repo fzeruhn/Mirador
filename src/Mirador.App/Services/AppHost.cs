@@ -92,7 +92,8 @@ public sealed class AppHost : IAsyncDisposable
         stationStore = new StationStore(paths.BaseStationsFile);
         Stations = new StationManager(radio, stationStore, StationSettings, TimeProvider.System, text => AppLog.Write(text));
 
-        launcher = new JobProcessLauncher();
+        var self = Environment.ProcessPath;
+        launcher = new JobProcessLauncher(self is null ? null : pid => ConsoleExitKey.RunSender(self, pid));
         ElevatedConsent = new ElevatedConsent(new RegistryConsentValues());
         var elevatedLogPath = ElevatedLogPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado", CurrentSid() + ".log");

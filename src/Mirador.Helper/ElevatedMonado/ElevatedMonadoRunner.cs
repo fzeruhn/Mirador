@@ -65,11 +65,11 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
         }
     }
 
-    public HelperReply Stop(CallerInfo caller)
+    public HelperReply Stop(CallerInfo caller, bool clean)
     {
         if (sessions.TryGetValue(caller.Sid.Value, out var service))
         {
-            service.Stop();
+            service.Stop(clean);
         }
 
         return new HelperReply(true);
@@ -214,7 +214,8 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 
                 var logFile = PrepareLogFile(caller.Sid);
                 var pipeName = MonadoPipeName.NameFor(env, AnsiCodePage.RoundTrip);
-                var service = ElevatedService.Launch(serviceExe, serverDir, env, linked!, caller.ProcessId, logFile, hold, pipeName);
+                var service = ElevatedService.Launch(
+                    serviceExe, serverDir, env, linked!, caller.ProcessId, logFile, hold, pipeName, Environment.ProcessPath);
                 hold = EmptyHold.Instance; // the service owns the hold now
                 if (sessions.TryRemove(sid, out var previous))
                 {
