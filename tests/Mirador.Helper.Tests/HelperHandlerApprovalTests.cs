@@ -117,29 +117,23 @@ public sealed class HelperHandlerApprovalTests : IDisposable
     }
 
     [Fact]
-    public async Task Taking_the_consent_back_takes_every_approval_of_that_user_back()
+    public async Task Taking_the_consent_back_keeps_the_approvals()
     {
         consent.Set(Finn.Value);
         Approve(Finn, "p1");
         Approve(Finn, "p2");
-        Approve(Other, "p1");
 
         Assert.True((await Handler().HandleAsync(new HelperRequest(HelperCommand.RevokeElevatedMonado), Caller(Finn))).Ok);
 
-        Assert.Empty(store.ProfilesOf(Finn.Value));
-        Assert.NotNull(store.Get(Other.Value, "p1"));
+        Assert.Equal(["p1", "p2"], store.ProfilesOf(Finn.Value).Order());
     }
 
     [Fact]
-    public async Task An_approved_build_becomes_the_runtime_only_while_its_owner_consents()
+    public async Task An_approved_build_becomes_the_runtime_without_the_consent_for_monado_as_administrator()
     {
         var build = Approve(Finn, "p1");
         registry.Active = @"C:\SteamVR\steamxr.json";
 
-        Assert.False((await Handler().HandleAsync(new HelperRequest(HelperCommand.SetRuntimeApproved, Build: "p1"), Caller(Finn))).Ok);
-        Assert.Equal(@"C:\SteamVR\steamxr.json", registry.Active);
-
-        consent.Set(Finn.Value);
         var reply = await Handler().HandleAsync(new HelperRequest(HelperCommand.SetRuntimeApproved, Build: "p1"), Caller(Finn));
 
         Assert.True(reply.Ok, reply.Error);

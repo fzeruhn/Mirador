@@ -358,17 +358,16 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes back, through the helper (no prompt), the approval of every build no profile runs as administrator any more:
-    /// a profile deleted, its "Run as administrator" turned off, or its Monado no longer a branch or a build folder
-    /// (Mirador.md §4.11 item 51). The helper keeps the approvals of the profiles still asking. Returns what went wrong,
-    /// or null.
+    /// Takes back, through the helper (no prompt), the approval of every build no profile can use any more: a profile
+    /// deleted, or its Monado no longer a branch or a build folder. An approval stays with "Run as administrator" off: the
+    /// approved copy is also what makes a build the OpenXR runtime. Returns what went wrong, or null.
     /// </summary>
     public async Task<string?> ForgetUnneededApprovalsAsync()
     {
         try
         {
             var keep = Profiles.Load().Profiles
-                .Where(p => p.RunAsAdministrator && p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
+                .Where(p => p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
                 .Select(p => p.Id)
                 .ToHashSet(StringComparer.Ordinal);
             var listed = await Helper.SendAsync(new HelperRequest(HelperCommand.ListApprovedBuilds), CancellationToken.None);
@@ -384,7 +383,7 @@ public sealed class AppHost : IAsyncDisposable
                 if (!reply.Ok)
                 {
                     AppLog.Write($"Taking back the approval of profile {id} failed: {reply.Error}");
-                    return $"Mirador couldn't take back an approved build no profile runs as administrator any more: {reply.Error}";
+                    return $"Mirador couldn't take back an approved build no profile uses any more: {reply.Error}";
                 }
             }
 
@@ -570,12 +569,13 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Whether <paramref name="profile"/> has "Run as administrator" on and its build as it is now is the approved one
-    /// (Mirador.md §4.11 item 51). The helper checks the approved copy's every file again at the Start.
+    /// Whether <paramref name="profile"/>'s build (a branch or a build folder) as it is now is the approved one, with "Run
+    /// as administrator" on or off. The helper checks the approved copy's every file again at an elevated Start and
+    /// before making it the OpenXR runtime.
     /// </summary>
     public bool ApprovedBuildCurrent(Profile profile)
     {
-        if (!profile.RunAsAdministrator || profile.Monado.Kind is not (SourceKind.Branch or SourceKind.Folder))
+        if (profile.Monado.Kind is not (SourceKind.Branch or SourceKind.Folder))
         {
             return false;
         }
@@ -585,6 +585,22 @@ public sealed class AppHost : IAsyncDisposable
             return Locator.Locate(profile).Approved is not null;
         }
         catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="profile"/> has an approval at all, of this build or an earlier one: then a build that isn't
+    /// the approved one changed since.
+    /// </summary>
+    public bool HasApproval(Profile profile)
+    {
+        try
+        {
+            return AllowElevatedCommand.CurrentUser()?.Value is { } owner && new RegistryApprovedBuildStore().Get(owner, profile.Id) is not null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             return false;
         }

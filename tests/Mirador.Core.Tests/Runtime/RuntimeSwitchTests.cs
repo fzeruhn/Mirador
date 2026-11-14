@@ -87,7 +87,19 @@ public class RuntimeSwitchTests
 
         var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), helper, Runtime);
 
-        Assert.Contains("Run as administrator", problem);
+        Assert.StartsWith("Approve this build on the Profiles page first", problem);
+        Assert.DoesNotContain("Run as administrator", problem);
+        Assert.Empty(helper.Sent);
+    }
+
+    [Fact]
+    public async Task A_build_changed_since_its_approval_says_to_approve_it_again()
+    {
+        var helper = new FakeHelper(new HelperReply(true));
+
+        var problem = await RuntimeSwitch.SetAsync(Install(bundled: false), helper, Runtime, hadApproval: true);
+
+        Assert.StartsWith("This build changed since it was approved", problem);
         Assert.Empty(helper.Sent);
     }
 

@@ -890,6 +890,22 @@ public class SessionControllerTests
     }
 
     [Fact]
+    public async Task An_approved_build_runs_as_the_user_from_its_approved_copy()
+    {
+        var approvedDir = Path.Combine(Path.GetTempPath(), "Program Files", "Mirador", "builds", "S-1-5-21-1", "p1", "0123abc");
+        var approved = new Mirador.Ipc.ApprovedBuild("S-1-5-21-1", "p1", "0123abc", approvedDir, new Dictionary<string, string>());
+        await using var h = new Harness(approvedCopy: (_, _) => approved);
+        var folder = Path.Combine(h.Root, "monado build");
+        Harness.MakeBuild(folder);
+        h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, folder), RunAsAdministrator = false });
+
+        await h.StartRunningAsync();
+
+        Assert.Equal(Path.Combine(approvedDir, "bin", "monado-service.exe"), h.Launcher.Spec.FileName);
+        Assert.Equal(Path.Combine(approvedDir, "bin"), h.Launcher.Spec.WorkingDirectory);
+    }
+
+    [Fact]
     public async Task The_stand_in_never_replaces_the_builds_own_service()
     {
         await using var h = new Harness();

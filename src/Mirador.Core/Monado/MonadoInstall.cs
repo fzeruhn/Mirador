@@ -11,9 +11,9 @@ namespace Mirador.Core.Monado;
 /// write (a build folder, a branch built here).
 /// </param>
 /// <param name="Approved">
-/// For a branch or build folder whose profile runs as administrator: the approved copy of this very build (Mirador.md
-/// §4.11 item 51), which is what the helper runs elevated and what "Set as OpenXR runtime" makes the runtime; null when
-/// the build isn't approved as it is now.
+/// For a branch or build folder: the approved copy of this very build, which is what Monado runs from (as administrator
+/// when the profile asks, else as the user) and what "Set Monado" makes the OpenXR runtime; null when the build isn't
+/// approved as it is now.
 /// </param>
 public sealed record MonadoInstall(string Manifest, string RuntimeDll, string ServiceExe, string StandInDir, bool IsBundled, Mirador.Ipc.ApprovedBuild? Approved = null)
 {

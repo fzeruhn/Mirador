@@ -526,7 +526,8 @@ internal sealed class Harness : IAsyncDisposable
     /// <param name="installedCopy">With a value, the user allowed Monado as administrator, and this says whether this
     /// Mirador is the installed one; the elevated launcher then records its starts in <see cref="ElevatedStarts"/>
     /// and runs them through <see cref="Launcher"/>.</param>
-    public Harness(ISessionHook? hook = null, bool? installedCopy = null)
+    /// <param name="approvedCopy">The locator's lookup of a build's approved copy; null: no build is approved.</param>
+    public Harness(ISessionHook? hook = null, bool? installedCopy = null, Func<Profile, MonadoInstall, Mirador.Ipc.ApprovedBuild?>? approvedCopy = null)
     {
         Root = Path.Combine(dir.Path, "Zoë's data");
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
@@ -565,7 +566,7 @@ internal sealed class Harness : IAsyncDisposable
                 Settings,
                 new Dictionary<string, IHeadsetModule> { [Module.Id] = Module },
                 new ModuleContext(Paths, new FakeHelper(), Processes, Usb, Timers),
-                new MonadoLocator(bundledRoot),
+                new MonadoLocator(bundledRoot, approvedCopy: approvedCopy),
                 Launcher,
                 Pipe,
                 new OpenXrRuntime(Runtime),

@@ -753,9 +753,11 @@ public sealed class SessionController(SessionDeps deps)
         RaiseStatusChanged();
         ct.ThrowIfCancellationRequested();
 
+        // An approved build runs from its approved copy, the same files as the runtime games load from it, whether the
+        // helper runs it as administrator or it runs as the user.
+        var serviceExe = install.Approved is { } approved ? Path.Combine(approved.ServerDir, "monado-service.exe") : install.ServiceExe;
         var launcher = ChooseLauncher(install, profile, module, run.Settings);
-        var process = launcher.Start(new ProcessSpec(
-            install.ServiceExe, "", Path.GetDirectoryName(install.ServiceExe)!, environment));
+        var process = launcher.Start(new ProcessSpec(serviceExe, "", Path.GetDirectoryName(serviceExe)!, environment));
         run.Process = process;
         Listen(run, process);
 

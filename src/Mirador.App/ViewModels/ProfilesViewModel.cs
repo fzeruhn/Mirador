@@ -426,7 +426,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         // Saved or not, a consent no profile uses goes (the prompt may have recorded one for a save that then failed), and
-        // so does an approved build the profile no longer runs as administrator.
+        // so does an approved build no profile can use any more.
         var saved = Change(set => set.Replace(profile), profile.Id);
         var takeBack = await TakeBackUnneededAsync();
         if (saved)
@@ -436,8 +436,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Takes back the consent no profile uses and the approvals no profile runs as administrator any more, each whether
-    /// or not the other worked; what went wrong, or null.
+    /// Takes back the consent no profile uses and the approvals no profile can use any more, each whether or not the
+    /// other worked; what went wrong, or null.
     /// </summary>
     private async Task<string?> TakeBackUnneededAsync()
     {
@@ -534,11 +534,14 @@ public sealed partial class ProfilesViewModel : ObservableObject
             return;
         }
 
-        var state = !editing.RunAsAdministrator
-            ? "Off: this build runs as you."
-            : host.ApprovedBuildCurrent(editing)
+        var uses = editing.RunAsAdministrator ? "run as administrator and be the OpenXR runtime" : "be the OpenXR runtime";
+        var state = host.ApprovedBuildCurrent(editing)
+            ? editing.RunAsAdministrator
                 ? "Approved: this build runs as administrator and can be the OpenXR runtime."
-                : "The new build runs as you until you approve it.";
+                : "Approved: this build can be the OpenXR runtime. Monado runs from the approved copy, as you."
+            : host.HasApproval(editing)
+                ? $"This build changed since it was approved: approve it again to let it {uses}."
+                : $"Approve this build to let it {uses}: Mirador copies it where only administrators can change it.";
         if (Verify.ElevationNote is { } verified)
         {
             state += " " + verified;

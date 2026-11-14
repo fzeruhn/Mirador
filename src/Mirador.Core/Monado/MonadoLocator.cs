@@ -11,9 +11,9 @@ namespace Mirador.Core.Monado;
 /// </param>
 /// <param name="buildsRoot">Where branch profiles are built (<see cref="AppPaths.BuildsDir"/>), one folder per profile.</param>
 /// <param name="approvedCopy">
-/// For a branch or build folder whose profile runs as administrator: the approved copy of the build as it is now, or
-/// null (Mirador.md §4.11 item 51). Called with the profile and the build found, also on the UI thread (Home, the
-/// Profiles page's checks), so it should hash a build only when its files changed. Null: approved copies aren't looked up.
+/// For a branch or build folder: the approved copy of the build as it is now, or null. Called with the profile and the
+/// build found, also on the UI thread (Home, the Profiles page's checks), so it should hash a build only when its files
+/// changed. Null: approved copies aren't looked up.
 /// </param>
 public sealed class MonadoLocator(string bundledRoot, string? buildsRoot = null, Func<Profile, MonadoInstall, ApprovedBuild?>? approvedCopy = null)
 {
@@ -27,14 +27,14 @@ public sealed class MonadoLocator(string bundledRoot, string? buildsRoot = null,
 
     /// <summary>
     /// Finds <paramref name="profile"/>'s Monado and checks that every file it returns exists (the stand-in folder
-    /// excepted); with its approved copy (<see cref="MonadoInstall.Approved"/>) when the profile runs as administrator
-    /// and this build is the one approved.
+    /// excepted); with its approved copy (<see cref="MonadoInstall.Approved"/>) when this build is the one approved, with
+    /// "Run as administrator" on or off.
     /// </summary>
     /// <exception cref="MiradorException">The build is not there or is incomplete; the message says what to do.</exception>
     public MonadoInstall Locate(Profile profile)
     {
         var install = Locate(profile.Monado, profile.Id);
-        return !install.IsBundled && profile.RunAsAdministrator && approvedCopy?.Invoke(profile, install) is { } approved
+        return !install.IsBundled && approvedCopy?.Invoke(profile, install) is { } approved
             ? install with { Approved = approved }
             : install;
     }

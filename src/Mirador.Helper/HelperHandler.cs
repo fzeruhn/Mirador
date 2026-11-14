@@ -85,7 +85,7 @@ public sealed class HelperHandler
 {
     private const string BundledMissing = "The bundled Monado isn't installed yet. Install it on the Profiles page.";
     private const string NoMiradorsMonado = "This helper can't install the bundled Monado.";
-    private const string NotApproved = "This profile's build isn't approved. Turn on \"Run as administrator\" on the profile to approve it.";
+    private const string NotApproved = "This profile's build isn't approved. Approve it on the Profiles page.";
     private const string NoCaller = "Mirador's helper service couldn't tell who asked, so it changed nothing.";
     private const string NotInstalledMirador = "Only the installed Mirador may change which version of the bundled Monado is current.";
     private const string NoConsent = "Mirador's helper service has no way to reach the consent for Monado as administrator.";
@@ -288,14 +288,8 @@ public sealed class HelperHandler
             return new HelperReply(false, NoConsent);
         }
 
+        // Approvals stay: they also make a build the OpenXR runtime. The elevated runner checks the consent at a Start.
         consent.Revoke(caller.Sid);
-
-        // Without the consent no build of theirs runs as administrator: its approvals go with it.
-        foreach (var profileId in approved?.ProfilesOf(caller.Sid.Value) ?? [])
-        {
-            Forget(caller, profileId);
-        }
-
         return new HelperReply(true);
     }
 
@@ -378,13 +372,8 @@ public sealed class HelperHandler
             return new HelperReply(false, NoCaller);
         }
 
-        // The caller's own approval only (the record is per user), and only while their consent is on: taking it back
-        // takes back what it allowed.
-        if (consent?.IsAllowed(caller.Sid) != true)
-        {
-            return new HelperReply(false, NotApproved);
-        }
-
+        // The caller's own approval only (the record is per user). No consent needed: the approval itself took an
+        // administrator prompt, and the runtime runs inside each OpenXR program, never as administrator by Mirador.
         if (approved is null || !ApprovedBuilds.IsProfileId(profileId) || approved.Get(caller.Sid.Value, profileId!) is not { } build)
         {
             return new HelperReply(false, NotApproved);

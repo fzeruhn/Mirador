@@ -363,7 +363,7 @@ public sealed partial class HomeViewModel : ObservableObject
         {
             var profile = SelectedSet().Selected;
             RuntimeProblem = await RuntimeSwitch.SetAsync(
-                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null, profile.RunAsAdministrator);
+                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null, host.HasApproval(profile));
         }
         catch (Exception e)
         {
