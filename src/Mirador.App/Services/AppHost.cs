@@ -506,8 +506,8 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>The SteamVR base stations: the Lighthouse page's list, Home's On and Off, and the session's own.</summary>
     public StationManager Stations { get; }
 
-    /// <summary>Mirador's own stand-in, copied into Monado build folders (<c>{app}\standin\monado-service.exe</c>).</summary>
-    public string StandInExe => Path.Combine(AppDir, "standin", "monado-service.exe");
+    /// <summary>Mirador's own stand-in, copied into Monado build folders (<c>{app}\standin\mirador-standin.exe</c>).</summary>
+    public string StandInExe => Path.Combine(AppDir, "standin", StandIn.FileName);
 
     /// <summary>Whether closing the window keeps Mirador in the tray (the default, and when settings.json can't be read).</summary>
     public bool CloseToTray()

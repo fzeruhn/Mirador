@@ -890,6 +890,7 @@ public class SessionControllerTests
         await h.StartRunningAsync();
 
         Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(copy));
+        Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(Path.Combine(standInDir, "mirador-standin.exe")));
         var server = Path.Combine(folder, "src", "xrt", "targets", "service", "monado-service.exe");
         Assert.Equal(server, h.Launcher.Spec.FileName);
         Assert.Equal(Path.GetDirectoryName(server), h.Launcher.Spec.WorkingDirectory);
@@ -967,6 +968,8 @@ public class SessionControllerTests
     [Theory]
     [InlineData("XRT_SERVICE_EXECUTABLE:UNINITIALIZED=monado-service\n", false)]
     [InlineData("XRT_SERVICE_EXECUTABLE:STRING=monado-service\n", false)]
+    [InlineData("XRT_SERVICE_EXECUTABLE:STRING=mirador-standin\n", false)]
+    [InlineData("XRT_SERVICE_EXECUTABLE:STRING=other-service\n", true)]
     [InlineData("CMAKE_BUILD_TYPE:STRING=RelWithDebInfo\n", true)]
     [InlineData("XRT_SERVICE_EXECUTABLE:UNINITIALIZED=\n", true)]
     public async Task A_build_that_doesnt_start_its_service_says_games_cant_start_it(string cache, bool warned)

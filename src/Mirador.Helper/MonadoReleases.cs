@@ -31,7 +31,7 @@ public interface IMonadoInstaller
 /// </summary>
 /// <param name="http">For GitHub.</param>
 /// <param name="monadoRoot"><c>{app}\monado</c>.</param>
-/// <param name="standInExe">Mirador's stand-in (<c>{app}\standin\monado-service.exe</c>), put below each version's DLL.</param>
+/// <param name="standInExe">Mirador's stand-in (<c>{app}\standin\mirador-standin.exe</c>), put below each version's DLL.</param>
 /// <param name="registry">OpenXR's runtime entries.</param>
 /// <param name="userAgentVersion">The helper's version, for GitHub's User-Agent.</param>
 public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string standInExe, IRuntimeRegistry registry, string userAgentVersion)
@@ -55,7 +55,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
     public static MonadoInstaller ForInstall(HttpClient http, IRuntimeRegistry registry, string userAgentVersion) => new(
         http,
         Path.Combine(HelperHandler.DefaultInstallDir, "monado"),
-        Path.Combine(HelperHandler.DefaultInstallDir, "standin", "monado-service.exe"),
+        Path.Combine(HelperHandler.DefaultInstallDir, "standin", StandInNames.FileName),
         registry,
         userAgentVersion);
 
@@ -119,7 +119,7 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
 
         if (!File.Exists(standInExe))
         {
-            return new HelperReply(false, "This Mirador has no stand-in (standin\\monado-service.exe). Reinstall Mirador.");
+            return new HelperReply(false, $"This Mirador has no stand-in (standin\\{StandInNames.FileName}). Reinstall Mirador.");
         }
 
         var work = Path.Combine(monadoRoot, ".download");
@@ -135,7 +135,10 @@ public sealed class MonadoInstaller(HttpClient http, string monadoRoot, string s
             CheckedDownload.Unpack(zip, part, MaxUnpackedBytes, "the bundled Monado", m => new MiradorInstallException(m));
             Check(part);
             var standInDir = Directory.CreateDirectory(Path.Combine(part, "bin", "service")).FullName;
-            File.Copy(standInExe, Path.Combine(standInDir, "monado-service.exe"), overwrite: true);
+            foreach (var name in StandInNames.FileNames)
+            {
+                File.Copy(standInExe, Path.Combine(standInDir, name), overwrite: true);
+            }
 
             lock (gate)
             {

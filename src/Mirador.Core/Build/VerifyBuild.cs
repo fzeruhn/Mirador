@@ -271,8 +271,8 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
         }
 
         // 2. A game's start: no service runs; the runtime starts the stand-in, which asks Mirador.
-        var standIn = Path.Combine(install.StandInDir, StandIn.FileName);
-        if (!File.Exists(standIn))
+        var standIn = StandIn.FileNames.Select(name => Path.Combine(install.StandInDir, name)).FirstOrDefault(File.Exists);
+        if (standIn is null)
         {
             steps.Add(new VerifyStep(StandInStep, VerifyOutcome.Failed,
                 $"There is no stand-in below this runtime ({install.StandInDir}), so games can't start Monado through Mirador."));

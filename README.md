@@ -22,7 +22,7 @@ dotnet run --project src\Mirador.App -p:Platform=x64
 ```
 
 The stand-in (`standin\`, C) needs Visual Studio's C++ x64 tools; `tools\build.ps1` builds it first (with a warning,
-not a failure, when they're missing) into `artifacts\standin\monado-service.exe`, and `standin\build.ps1` builds it
+not a failure, when they're missing) into `artifacts\standin\mirador-standin.exe`, and `standin\build.ps1` builds it
 alone.
 
 The direct-mode Vulkan layer (`layer\`, C++) needs the same tools, CMake and Ninja (Visual Studio's) and vcpkg (its
@@ -57,7 +57,7 @@ CI (`.github/workflows/`):
 | `tools\xr-check\` | Verify's OpenXR test client (C++) |
 | `src\Mirador.Ipc` | Messages between the app and the helper service |
 | `src\Mirador.Helper` | The helper Windows service, which does the steps that need admin rights |
-| `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for `monado-service.exe` and asks Mirador to start Monado |
+| `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for the service (as `mirador-standin.exe`, and as `monado-service.exe` for builds configured as upstream does) and asks Mirador to start Monado |
 | `installer\` | The Inno Setup script |
 | `tests\` | xUnit tests, one project per source project |
 

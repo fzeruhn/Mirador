@@ -548,7 +548,7 @@ internal sealed class Harness : IAsyncDisposable
         Touch(BundledLayer, DirectModeLayer.DllName);
         Touch(BundledLayer, DirectModeLayer.CheckExeName);
 
-        StandInExe = Path.Combine(Root, "Mirador App", "standin", "monado-service.exe");
+        StandInExe = Path.Combine(Root, "Mirador App", "standin", "mirador-standin.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(StandInExe)!);
         File.WriteAllBytes(StandInExe, [0x4D, 0x5A, 1, 2, 3]);
 

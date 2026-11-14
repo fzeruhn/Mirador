@@ -145,10 +145,9 @@ public sealed class MonadoLocator(string bundledRoot, string? buildsRoot = null,
     }
 
     /// <summary>
-    /// Where the runtime DLL looks for <c>monado-service.exe</c> when a game finds no service: <c>service\</c> below the
-    /// DLL's folder. Monado's <c>ipc_connect_pipe()</c> first tries a path that never exists (the DLL's file name with
-    /// <c>\monado-service.exe</c> after it; upstream since 55506067, 2026-02), then this one, and never the DLL's own
-    /// folder. Older Monado tried the DLL's own folder first, then this one, so the stand-in works here with both.
+    /// Where the runtime DLL looks for the service it was built to start when a game finds no service: <c>service\</c>
+    /// below the DLL's folder. A runtime that looks in its own folder first also finds the stand-in here, as long as it
+    /// was built to start the stand-in's own name (<see cref="StandIn.FileName"/>).
     /// </summary>
     private static string StandInDirFor(string runtimeDll) => Path.Combine(Path.GetDirectoryName(runtimeDll)!, "service");
 

@@ -107,7 +107,7 @@ else {
     $value = if (Test-Path -LiteralPath $cache) {
         (Select-String -LiteralPath $cache -Pattern '^XRT_SERVICE_EXECUTABLE:[A-Z]+=(.*)$' | Select-Object -First 1).Matches.Groups[1].Value
     }
-    if ($value -eq 'monado-service') { Add-Check 'Service setting' 'Passed' 'XRT_SERVICE_EXECUTABLE is monado-service: games can start Monado through Mirador.' }
+    if ($value -in 'mirador-standin', 'monado-service') { Add-Check 'Service setting' 'Passed' "XRT_SERVICE_EXECUTABLE is $($value): games can start Monado through Mirador." }
     else { Add-Check 'Service setting' 'Failed' "XRT_SERVICE_EXECUTABLE is $(if ($value) { "'$value'" } else { 'not set' }): games can't start this Monado by themselves." }
 
     $output = ctest --test-dir $Build --output-on-failure --timeout 120 2>&1

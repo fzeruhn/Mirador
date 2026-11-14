@@ -25,8 +25,8 @@ public sealed record ApprovedBuild(string Owner, string ProfileId, string Commit
     public string ServerDir => Path.Combine(Folder, "bin");
 
     /// <summary>
-    /// Where the copy's runtime DLL looks for <c>monado-service.exe</c> when a game finds no service running: Mirador's
-    /// stand-in, which the approval puts there.
+    /// Where the copy's runtime DLL looks for the service when a game finds no service running: Mirador's stand-in,
+    /// which the approval puts there.
     /// </summary>
     public string StandInDir => Path.Combine(ServerDir, "service");
 }
@@ -239,12 +239,15 @@ public static partial class ApprovedBuilds
     /// </summary>
     private static void PlaceStandIn(string appDir, string copy)
     {
-        var standIn = Path.Combine(appDir, "standin", "monado-service.exe");
+        var standIn = Path.Combine(appDir, "standin", StandInNames.FileName);
         if (File.Exists(standIn))
         {
             var dir = Path.Combine(copy, "bin", "service");
             Directory.CreateDirectory(dir);
-            File.Copy(standIn, Path.Combine(dir, "monado-service.exe"), overwrite: true);
+            foreach (var name in StandInNames.FileNames)
+            {
+                File.Copy(standIn, Path.Combine(dir, name), overwrite: true);
+            }
         }
     }
 

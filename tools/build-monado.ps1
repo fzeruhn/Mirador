@@ -6,9 +6,11 @@
 .DESCRIPTION
     Based on upstream's .gitlab-ci\windows\monado_build.ps1 (forks don't carry one): MSVC found with vswhere, Ninja,
     RelWithDebInfo, the vcpkg toolchain (Monado's vcpkg.json says what it needs), the vcpkg DLLs installed next to
-    Monado's (X_VCPKG_APPLOCAL_DEPS_INSTALL). Always also -DXRT_SERVICE_EXECUTABLE=monado-service, without which games
-    can't start Monado through Mirador's stand-in (Mirador.md §3, §4.11 item 49); a profile's extra options come after
-    Mirador's, so a fork that needs another setting can override one.
+    Monado's (X_VCPKG_APPLOCAL_DEPS_INSTALL). Always also -DXRT_SERVICE_EXECUTABLE=mirador-standin, without which games
+    can't start Monado through Mirador's stand-in: the runtime then starts mirador-standin.exe, which Mirador places
+    in bin\service\, where every Monado's runtime looks. Not monado-service: a runtime that looks next to itself first
+    would find the real service in bin\ and start it without Mirador. A profile's extra options come after Mirador's,
+    so a fork that needs another setting can override one.
 
     The install is Monado's own Windows layout: openxr_monado.json at the top, its DLL, monado-service.exe and every DLL
     they need in bin\. The Visual C++ runtime DLLs are copied into bin\ too, so the build runs on a PC without the
@@ -147,7 +149,7 @@ $options = @(
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain"
     "-DCMAKE_INSTALL_PREFIX=$Install"
     '-DX_VCPKG_APPLOCAL_DEPS_INSTALL=ON'
-    '-DXRT_SERVICE_EXECUTABLE=monado-service'
+    '-DXRT_SERVICE_EXECUTABLE=mirador-standin'
     # Mirador never uses Monado's SteamVR driver (OpenVR games go through OpenComposite); with its PDB it was three
     # quarters of the download. A branch that wants it turns it back on with its extra options.
     '-DXRT_FEATURE_STEAMVR_PLUGIN=OFF'

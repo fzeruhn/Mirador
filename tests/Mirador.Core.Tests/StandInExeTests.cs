@@ -4,7 +4,7 @@ using Mirador.Ipc;
 
 namespace Mirador.Core.Tests;
 
-/// <summary>A test of the built stand-in (<c>artifacts\standin\monado-service.exe</c>, from <c>standin\build.ps1</c>); skipped when it isn't built.</summary>
+/// <summary>A test of the built stand-in (<c>artifacts\standin\mirador-standin.exe</c>, from <c>standin\build.ps1</c>); skipped when it isn't built.</summary>
 public class StandInFactAttribute : FactAttribute
 {
     public StandInFactAttribute()
@@ -43,7 +43,7 @@ public class StandInExeTests
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);
 
     public static string Exe { get; } = Path.GetFullPath(Path.Combine(
-        AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "artifacts", "standin", "monado-service.exe"));
+        AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "artifacts", "standin", "mirador-standin.exe"));
 
     private static string UniqueName() => "mirador-standin-test-" + Guid.NewGuid().ToString("N")[..12];
 

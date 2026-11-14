@@ -60,12 +60,13 @@ public sealed class ApprovedBuildsTests : IDisposable
         Directory.CreateDirectory(Path.Combine(source, "bin", "service"));
         File.WriteAllText(Path.Combine(source, "bin", "service", "monado-service.exe"), "the build's own");
         Directory.CreateDirectory(Path.Combine(App, "standin"));
-        File.WriteAllText(Path.Combine(App, "standin", "monado-service.exe"), "mirador's stand-in");
+        File.WriteAllText(Path.Combine(App, "standin", "mirador-standin.exe"), "mirador's stand-in");
 
         var build = ApprovedBuilds.Approve(Finn, "p1", Commit, source, App, store);
 
         Assert.Equal(Path.Combine(build.ServerDir, "service"), build.StandInDir);
         Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "monado-service.exe")));
+        Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "mirador-standin.exe")));
         Assert.Null(ApprovedBuilds.Verify(build, App));
     }
 
@@ -73,12 +74,13 @@ public sealed class ApprovedBuildsTests : IDisposable
     public void A_build_without_a_stand_in_gets_one_in_its_copy()
     {
         Directory.CreateDirectory(Path.Combine(App, "standin"));
-        File.WriteAllText(Path.Combine(App, "standin", "monado-service.exe"), "mirador's stand-in");
+        File.WriteAllText(Path.Combine(App, "standin", "mirador-standin.exe"), "mirador's stand-in");
 
         var build = ApprovedBuilds.Approve(Finn, "p1", Commit, MakeInstall(), App, store);
 
+        Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "mirador-standin.exe")));
         Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "monado-service.exe")));
-        Assert.Equal(4, build.Files.Count);
+        Assert.Equal(5, build.Files.Count);
     }
 
     [Fact]

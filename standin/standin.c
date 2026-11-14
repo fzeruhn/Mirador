@@ -1,10 +1,11 @@
 /*
  * Mirador's stand-in for monado-service.exe (Mirador.md section 4.2 item 5).
  *
- * Monado's runtime DLL starts monado-service.exe from service\ below its own folder when a game finds no Monado
- * running, then retries the service's pipe every 100 ms for as long as that program lives. Mirador puts this program
- * there under that name. It asks Mirador (over \\.\pipe\mirador-app-<session id>) to start Monado, starting Mirador
- * first if it isn't running, waits for the answer, and:
+ * Monado's runtime DLL starts the service it was built to start (XRT_SERVICE_EXECUTABLE) from service\ below its own
+ * folder when a game finds no Monado running, then retries the service's pipe every 100 ms for as long as that program
+ * lives. Mirador puts this program there as mirador-standin.exe, the name Mirador's builds start, and as
+ * monado-service.exe, for builds configured as upstream does. It asks Mirador (over \\.\pipe\mirador-app-<session id>)
+ * to start Monado, starting Mirador first if it isn't running, waits for the answer, and:
  *   - OK:   lingers 2 s, so that the DLL's next retry finds Monado's pipe while this program still lives; exit 0;
  *   - FAIL: prints Mirador's reason and exits 1 at once, so that the game fails quickly instead of hanging.
  * Exit codes: 0 Monado is up; 1 Mirador refused or failed (its message on stderr); 3 Mirador isn't running and this
