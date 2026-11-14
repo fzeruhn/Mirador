@@ -6,9 +6,11 @@
 .DESCRIPTION
     Based on upstream's .gitlab-ci\windows\monado_build.ps1 (forks don't carry one): MSVC found with vswhere, Ninja,
     RelWithDebInfo, the vcpkg toolchain (Monado's vcpkg.json says what it needs), the vcpkg DLLs installed next to
-    Monado's (X_VCPKG_APPLOCAL_DEPS_INSTALL). Always also -DXRT_SERVICE_EXECUTABLE=monado-service, without which games
-    can't start Monado through Mirador's stand-in (Mirador.md §3, §4.11 item 49); a profile's extra options come after
-    Mirador's, so a fork that needs another setting can override one.
+    Monado's (X_VCPKG_APPLOCAL_DEPS_INSTALL). Always also -DXRT_SERVICE_EXECUTABLE=mirador-standin, without which games
+    can't start Monado through Mirador's stand-in: the runtime then starts mirador-standin.exe, which Mirador places
+    in bin\service\, where every Monado's runtime looks. Not monado-service: a runtime that looks next to itself first
+    would find the real service in bin\ and start it without Mirador. A profile's extra options come after Mirador's,
+    so a fork that needs another setting can override one.
 
     The install is Monado's own Windows layout: openxr_monado.json at the top, its DLL, monado-service.exe and every DLL
     they need in bin\. The Visual C++ runtime DLLs are copied into bin\ too, so the build runs on a PC without the
@@ -40,6 +42,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+
+function Stop-MissingTool([string]$message) {
+    # Exit code 3: a tool is missing, nothing was built. Mirador tells the user to check its build tools.
+    [Console]::Error.WriteLine($message)
+    exit 3
+}
 
 function Invoke-Checked([string]$what, [scriptblock]$command) {
     # Continue while it runs: Windows PowerShell turns a native program's output on a redirected stderr (cmake's
@@ -81,7 +89,7 @@ elseif ($env:VCPKG_ROOT) { $env:VCPKG_ROOT }
 elseif ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT }
 else { $null }
 if (-not $vcpkg -or -not (Test-Path -LiteralPath (Join-Path $vcpkg 'scripts\buildsystems\vcpkg.cmake'))) {
-    throw 'vcpkg is missing: give -Tools with a vcpkg folder, or set VCPKG_ROOT.'
+    Stop-MissingTool 'vcpkg is missing: give -Tools with a vcpkg folder, or set VCPKG_ROOT.'
 }
 $toolchain = Join-Path $vcpkg 'scripts\buildsystems\vcpkg.cmake'
 # vcpkg's own copies of the tools, not its downloads of them, and no telemetry.
@@ -92,11 +100,11 @@ $env:VCPKG_DISABLE_METRICS = '1'
 if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path -LiteralPath $vswhere)) {
-        throw 'Visual Studio or its Build Tools are missing (no vswhere.exe). Install them with the C++ x64 tools and the Windows 11 SDK.'
+        Stop-MissingTool 'Visual Studio or its Build Tools are missing (no vswhere.exe). Install them with the C++ x64 tools and the Windows 11 SDK.'
     }
     $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $vs) {
-        throw 'Visual Studio has no C++ x64 tools: add "Desktop development with C++" (MSVC x64/x86 build tools and the Windows 11 SDK).'
+        Stop-MissingTool 'Visual Studio has no C++ x64 tools: add "Desktop development with C++" (MSVC x64/x86 build tools and the Windows 11 SDK).'
     }
     # A commit message in the environment can confuse cmd and Enter-VsDevShell (upstream's note).
     $env:CI_COMMIT_DESCRIPTION = ''
@@ -106,7 +114,7 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
 }
 foreach ($tool in 'cmake', 'ninja', 'git') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        throw "$tool is missing: give -Tools, or put it on PATH."
+        Stop-MissingTool "$tool is missing: give -Tools, or put it on PATH."
     }
 }
 
@@ -141,7 +149,7 @@ $options = @(
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain"
     "-DCMAKE_INSTALL_PREFIX=$Install"
     '-DX_VCPKG_APPLOCAL_DEPS_INSTALL=ON'
-    '-DXRT_SERVICE_EXECUTABLE=monado-service'
+    '-DXRT_SERVICE_EXECUTABLE=mirador-standin'
     # Mirador never uses Monado's SteamVR driver (OpenVR games go through OpenComposite); with its PDB it was three
     # quarters of the download. A branch that wants it turns it back on with its extra options.
     '-DXRT_FEATURE_STEAMVR_PLUGIN=OFF'

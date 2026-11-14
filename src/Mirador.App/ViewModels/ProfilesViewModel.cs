@@ -185,7 +185,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSwitch), nameof(CanDelete), nameof(PickerDescription))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand), nameof(ApproveCommand))]
     public partial bool IsDirty { get; set; }
 
     [ObservableProperty]
@@ -426,7 +426,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         // Saved or not, a consent no profile uses goes (the prompt may have recorded one for a save that then failed), and
-        // so does an approved build the profile no longer runs as administrator.
+        // so does an approved build no profile can use any more.
         var saved = Change(set => set.Replace(profile), profile.Id);
         var takeBack = await TakeBackUnneededAsync();
         if (saved)
@@ -436,8 +436,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Takes back the consent no profile uses and the approvals no profile runs as administrator any more, each whether
-    /// or not the other worked; what went wrong, or null.
+    /// Takes back the consent no profile uses and the approvals no profile can use any more, each whether or not the
+    /// other worked; what went wrong, or null.
     /// </summary>
     private async Task<string?> TakeBackUnneededAsync()
     {
@@ -507,13 +507,15 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     partial void OnRunAsAdministratorChanged(bool value) => Changed();
 
-    /// <summary>"Approve": one UAC prompt copies the saved profile's build where only administrators can change it.</summary>
-    [RelayCommand]
+    /// <summary>
+    /// "Approve": one UAC prompt copies the saved profile's build where only administrators can change it. Greyed out
+    /// until the profile is saved: the build approved is the saved profile's.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanApproveNow))]
     private async Task ApproveAsync()
     {
-        if (editing is null || IsDirty)
+        if (editing is null)
         {
-            ApprovalStatus = "Save the profile first.";
             return;
         }
 
@@ -521,6 +523,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
         var problem = await host.ApproveBuildAsync(editing);
         RefreshApproval(problem);
     }
+
+    private bool CanApproveNow() => editing is not null && !IsDirty;
 
     private void RefreshApproval(string? problem = null)
     {
@@ -530,11 +534,14 @@ public sealed partial class ProfilesViewModel : ObservableObject
             return;
         }
 
-        var state = !editing.RunAsAdministrator
-            ? "Off: this build runs as you."
-            : host.ApprovedBuildCurrent(editing)
+        var uses = editing.RunAsAdministrator ? "run as administrator and be the OpenXR runtime" : "be the OpenXR runtime";
+        var state = host.ApprovedBuildCurrent(editing)
+            ? editing.RunAsAdministrator
                 ? "Approved: this build runs as administrator and can be the OpenXR runtime."
-                : "The new build runs as you until you approve it.";
+                : "Approved: this build can be the OpenXR runtime. Monado runs from the approved copy, as you."
+            : host.HasApproval(editing)
+                ? $"This build changed since it was approved: approve it again to let it {uses}."
+                : $"Approve this build to let it {uses}: Mirador copies it where only administrators can change it.";
         if (Verify.ElevationNote is { } verified)
         {
             state += " " + verified;
@@ -642,6 +649,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = false;
+        ApproveCommand.NotifyCanExecuteChanged();
         Verify.Show(p);
         Verify.Unsaved = false;
         RefreshApproval();

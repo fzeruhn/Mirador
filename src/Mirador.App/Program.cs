@@ -25,6 +25,12 @@ public static partial class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Ending Monado cleanly: a key into its console, from this short-lived process. No window, no log, no app.
+        if (ConsoleExitKey.Requested(args) is { } monado)
+        {
+            return ConsoleExitKey.Send(monado) is null ? 0 : 1;
+        }
+
         var parsed = AppArgs.Parse(args);
 
         // The elevated step of "Run Monado as administrator": records this user's consent, and SteamVR's Lighthouse DLLs
@@ -64,20 +70,6 @@ public static partial class Program
             {
                 AppLog.Write("Approving the build failed", e);
                 return 1;
-            }
-        }
-
-        // The uninstaller's step, run as the user who uninstalls (elevated, like the uninstaller): no window, no app.
-        if (parsed.RestoreOpenVr)
-        {
-            try
-            {
-                var copy = AppPaths.Default.OpenCompositeDir;
-                return RestoreOpenVrCommand.Run(new OpenVrPaths(OpenVrPaths.DefaultFile, copy), copy);
-            }
-            catch (Exception)
-            {
-                return 1; // the copy stays, so games still find their DLL; the uninstaller logs the exit code
             }
         }
 

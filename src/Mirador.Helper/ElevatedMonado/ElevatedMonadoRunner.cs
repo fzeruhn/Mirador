@@ -39,7 +39,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
     /// <param name="consent">Where users' consent lives, with the SteamVR files each allowed; the caller's SID must be allowed.</param>
     /// <param name="signer">The Authenticode signer subject of a file; the real one is <see cref="WinTrustSigner.SubjectOf"/>.</param>
     /// <param name="monado">The bundled Monado: its current version is the one started.</param>
-    /// <param name="approved">The builds owners approved to run as administrator (Mirador.md §4.11 item 51).</param>
+    /// <param name="approved">The builds owners approved (to run as administrator, or to be the OpenXR runtime).</param>
     public ElevatedMonadoRunner(ElevatedConsent consent, Func<string, string?>? signer = null, IMonadoInstaller? monado = null, IApprovedBuildStore? approved = null)
     {
         this.approved = approved;
@@ -65,11 +65,11 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
         }
     }
 
-    public HelperReply Stop(CallerInfo caller)
+    public HelperReply Stop(CallerInfo caller, bool clean)
     {
         if (sessions.TryGetValue(caller.Sid.Value, out var service))
         {
-            service.Stop();
+            service.Stop(clean);
         }
 
         return new HelperReply(true);
@@ -205,7 +205,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 IReadOnlyDictionary<string, string> env;
                 try
                 {
-                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath);
+                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath, AdministratorProtection.IsOn());
                 }
                 catch (ArgumentException e)
                 {
@@ -214,7 +214,8 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
 
                 var logFile = PrepareLogFile(caller.Sid);
                 var pipeName = MonadoPipeName.NameFor(env, AnsiCodePage.RoundTrip);
-                var service = ElevatedService.Launch(serviceExe, serverDir, env, linked!, caller.ProcessId, logFile, hold, pipeName);
+                var service = ElevatedService.Launch(
+                    serviceExe, serverDir, env, linked!, caller.ProcessId, logFile, hold, pipeName, Environment.ProcessPath);
                 hold = EmptyHold.Instance; // the service owns the hold now
                 if (sessions.TryRemove(sid, out var previous))
                 {

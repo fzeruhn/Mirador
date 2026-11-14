@@ -120,6 +120,13 @@ public enum HelperCommand
 /// (<c>XRT_COMPOSITOR_NULL=1</c>, <c>SIMULATED_ENABLE=1</c>), so it opens sessions without touching a headset or a
 /// display. Only with no module.
 /// </param>
+/// <param name="ElevationFix">
+/// Whether the build has Monado's elevation fix, as Verify found (an app running as the user connected to it running as
+/// administrator): it then admits its own user's apps by itself, and the helper leaves out
+/// <c>IPC_RELAXED_CONNECTION_SECURITY</c>, which lets any signed-in user's apps connect, unless Windows' Administrator
+/// protection is on (elevation then runs as another account, which the fix can't tell from the user).
+/// </param>
+/// <param name="StandbyOnExit">Whether Monado puts its Lighthouse devices in standby as it ends (<see cref="MonadoSettingsEnvironment.StandbyOnExit"/>).</param>
 public sealed record ElevatedStart(
     [property: JsonRequired] int LighthouseWaitMs,
     [property: JsonRequired] int RenderScalePercent,
@@ -127,14 +134,18 @@ public sealed record ElevatedStart(
     [property: JsonRequired] bool ExitOnDisconnect,
     [property: JsonRequired] string Module,
     string Build = "",
-    bool Headless = false);
+    bool Headless = false,
+    bool ElevationFix = false,
+    bool StandbyOnExit = false);
 
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and
 /// <see cref="Version"/> only with <see cref="HelperCommand.InstallMonado"/> (a weekly build's name, checked by the helper), and
-/// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper).
+/// <see cref="Build"/> only with <see cref="HelperCommand.SetRuntimeApproved"/> (a profile's id, looked up by the helper), and
+/// <see cref="Clean"/> only with <see cref="HelperCommand.StopMonadoElevated"/> (Monado is asked to end by itself first).
 /// </summary>
-public sealed record HelperRequest([property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null);
+public sealed record HelperRequest(
+    [property: JsonRequired] HelperCommand Command, ElevatedStart? Start = null, string? Version = null, string? Build = null, bool? Clean = null);
 
 /// <summary>
 /// Why the helper refused, for the refusals Mirador answers in its own way rather than only showing

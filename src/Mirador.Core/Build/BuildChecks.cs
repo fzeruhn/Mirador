@@ -226,8 +226,8 @@ public sealed class BuildChecks(ICommandRunner runner, string systemDir, TimePro
         }
 
         var value = CMakeCache.Read(cache, "XRT_SERVICE_EXECUTABLE");
-        return value == "monado-service"
-            ? new BuildCheck(name, CheckOutcome.Passed, "XRT_SERVICE_EXECUTABLE is monado-service: games can start Monado through Mirador.")
+        return Monado.ServiceLaunch.StartsStandIn(value)
+            ? new BuildCheck(name, CheckOutcome.Passed, $"XRT_SERVICE_EXECUTABLE is {value}: games can start Monado through Mirador.")
             : new BuildCheck(name, CheckOutcome.Failed,
                 $"XRT_SERVICE_EXECUTABLE is {(value is null ? "not set" : $"'{value}'")}: games can't start this Monado by themselves.");
     }

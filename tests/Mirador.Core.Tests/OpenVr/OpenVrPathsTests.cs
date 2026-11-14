@@ -92,43 +92,6 @@ public class OpenVrPathsTests
     }
 
     [Fact]
-    public void Use_steamvr_on_finn_s_file_puts_it_back_as_it_was()
-    {
-        using var dir = new TempDir();
-        var paths = With(dir, FinnsFile);
-        var before = JsonNode.Parse(FinnsFile)!.AsObject();
-        Assert.Null(paths.UseMonado());
-
-        Assert.Null(paths.UseSteamVr());
-
-        Assert.True(JsonNode.DeepEquals(before, Json(dir)));
-        Assert.Equal(OpenVrTarget.SteamVr, paths.Read().Target);
-    }
-
-    [Fact]
-    public void Use_steamvr_removes_ours_and_moves_steamvr_first()
-    {
-        using var dir = new TempDir();
-        var paths = With(dir, File3(@"D:\Other", Ours(dir), SteamVr));
-
-        Assert.Null(paths.UseSteamVr());
-
-        Assert.Equal([SteamVr, @"D:\Other"], Runtimes(dir));
-        Assert.Equal(OpenVrTarget.SteamVr, paths.Read().Target);
-    }
-
-    [Fact]
-    public void Use_steamvr_without_steamvr_entry_just_removes_ours()
-    {
-        using var dir = new TempDir();
-        var paths = With(dir, File3(Ours(dir), @"D:\Other"));
-
-        Assert.Null(paths.UseSteamVr());
-
-        Assert.Equal([@"D:\Other"], Runtimes(dir));
-    }
-
-    [Fact]
     public void Use_monado_twice_keeps_one_entry()
     {
         using var dir = new TempDir();
@@ -164,10 +127,9 @@ public class OpenVrPathsTests
         var paths = With(dir, """{ "runtime": ["C:\\SteamVR"], "future": { "a": [1, 2] }, "version": 1 }""");
 
         Assert.Null(paths.UseMonado());
-        Assert.Null(paths.UseSteamVr());
 
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{ "a": [1, 2] }"""), Json(dir)["future"]));
-        Assert.Equal([@"C:\SteamVR"], Runtimes(dir));
+        Assert.Equal([Ours(dir), @"C:\SteamVR"], Runtimes(dir));
     }
 
     [Theory]
@@ -184,13 +146,11 @@ public class OpenVrPathsTests
 
         var state = paths.Read();
         var monado = paths.UseMonado();
-        var steamVr = paths.UseSteamVr();
 
         Assert.Equal(OpenVrTarget.None, state.Target);
         Assert.NotNull(state.Problem);
         Assert.Contains("openvrpaths.vrpath", state.Problem);
         Assert.Equal(state.Problem, monado);
-        Assert.Equal(state.Problem, steamVr);
         Assert.Equal(bytes, File.ReadAllBytes(dir.File("openvr", "openvrpaths.vrpath")));
     }
 

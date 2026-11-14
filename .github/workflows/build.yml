@@ -40,7 +40,7 @@ jobs:
           path: |
             src/Mirador.App/bin/x64/Release/
             src/Mirador.Helper/bin/x64/Release/
-            artifacts/standin/monado-service.exe
+            artifacts/standin/mirador-standin.exe
             artifacts/layer-build/layer/mirador_direct_mode.json
             artifacts/layer-build/layer/mirador_direct_mode.dll
             artifacts/layer-build/check/mirador-display-check.exe

@@ -72,12 +72,6 @@ public sealed partial class BuildViewModel : ObservableObject
             return;
         }
 
-        if (host.BuildToolsSetup.IsInstalling)
-        {
-            Status = "The build tools are being installed: build when that is done.";
-            return;
-        }
-
         if (profile is not null)
         {
             host.Builds.Start(profile);
@@ -127,7 +121,7 @@ public sealed partial class BuildViewModel : ObservableObject
         BuildLabel = info is null ? "Build" : "Pull and rebuild";
         if (IsBuilding)
         {
-            Status = "Building… This takes a while the first time: vcpkg builds Monado's libraries too.";
+            Status = "Building. This takes longer the first time.";
             return;
         }
 

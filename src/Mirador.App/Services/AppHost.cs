@@ -58,7 +58,8 @@ public sealed class AppHost : IAsyncDisposable
         Locator = new MonadoLocator(Path.Combine(appDir, "monado"), paths.BuildsDir, ApprovedCopyOf);
         Builds = new Builds(new MonadoBuilder(
             new CommandRunner(), Locator, BuildTools.For(appDir, paths),
-            new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System));
+            new BuildChecks(new CommandRunner(), Environment.SystemDirectory, TimeProvider.System), TimeProvider.System,
+            (line, ct) => BuildToolsSetup!.PrepareAsync(line, ct)));
         BuildToolsSetup = new BuildToolsSetup(
             new CommandRunner(), ToolsHttp, new UacLauncher(), paths.ToolsDir,
             BuildToolsCheck.ReadPin(Path.Combine(appDir, "tools", "vcpkg-commit.txt")) ?? "",
@@ -84,14 +85,15 @@ public sealed class AppHost : IAsyncDisposable
             Calibrations,
             () => Usb.Present()));
         Modules = new Dictionary<string, IHeadsetModule> { [dreamAir.Id] = dreamAir };
-        OpenCompositeCopy = new OpenCompositeCopy(paths.OpenCompositeDir);
-        OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, paths.OpenCompositeDir), OpenCompositeCopy);
+        OpenComposite = new OpenCompositeInstall(OpenCompositeInstall.DefaultFolder);
+        OpenVr = new OpenVrGames(new OpenVrPaths(OpenVrPaths.DefaultFile, OpenComposite.Folder), OpenComposite);
 
         radio = new WinRtStationRadio(text => AppLog.Write(text));
         stationStore = new StationStore(paths.BaseStationsFile);
         Stations = new StationManager(radio, stationStore, StationSettings, TimeProvider.System, text => AppLog.Write(text));
 
-        launcher = new JobProcessLauncher();
+        var self = Environment.ProcessPath;
+        launcher = new JobProcessLauncher(self is null ? null : pid => ConsoleExitKey.RunSender(self, pid));
         ElevatedConsent = new ElevatedConsent(new RegistryConsentValues());
         var elevatedLogPath = ElevatedLogPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Mirador", "monado", CurrentSid() + ".log");
@@ -117,7 +119,9 @@ public sealed class AppHost : IAsyncDisposable
                 SteamVrChecked = OnSteamVrChecked,
             },
             ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true),
-            BundledLayerDir: Path.Combine(appDir, "layer")));
+            BundledLayerDir: Path.Combine(appDir, "layer"),
+            ElevationFixVerified: ElevationFixVerified,
+            ControllersOffAtStop: () => StationSettings().ControllersOffAtStop));
     }
 
     /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>
@@ -167,7 +171,7 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>The branch builds.</summary>
     public Builds Builds { get; }
 
-    /// <summary>The build tools' check and "Install what's missing".</summary>
+    /// <summary>The build tools: their state, and their install at a branch build.</summary>
     public BuildToolsSetup BuildToolsSetup { get; }
 
     /// <summary>"Verify build for Windows".</summary>
@@ -357,17 +361,16 @@ public sealed class AppHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes back, through the helper (no prompt), the approval of every build no profile runs as administrator any more:
-    /// a profile deleted, its "Run as administrator" turned off, or its Monado no longer a branch or a build folder
-    /// (Mirador.md §4.11 item 51). The helper keeps the approvals of the profiles still asking. Returns what went wrong,
-    /// or null.
+    /// Takes back, through the helper (no prompt), the approval of every build no profile can use any more: a profile
+    /// deleted, or its Monado no longer a branch or a build folder. An approval stays with "Run as administrator" off: the
+    /// approved copy is also what makes a build the OpenXR runtime. Returns what went wrong, or null.
     /// </summary>
     public async Task<string?> ForgetUnneededApprovalsAsync()
     {
         try
         {
             var keep = Profiles.Load().Profiles
-                .Where(p => p.RunAsAdministrator && p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
+                .Where(p => p.Monado.Kind is SourceKind.Branch or SourceKind.Folder)
                 .Select(p => p.Id)
                 .ToHashSet(StringComparer.Ordinal);
             var listed = await Helper.SendAsync(new HelperRequest(HelperCommand.ListApprovedBuilds), CancellationToken.None);
@@ -383,7 +386,7 @@ public sealed class AppHost : IAsyncDisposable
                 if (!reply.Ok)
                 {
                     AppLog.Write($"Taking back the approval of profile {id} failed: {reply.Error}");
-                    return $"Mirador couldn't take back an approved build no profile runs as administrator any more: {reply.Error}";
+                    return $"Mirador couldn't take back an approved build no profile uses any more: {reply.Error}";
                 }
             }
 
@@ -505,8 +508,8 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>The SteamVR base stations: the Lighthouse page's list, Home's On and Off, and the session's own.</summary>
     public StationManager Stations { get; }
 
-    /// <summary>Mirador's own stand-in, copied into Monado build folders (<c>{app}\standin\monado-service.exe</c>).</summary>
-    public string StandInExe => Path.Combine(AppDir, "standin", "monado-service.exe");
+    /// <summary>Mirador's own stand-in, copied into Monado build folders (<c>{app}\standin\mirador-standin.exe</c>).</summary>
+    public string StandInExe => Path.Combine(AppDir, "standin", StandIn.FileName);
 
     /// <summary>Whether closing the window keeps Mirador in the tray (the default, and when settings.json can't be read).</summary>
     public bool CloseToTray()
@@ -527,11 +530,8 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>Home's "OpenVR runtime" row and its "Set OpenComposite" (Mirador.md §4.6).</summary>
     public OpenVrGames OpenVr { get; }
 
-    /// <summary>Mirador's OpenComposite: the bundle and the per-user copy.</summary>
-    public OpenCompositeCopy OpenCompositeCopy { get; }
-
-    /// <summary>Why OpenVR games couldn't be put on Monado, or the copy brought up to date, at launch; null when all is well.</summary>
-    public string? OpenCompositeNotice { get; private set; }
+    /// <summary>Mirador's OpenComposite: OpenComposite as its installer put it.</summary>
+    public OpenCompositeInstall OpenComposite { get; }
 
     /// <summary>
     /// Puts Mirador together and reads its settings once, so that a file it had to set aside, or couldn't read, is
@@ -564,17 +564,17 @@ public sealed class AppHost : IAsyncDisposable
         host.CheckStore("base stations", paths.BaseStationsFile, () => host.stationStore.Load());
         _ = Task.Run(host.StartStationsAsync);
         _ = Task.Run(() => host.IsInstalledCopy(askHelper: true));
-        host.OpenCompositeNotice = host.OpenVr.UpdateAtLaunch();
         return host;
     }
 
     /// <summary>
-    /// Whether <paramref name="profile"/> has "Run as administrator" on and its build as it is now is the approved one
-    /// (Mirador.md §4.11 item 51). The helper checks the approved copy's every file again at the Start.
+    /// Whether <paramref name="profile"/>'s build (a branch or a build folder) as it is now is the approved one, with "Run
+    /// as administrator" on or off. The helper checks the approved copy's every file again at an elevated Start and
+    /// before making it the OpenXR runtime.
     /// </summary>
     public bool ApprovedBuildCurrent(Profile profile)
     {
-        if (!profile.RunAsAdministrator || profile.Monado.Kind is not (SourceKind.Branch or SourceKind.Folder))
+        if (profile.Monado.Kind is not (SourceKind.Branch or SourceKind.Folder))
         {
             return false;
         }
@@ -584,6 +584,29 @@ public sealed class AppHost : IAsyncDisposable
             return Locator.Locate(profile).Approved is not null;
         }
         catch (Exception e) when (e is MiradorException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether Verify's last run for <paramref name="profile"/>, on this very build, saw an app running as the user
+    /// connect to it running as administrator: the build has the elevation fix.
+    /// </summary>
+    public bool ElevationFixVerified(Profile profile, MonadoInstall install) =>
+        VerifyResult.Load(VerifyResultFile(profile.Id)) is { HasElevationFix: true, StrictPipe: true } result && result.Key == VerifyBuild.KeyFor(install);
+
+    /// <summary>
+    /// Whether <paramref name="profile"/> has an approval at all, of this build or an earlier one: then a build that isn't
+    /// the approved one changed since.
+    /// </summary>
+    public bool HasApproval(Profile profile)
+    {
+        try
+        {
+            return AllowElevatedCommand.CurrentUser()?.Value is { } owner && new RegistryApprovedBuildStore().Get(owner, profile.Id) is not null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             return false;
         }
@@ -600,6 +623,7 @@ public sealed class AppHost : IAsyncDisposable
             return AllowElevatedCommand.CurrentUser()?.Value is { } owner
                 && new RegistryApprovedBuildStore().Get(owner, profile.Id) is { } approved
                 && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(install.Manifest)!, buildHashes.HashOf)
+                && Ipc.ApprovedBuilds.NamesOwnDll(approved)
                 ? approved
                 : null;
         }

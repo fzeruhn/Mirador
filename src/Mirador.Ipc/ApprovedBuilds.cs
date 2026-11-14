@@ -25,8 +25,8 @@ public sealed record ApprovedBuild(string Owner, string ProfileId, string Commit
     public string ServerDir => Path.Combine(Folder, "bin");
 
     /// <summary>
-    /// Where the copy's runtime DLL looks for <c>monado-service.exe</c> when a game finds no service running: Mirador's
-    /// stand-in, which the approval puts there.
+    /// Where the copy's runtime DLL looks for the service when a game finds no service running: Mirador's stand-in,
+    /// which the approval puts there.
     /// </summary>
     public string StandInDir => Path.Combine(ServerDir, "service");
 }
@@ -208,6 +208,13 @@ public static partial class ApprovedBuilds
         return true;
     }
 
+    /// <summary>
+    /// Whether the copy's manifest names the copy's own DLL in a way OpenXR programs can load (a quick look, for the app;
+    /// <see cref="Verify"/> checks every file): a path with forward slashes isn't, so such a copy counts as not approved.
+    /// </summary>
+    public static bool NamesOwnDll(ApprovedBuild build) =>
+        LibraryOf(build.Manifest) is { } library && string.Equals(library, Path.Combine(build.Folder, RuntimeDll), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The SHA-256 of a file, lower case.</summary>
     public static string HashOf(string path)
     {
@@ -217,11 +224,13 @@ public static partial class ApprovedBuilds
 
     /// <summary>
     /// The copy's manifest, written by Mirador: a build's own may name a DLL anywhere (an absolute path into the user's
-    /// build folder), and every OpenXR program would load that.
+    /// build folder), and every OpenXR program would load that. The path has backslashes: the OpenXR loader joins it to
+    /// the manifest's folder and loads it, and with forward slashes in that path Windows doesn't look in the DLL's own
+    /// folder for the DLLs it needs, so it fails to load.
     /// </summary>
     private static void WriteManifest(string folder) =>
         File.WriteAllText(Path.Combine(folder, "openxr_monado.json"),
-            """{"file_format_version": "1.0.0", "runtime": {"name": "Monado (Mirador, approved build)", "library_path": "./bin/openxr_monado.dll"}}""");
+            """{"file_format_version": "1.0.0", "runtime": {"name": "Monado (Mirador, approved build)", "library_path": "bin\\openxr_monado.dll"}}""");
 
     /// <summary>
     /// Mirador's own stand-in (<c>{app}\standin</c>) where the copy's runtime DLL looks for the service, whatever the build
@@ -230,23 +239,29 @@ public static partial class ApprovedBuilds
     /// </summary>
     private static void PlaceStandIn(string appDir, string copy)
     {
-        var standIn = Path.Combine(appDir, "standin", "monado-service.exe");
+        var standIn = Path.Combine(appDir, "standin", StandInNames.FileName);
         if (File.Exists(standIn))
         {
             var dir = Path.Combine(copy, "bin", "service");
             Directory.CreateDirectory(dir);
-            File.Copy(standIn, Path.Combine(dir, "monado-service.exe"), overwrite: true);
+            foreach (var name in StandInNames.FileNames)
+            {
+                File.Copy(standIn, Path.Combine(dir, name), overwrite: true);
+            }
         }
     }
 
-    /// <summary>The full path of the DLL a manifest names, or null when it can't be read.</summary>
+    /// <summary>
+    /// The full path of the DLL a manifest names, or null when it can't be read or can't be loaded as written (a forward
+    /// slash: see <see cref="WriteManifest"/>).
+    /// </summary>
     private static string? LibraryOf(string manifest)
     {
         try
         {
             using var doc = JsonDocument.Parse(File.ReadAllText(manifest));
             var library = doc.RootElement.GetProperty("runtime").GetProperty("library_path").GetString();
-            return library is null || Path.IsPathRooted(library) ? null : Path.GetFullPath(library, Path.GetDirectoryName(manifest)!);
+            return library is null || Path.IsPathRooted(library) || library.Contains('/') ? null : Path.GetFullPath(library, Path.GetDirectoryName(manifest)!);
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or IOException or ArgumentException)
         {

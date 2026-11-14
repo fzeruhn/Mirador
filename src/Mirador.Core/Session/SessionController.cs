@@ -62,6 +62,7 @@ public sealed class SessionController(SessionDeps deps)
 
     /// <summary>How long a module's <see cref="ModuleSession.EndAsync"/> may take before Mirador stops waiting for it.</summary>
     private static readonly TimeSpan EndLimit = TimeSpan.FromSeconds(60);
+
     private static readonly IReadOnlyDictionary<string, string> Nothing = new Dictionary<string, string>();
 
     private readonly SessionDeps deps = deps;
@@ -342,7 +343,11 @@ public sealed class SessionController(SessionDeps deps)
     /// <param name="ct">Stops this caller's waiting only: a stop, once begun, runs to its end, since a half-done one
     /// would leave the headset's software stopped. The module's part is given at most 60 s; after that the session is
     /// over anyway, <c>session.json</c> stays and the module's steps are undone before Monado next starts.</param>
-    public async Task StopAsync(CancellationToken ct)
+    /// <param name="restart">
+    /// A Start follows at once (Monado settings' Restart): Monado is ended without its teardown, as a Start broken off
+    /// is, so that its controllers and trackers don't go into standby.
+    /// </param>
+    public async Task StopAsync(CancellationToken ct, bool restart = false)
     {
         while (true)
         {
@@ -363,7 +368,7 @@ public sealed class SessionController(SessionDeps deps)
                         stop = stopping;
                         break;
                     default:
-                        stop = BeginStop(current!, "Stopped.");
+                        stop = BeginStop(current!, "Stopped.", clean: !restart);
                         break;
                 }
             }
@@ -559,12 +564,12 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>Moves a running session to Stopping and sets its end off. Called under the lock.</summary>
-    private Task BeginStop(Run run, string endedMessage)
+    private Task BeginStop(Run run, string endedMessage, bool clean = true)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         state = SessionState.Stopping;
         stopping = done.Task;
-        _ = Task.Run(() => FinishAsync(run, done, endedMessage), CancellationToken.None);
+        _ = Task.Run(() => FinishAsync(run, done, endedMessage, clean), CancellationToken.None);
         return done.Task;
     }
 
@@ -595,7 +600,7 @@ public sealed class SessionController(SessionDeps deps)
 
             if (!outcome.Ok)
             {
-                await EndRunAsync(run).ConfigureAwait(false);
+                await EndRunAsync(run, clean: false).ConfigureAwait(false);
             }
         }
         finally
@@ -733,8 +738,9 @@ public sealed class SessionController(SessionDeps deps)
             moduleEnvironment = [.. DirectModeLayer.Environment(deps.BundledLayerDir ?? ""), .. moduleEnvironment];
         }
 
-        var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment);
-        var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment);
+        var controllersOff = deps.ControllersOffAtStop?.Invoke() == true;
+        var environment = MonadoEnvironment.Build(deps.InheritedEnvironment, run.Settings, profile, moduleEnvironment, controllersOff);
+        var mine = MonadoEnvironment.Build(Nothing, run.Settings, profile, moduleEnvironment, controllersOff);
         var standIn = install.IsBundled
             ? null
             : StandInCopy.Place(deps.StandInExe, install.StandInDir, install.ServiceExe) ?? ServiceLaunch.Check(Path.GetDirectoryName(install.Manifest)!);
@@ -753,9 +759,11 @@ public sealed class SessionController(SessionDeps deps)
         RaiseStatusChanged();
         ct.ThrowIfCancellationRequested();
 
+        // An approved build runs from its approved copy, the same files as the runtime games load from it, whether the
+        // helper runs it as administrator or it runs as the user.
+        var serviceExe = install.Approved is { } approved ? Path.Combine(approved.ServerDir, "monado-service.exe") : install.ServiceExe;
         var launcher = ChooseLauncher(install, profile, module, run.Settings);
-        var process = launcher.Start(new ProcessSpec(
-            install.ServiceExe, "", Path.GetDirectoryName(install.ServiceExe)!, environment));
+        var process = launcher.Start(new ProcessSpec(serviceExe, "", Path.GetDirectoryName(serviceExe)!, environment));
         run.Process = process;
         Listen(run, process);
 
@@ -835,13 +843,13 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>Ends a running session (state Stopping), then moves to Stopped and raises <see cref="Ended"/>.</summary>
-    private async Task FinishAsync(Run run, TaskCompletionSource done, string endedMessage)
+    private async Task FinishAsync(Run run, TaskCompletionSource done, string endedMessage, bool clean)
     {
         try
         {
             RaiseChanged();
             RaiseStatusChanged();
-            await EndRunAsync(run).ConfigureAwait(false);
+            await EndRunAsync(run, clean).ConfigureAwait(false);
         }
         finally
         {
@@ -862,16 +870,20 @@ public sealed class SessionController(SessionDeps deps)
     }
 
     /// <summary>
-    /// Ends what a run set up, in order: Monado's service (killed, then its exit awaited), its log, the module's session,
+    /// Ends what a run set up, in order: Monado's service (with <paramref name="clean"/>, asked to end by itself, so that
+    /// it tears its devices down; else, or when it doesn't, killed; then its exit awaited), its log, the module's session,
     /// <c>session.json</c>. Never throws: a failure becomes a <see cref="Warning"/>.
     /// </summary>
-    private async Task EndRunAsync(Run run)
+    private async Task EndRunAsync(Run run, bool clean)
     {
         if (run.Process is { } process)
         {
             try
             {
-                process.Kill();
+                if (!clean || !await process.EndCleanlyAsync(ConsoleExitKey.StopLimit).ConfigureAwait(false))
+                {
+                    process.Kill();
+                }
             }
             catch (Exception e)
             {
@@ -1149,7 +1161,9 @@ public sealed class SessionController(SessionDeps deps)
             settings.CompositorMinTimeMs,
             settings.StopWhenLastAppCloses,
             module?.ElevatedModuleId ?? "",
-            approvedBuild ? profile.Id : "");
+            approvedBuild ? profile.Id : "",
+            ElevationFix: deps.ElevationFixVerified?.Invoke(profile, install) == true,
+            StandbyOnExit: deps.ControllersOffAtStop?.Invoke() == true);
         return deps.ElevatedLauncher!(start);
     }
 

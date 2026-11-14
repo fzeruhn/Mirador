@@ -191,7 +191,7 @@
                             VerticalAlignment="Center"
                             Command="{x:Bind ViewModel.GetOpenCompositeCommand}"
                             Content="Get OpenComposite"
-                            ToolTipService.ToolTip="Download OpenComposite from GitHub, so OpenVR (SteamVR) games can run on Monado"
+                            ToolTipService.ToolTip="Install OpenComposite from GitHub, so OpenVR (SteamVR) games can run on Monado"
                             Visibility="{x:Bind ViewModel.CanGetOpenComposite, Mode=OneWay}" />
                     </Grid>
                 </StackPanel>

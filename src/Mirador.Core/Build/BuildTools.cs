@@ -16,8 +16,8 @@ public sealed record BuildTools(string Recipe, string? ToolsDir, string PowerShe
         Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"));
 
     /// <summary>
-    /// <see cref="ToolsDir"/> when it exists now: "Install what's missing" fills it while Mirador runs, and the next
-    /// build uses it without a restart.
+    /// <see cref="ToolsDir"/> when it exists now: a build fills it while Mirador runs, and the next build uses it
+    /// without a restart.
     /// </summary>
     public string? ExistingToolsDir => ToolsDir is { } dir && Directory.Exists(dir) ? dir : null;
 
@@ -32,7 +32,7 @@ public sealed record BuildTools(string Recipe, string? ToolsDir, string PowerShe
         : "ctest";
 }
 
-/// <summary>What the "Check build tools" page says of one part (Mirador.md §4.11 item 49).</summary>
+/// <summary>The state of one build tool.</summary>
 public enum ToolState
 {
     /// <summary>There and as builds need it.</summary>
@@ -188,16 +188,16 @@ public sealed record VsPlan(ToolState State, VsInstance? Install, IReadOnlyList<
         {
             return new VsPlan(
                 ToolState.Missing, null, VsComponents.Install,
-                "No Visual Studio 2022 or newer, and no Build Tools. Mirador can install Microsoft's Build Tools for Visual Studio 2022 with the C++ tools and the Windows 11 SDK (one administrator prompt).");
+                "Not installed: the first branch build installs Microsoft's Build Tools for Visual Studio 2022 with the C++ tools and the Windows 11 SDK (one administrator prompt).");
         }
 
         var missing = VsComponents.Required.Where(c => !target.Packages.Contains(c)).ToList();
         var name = $"{target.Name} ({target.Version.ToString(2)})";
         return missing.Count == 0
-            ? new VsPlan(ToolState.Found, target, [], $"{name} has the C++ x64 tools and the Windows 11 SDK (10.0.26100).")
+            ? new VsPlan(ToolState.Found, target, [], $"{name}, with the C++ x64 tools and the Windows 11 SDK (10.0.26100).")
             : new VsPlan(
                 ToolState.Fixable, target, missing,
-                $"{name} lacks {string.Join(" and ", missing.Select(VsComponents.Describe))}. Mirador can add {(missing.Count == 1 ? "it" : "them")} with Visual Studio's installer (one administrator prompt).");
+                $"{name}, without {string.Join(" and ", missing.Select(VsComponents.Describe))}: the next branch build adds {(missing.Count == 1 ? "it" : "them")} with Visual Studio's installer (one administrator prompt).");
     }
 
     /// <summary>
@@ -273,18 +273,18 @@ public sealed partial class BuildToolsCheck(string toolsDir, string vcpkgCommit)
         var folder = Path.Combine(toolsDir, pin.Folder);
         if (!File.Exists(Path.Combine(folder, pin.Exe)))
         {
-            return new ToolStatus(pin.Name, ToolState.Missing, $"Not downloaded yet: {pin.Name} {pin.Version} from GitHub.");
+            return new ToolStatus(pin.Name, ToolState.Missing, $"Not downloaded yet: the first branch build gets {pin.Version} from GitHub.");
         }
 
         var marker = ReadMarker(Path.Combine(folder, MarkerFile));
         if (marker is { } m && m.Version == pin.Version && string.Equals(m.Sha256, pin.Sha256, StringComparison.OrdinalIgnoreCase))
         {
-            return new ToolStatus(pin.Name, ToolState.Found, $"{pin.Name} {pin.Version}, Mirador's copy.");
+            return new ToolStatus(pin.Name, ToolState.Found, pin.Version);
         }
 
         return new ToolStatus(
             pin.Name, ToolState.Fixable,
-            $"Mirador has {pin.Name} {marker?.Version ?? "of an unknown version"}; builds use {pin.Version}.");
+            $"{marker?.Version ?? "An unknown version"}: the next branch build replaces it with {pin.Version}.");
     }
 
     /// <summary>The state of Mirador's vcpkg clone.</summary>
@@ -299,7 +299,7 @@ public sealed partial class BuildToolsCheck(string toolsDir, string vcpkgCommit)
         var head = Path.Combine(VcpkgDir, ".git", "HEAD");
         if (!File.Exists(head))
         {
-            return new ToolStatus("vcpkg", ToolState.Missing, $"Not cloned yet: vcpkg from github.com/microsoft/vcpkg, at commit {shortPin}.");
+            return new ToolStatus("vcpkg", ToolState.Missing, $"Not cloned yet: the first branch build clones it at commit {shortPin}.");
         }
 
         string text;
@@ -309,17 +309,17 @@ public sealed partial class BuildToolsCheck(string toolsDir, string vcpkgCommit)
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return new ToolStatus("vcpkg", ToolState.Fixable, $"Mirador's vcpkg can't be read; it can be cloned again at commit {shortPin}.");
+            return new ToolStatus("vcpkg", ToolState.Fixable, $"Can't be read: the next branch build clones it again at commit {shortPin}.");
         }
 
         if (string.Equals(text, vcpkgCommit, StringComparison.OrdinalIgnoreCase)
             && File.Exists(Path.Combine(VcpkgDir, "scripts", "buildsystems", "vcpkg.cmake")))
         {
-            return new ToolStatus("vcpkg", ToolState.Found, $"At Mirador's pinned commit {shortPin}.");
+            return new ToolStatus("vcpkg", ToolState.Found, $"Commit {shortPin}");
         }
 
         var at = Commit().IsMatch(text) ? "commit " + text[..7] : "a branch";
-        return new ToolStatus("vcpkg", ToolState.Fixable, $"At {at}, not Mirador's pinned commit {shortPin}.");
+        return new ToolStatus("vcpkg", ToolState.Fixable, $"At {at}: the next branch build moves it to commit {shortPin}.");
     }
 
     /// <summary>The pinned vcpkg commit in <paramref name="file"/> (<c>{app}\tools\vcpkg-commit.txt</c>), or null.</summary>

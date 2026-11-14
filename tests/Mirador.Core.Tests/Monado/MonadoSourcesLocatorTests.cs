@@ -36,7 +36,7 @@ public class MonadoSourcesLocatorTests
     }
 
     [Fact]
-    public void A_profile_running_as_administrator_gets_its_builds_approved_copy()
+    public void A_profile_gets_its_builds_approved_copy_with_run_as_administrator_on_or_off()
     {
         using var dir = new TempDir();
         var folder = dir.File("my-build");
@@ -54,8 +54,8 @@ public class MonadoSourcesLocatorTests
 
         Assert.Same(approved, locator.Locate(profile).Approved);
         Assert.Equal([$"p1 {Path.Combine(folder, "openxr_monado.json")}"], asked);
-        Assert.Null(locator.Locate(profile with { RunAsAdministrator = false }).Approved);
-        Assert.Single(asked);
+        Assert.Same(approved, locator.Locate(profile with { RunAsAdministrator = false }).Approved);
+        Assert.Equal(2, asked.Count);
     }
 
     [Fact]

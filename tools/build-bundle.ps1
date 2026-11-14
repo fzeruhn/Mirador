@@ -10,7 +10,7 @@
 
       Mirador.exe and the app        dotnet publish, self-contained, win-x64
       Mirador.Helper.exe             the helper service, beside the app on the same .NET runtime
-      standin\monado-service.exe     the stand-in again, copied into build folders by Mirador
+      standin\mirador-standin.exe    the stand-in again, copied into build folders by Mirador
       layer\                         mirador_direct_mode.json, .dll, mirador-display-check.exe (built from layer\)
       tools\                         build-monado.ps1, vcpkg-commit.txt, xr-check.exe
 .EXAMPLE
@@ -46,7 +46,7 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 # 2. The stand-in.
 $standinOut = Join-Path $repo 'artifacts\standin'
 & (Join-Path $repo 'standin\build.ps1') -Out $standinOut
-$standin = Join-Path $standinOut 'monado-service.exe'
+$standin = Join-Path $standinOut 'mirador-standin.exe'
 Need $standin 'The stand-in'
 
 # The direct-mode layer, from layer\ (a child process, so its developer shell stays out of this one).

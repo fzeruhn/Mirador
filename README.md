@@ -22,7 +22,7 @@ dotnet run --project src\Mirador.App -p:Platform=x64
 ```
 
 The stand-in (`standin\`, C) needs Visual Studio's C++ x64 tools; `tools\build.ps1` builds it first (with a warning,
-not a failure, when they're missing) into `artifacts\standin\monado-service.exe`, and `standin\build.ps1` builds it
+not a failure, when they're missing) into `artifacts\standin\mirador-standin.exe`, and `standin\build.ps1` builds it
 alone.
 
 The direct-mode Vulkan layer (`layer\`, C++) needs the same tools, CMake and Ninja (Visual Studio's) and vcpkg (its
@@ -33,7 +33,7 @@ Catch2 tests (skipped with a warning when the C++ tools are missing, except on C
 The installer: `tools\build-bundle.ps1` puts the install layout in `artifacts\bundle`, then
 `tools\build-installer.ps1` (Inno Setup 6: `winget install JRSoftware.InnoSetup`) makes
 `artifacts\Mirador-<version>-setup.exe` from it. The bundle has the layer, which it builds from `layer\`, and no Monado
-or OpenComposite: Mirador downloads both.
+or OpenComposite: Mirador downloads Monado, and installs OpenComposite with OpenComposite's own installer.
 
 CI (`.github/workflows/`):
 - `build.yml` builds and tests every push and pull request on a Windows runner, leaving out tests marked
@@ -57,12 +57,13 @@ CI (`.github/workflows/`):
 | `tools\xr-check\` | Verify's OpenXR test client (C++) |
 | `src\Mirador.Ipc` | Messages between the app and the helper service |
 | `src\Mirador.Helper` | The helper Windows service, which does the steps that need admin rights |
-| `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for `monado-service.exe` and asks Mirador to start Monado |
+| `standin\` | The stand-in (C): sits where Monado's runtime DLL looks for the service (as `mirador-standin.exe`, and as `monado-service.exe` for builds configured as upstream does) and asks Mirador to start Monado |
 | `installer\` | The Inno Setup script |
 | `tests\` | xUnit tests, one project per source project |
 
 Mirador keeps its data in `%LOCALAPPDATA%\Mirador\`. Uninstalling leaves it there, with the branches Mirador built
 (`Builds\`) and its build tools (`tools\`), often several gigabytes: delete that folder by hand to remove them too.
+OpenComposite is an app of its own: Windows' Installed apps removes it.
 
 The helper service is not part of a plain build. To try it on a development machine, run
 `tools\dev-install-helper.ps1` from an administrator PowerShell (it installs the service `MiradorHelper` from

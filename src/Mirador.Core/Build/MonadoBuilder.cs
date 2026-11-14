@@ -20,10 +20,23 @@ public sealed record BuildOutcome(bool Ok, string Message, string? Commit, Build
 /// (a build cancelled during them stays: it built).
 /// Each build's log is kept in <c>…\logs</c>. One build at a time per profile.
 /// </summary>
-public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, BuildTools tools, BuildChecks checks, TimeProvider time)
+/// <param name="prepareTools">
+/// Gets the build tools ready before a build starts (<see cref="BuildToolsSetup.PrepareAsync"/>: what is missing is
+/// installed, its lines in the build's log): null when they are, else why not. Null: not done (the recipe then finds
+/// its tools itself, as on CI).
+/// </param>
+public sealed class MonadoBuilder(
+    ICommandRunner runner, MonadoLocator locator, BuildTools tools, BuildChecks checks, TimeProvider time,
+    Func<Action<string>, CancellationToken, Task<string?>>? prepareTools = null)
 {
     /// <summary>How many build logs are kept per profile.</summary>
     public const int KeptLogs = 10;
+
+    /// <summary>
+    /// The recipe's exit code when a build tool is missing or can't be used (<c>tools\build-monado.ps1</c>), before it
+    /// builds anything.
+    /// </summary>
+    public const int ToolsExitCode = 3;
 
     private readonly HashSet<string> building = [];
 
@@ -106,6 +119,13 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
             return new BuildOutcome(false, problem, null, null, logPath);
         }
 
+        // 0. The tools first, installed when missing: without them the recipe would stop after the fetch.
+        if (prepareTools is not null && await prepareTools(Line, ct).ConfigureAwait(false) is { } notReady)
+        {
+            Line(notReady);
+            return new BuildOutcome(false, notReady, null, null, logPath);
+        }
+
         Line($"Building {source.Url} {source.Ref} for this profile.");
 
         // 1. The source: fetched shallow, the branch's tip checked out, anything left from an earlier build removed.
@@ -152,7 +172,9 @@ public sealed class MonadoBuilder(ICommandRunner runner, MonadoLocator locator, 
         if (code != 0)
         {
             TryDeleteFolder(fresh);
-            var failed = $"The build failed (exit code {code}). The last good build stays; the build log says what went wrong.";
+            var failed = code == ToolsExitCode
+                ? "The build couldn't start: a build tool is missing or can't be used; the build log names it. The last good build stays."
+                : $"The build failed (exit code {code}). The last good build stays; the build log says what went wrong.";
             Line(failed);
             return new BuildOutcome(false, failed, commit, null, logPath);
         }

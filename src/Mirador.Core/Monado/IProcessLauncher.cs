@@ -29,10 +29,19 @@ public interface IRunningProcess : IAsyncDisposable
     event Action<Exception>? ListenerFailed;
 
     /// <summary>
-    /// Ends the process and anything it started. This is the only way to stop <c>monado-service</c>, which ignores
-    /// Ctrl+C on Windows. Does nothing when the process has already ended.
+    /// Ends the process and anything it started. <c>monado-service</c> ignores Ctrl+C on Windows. A process Mirador runs
+    /// as the user stops at once, without its own teardown (<see cref="EndCleanlyAsync"/> first lets it do that); an
+    /// elevated one is stopped by the helper, which asks it to end by itself first. Does nothing when the process has
+    /// already ended.
     /// </summary>
     void Kill();
+
+    /// <summary>
+    /// Asks the process to end by itself and waits for it at most <paramref name="limit"/>: for <c>monado-service</c>,
+    /// a key in its console (<see cref="Mirador.Ipc.ConsoleExitKey"/>), so that it tears its devices down (the Lighthouse
+    /// driver's standby on exit). True when it has ended; otherwise <see cref="Kill"/> ends it. Never throws.
+    /// </summary>
+    Task<bool> EndCleanlyAsync(TimeSpan limit) => Task.FromResult(false);
 }
 
 /// <summary>Starts programs for Mirador. The seam that lets the session be tested without real processes.</summary>

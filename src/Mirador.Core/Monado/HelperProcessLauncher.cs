@@ -30,7 +30,7 @@ public sealed class HelperProcessLauncher(IHelperClient client, ElevatedStart st
     internal TimeSpan FollowInterval { get; init; } = TimeSpan.FromMilliseconds(250);
 
     /// <summary>How long disposing a killed process waits for the helper to report Monado's exit.</summary>
-    internal TimeSpan StopLimit { get; init; } = TimeSpan.FromSeconds(5);
+    internal TimeSpan StopLimit { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Asks the helper to start the elevated service and returns a process that follows its log and its exit. The spec
@@ -148,29 +148,57 @@ internal sealed class ElevatedRunningProcess : IRunningProcess
         }
     }
 
-    public void Kill()
+    public void Kill() => SendStop(clean: false);
+
+    /// <summary>
+    /// The helper asks Monado to end by itself, then ends what is left, and answers once it has (within the stop limit);
+    /// true once the poll has seen the exit, within <paramref name="limit"/> after that.
+    /// </summary>
+    public async Task<bool> EndCleanlyAsync(TimeSpan limit)
     {
-        // An unelevated Mirador can't end an elevated process; the helper does, through its job object. Returns at once;
-        // the exit then shows up through the poll, which DisposeAsync waits for (or the helper ends the job when Mirador
-        // exits).
+        if (SendStop(clean: true) is not { } sent)
+        {
+            return exited.Task.IsCompleted;
+        }
+
+        try
+        {
+            await sent.WaitAsync(stopLimit).ConfigureAwait(false);
+            await exited.Task.WaitAsync(limit).ConfigureAwait(false);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// An unelevated Mirador can't end an elevated process; the helper does, through its job object. Returns at once with
+    /// the request on its way (null when one was sent already); the exit then shows up through the poll, which
+    /// DisposeAsync waits for (or the helper ends the job when Mirador exits).
+    /// </summary>
+    private Task? SendStop(bool clean)
+    {
         lock (gate)
         {
             if (stopSent is not null || disposed)
             {
-                return;
+                return null;
             }
 
             stopSent = Task.Run(async () =>
             {
                 try
                 {
-                    await client.SendAsync(HelperCommand.StopMonadoElevated, CancellationToken.None).ConfigureAwait(false);
+                    await client.SendAsync(new HelperRequest(HelperCommand.StopMonadoElevated, Clean: clean), CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (Exception)
                 {
                     // Nothing more to do: the job ends Monado when this Mirador exits, at the latest.
                 }
             });
+            return stopSent;
         }
     }
 

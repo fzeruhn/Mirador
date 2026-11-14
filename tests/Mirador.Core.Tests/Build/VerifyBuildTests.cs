@@ -49,6 +49,19 @@ public sealed class VerifyBuildTests : IDisposable
     private static string ArgumentAfter(CommandSpec spec, string name) => spec.Arguments[spec.Arguments.ToList().IndexOf(name) + 1];
 
     [Fact]
+    public async Task Under_administrator_protection_the_elevation_fix_can_not_be_told()
+    {
+        services.PipeRelaxed = true;
+
+        var result = await Run();
+
+        Assert.All(result.Steps, s => Assert.Equal(VerifyOutcome.Passed, s.Outcome));
+        Assert.Null(result.HasElevationFix);
+        Assert.False(result.StrictPipe);
+        Assert.Contains("Administrator protection", result.Steps.Single(s => s.Name == VerifyBuild.ElevatedStep).Detail);
+    }
+
+    [Fact]
     public async Task Every_step_passes_with_a_build_that_works()
     {
         var result = await Run();
@@ -56,6 +69,7 @@ public sealed class VerifyBuildTests : IDisposable
         Assert.Equal([VerifyBuild.D3D11Step, VerifyBuild.VulkanStep, VerifyBuild.StandInStep, VerifyBuild.ElevatedStep], result.Steps.Select(s => s.Name));
         Assert.All(result.Steps, s => Assert.Equal(VerifyOutcome.Passed, s.Outcome));
         Assert.True(result.HasElevationFix);
+        Assert.True(result.StrictPipe);
         Assert.Equal("abc123", result.Key);
         Assert.Equal(new DateTimeOffset(2026, 11, 9, 20, 0, 0, TimeSpan.Zero), result.At);
 
@@ -300,7 +314,21 @@ public sealed class VerifyBuildTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Equal("abc123", loaded.Key);
         Assert.Equal(result.Steps, loaded.Steps);
+        Assert.True(loaded.StrictPipe);
         Assert.Null(VerifyResult.Load(dir.File("checks", "none.json")));
+    }
+
+    [Fact]
+    public void An_older_result_never_says_the_pipe_was_checked_strictly()
+    {
+        var file = dir.File("checks", "verify-old.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, """{"key":"abc123","at":"2026-11-10T20:00:00+00:00","steps":[],"hasElevationFix":true}""");
+
+        var loaded = VerifyResult.Load(file);
+
+        Assert.True(loaded!.HasElevationFix);
+        Assert.False(loaded.StrictPipe);
     }
 
     [Fact]
@@ -358,6 +386,8 @@ public sealed class VerifyBuildTests : IDisposable
 
         public string? ElevatedWhyNot { get; set; }
 
+        public bool PipeRelaxed { get; set; }
+
         public string? StandInFails { get; set; }
 
         public string? ElevatedFailed { get; set; }
@@ -407,7 +437,7 @@ public sealed class VerifyBuildTests : IDisposable
             }
 
             Events.Add("elevated started");
-            return Task.FromResult(new ElevatedVerify(new Done(() => Events.Add("elevated stopped")), null));
+            return Task.FromResult(new ElevatedVerify(new Done(() => Events.Add("elevated stopped")), null, PipeRelaxed: PipeRelaxed));
         }
 
         private sealed class Done(Action action) : IAsyncDisposable

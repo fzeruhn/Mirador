@@ -157,6 +157,20 @@ internal sealed class FakeProcess(Steps steps) : IRunningProcess
         exited.TrySetResult(KilledExitCode);
     }
 
+    /// <summary>Whether <see cref="EndCleanlyAsync"/> ends it (exit code 0), as Monado does on its exit key.</summary>
+    public bool EndsCleanly { get; set; }
+
+    public Task<bool> EndCleanlyAsync(TimeSpan limit)
+    {
+        steps.Add("end cleanly");
+        if (EndsCleanly)
+        {
+            exited.TrySetResult(0);
+        }
+
+        return Task.FromResult(EndsCleanly);
+    }
+
     public ValueTask DisposeAsync()
     {
         Disposed = true;
@@ -526,7 +540,11 @@ internal sealed class Harness : IAsyncDisposable
     /// <param name="installedCopy">With a value, the user allowed Monado as administrator, and this says whether this
     /// Mirador is the installed one; the elevated launcher then records its starts in <see cref="ElevatedStarts"/>
     /// and runs them through <see cref="Launcher"/>.</param>
-    public Harness(ISessionHook? hook = null, bool? installedCopy = null)
+    /// <param name="approvedCopy">The locator's lookup of a build's approved copy; null: no build is approved.</param>
+    /// <param name="elevationFix">Whether Verify found the elevation fix in a build; null: never.</param>
+    public Harness(
+        ISessionHook? hook = null, bool? installedCopy = null, Func<Profile, MonadoInstall, Mirador.Ipc.ApprovedBuild?>? approvedCopy = null,
+        Func<Profile, MonadoInstall, bool>? elevationFix = null, bool controllersOffAtStop = false)
     {
         Root = Path.Combine(dir.Path, "Zoë's data");
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
@@ -544,7 +562,7 @@ internal sealed class Harness : IAsyncDisposable
         Touch(BundledLayer, DirectModeLayer.DllName);
         Touch(BundledLayer, DirectModeLayer.CheckExeName);
 
-        StandInExe = Path.Combine(Root, "Mirador App", "standin", "monado-service.exe");
+        StandInExe = Path.Combine(Root, "Mirador App", "standin", "mirador-standin.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(StandInExe)!);
         File.WriteAllBytes(StandInExe, [0x4D, 0x5A, 1, 2, 3]);
 
@@ -565,7 +583,7 @@ internal sealed class Harness : IAsyncDisposable
                 Settings,
                 new Dictionary<string, IHeadsetModule> { [Module.Id] = Module },
                 new ModuleContext(Paths, new FakeHelper(), Processes, Usb, Timers),
-                new MonadoLocator(bundledRoot),
+                new MonadoLocator(bundledRoot, approvedCopy: approvedCopy),
                 Launcher,
                 Pipe,
                 new OpenXrRuntime(Runtime),
@@ -579,7 +597,9 @@ internal sealed class Harness : IAsyncDisposable
                     return Launcher;
                 },
                 ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null,
-                BundledLayerDir: BundledLayer),
+                BundledLayerDir: BundledLayer,
+                ElevationFixVerified: elevationFix,
+                ControllersOffAtStop: () => controllersOffAtStop),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);

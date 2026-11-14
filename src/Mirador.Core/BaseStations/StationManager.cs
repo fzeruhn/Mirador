@@ -51,6 +51,14 @@ public sealed partial class StationManager : ISessionHook
     /// <summary>How long Mirador keeps listening after a command, so that the stations' new states show.</summary>
     public static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// How long at most Mirador keeps listening to a station whose last advert said it was waking up or going to sleep,
+    /// whatever "Station state tracking rate" says, counted from its last change of state: until it says it is on or
+    /// asleep, so that what Home and the Lighthouse page show doesn't stop half way. A station that went quiet meanwhile
+    /// (unplugged) isn't listened for forever.
+    /// </summary>
+    public static readonly TimeSpan FollowTime = TimeSpan.FromMinutes(2);
+
     /// <summary>How long after a session ends the stations are switched off, so that "Restart Monado" doesn't switch them off and on.</summary>
     public static readonly TimeSpan OffDelay = TimeSpan.FromSeconds(5);
 

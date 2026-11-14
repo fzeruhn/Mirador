@@ -18,6 +18,13 @@ public class MonadoEnvironmentTests
     private static Profile CustomWith(params EnvVar[] extra) => Custom() with { ExtraEnvironment = extra };
 
     [Fact]
+    public void Controllers_off_at_stop_is_the_lighthouse_standby_on_exit()
+    {
+        Assert.Equal("1", MonadoEnvironment.Build(Inherited(), new MonadoSettings(), Custom(), [], controllersOffAtStop: true)["LH_STANDBY_ON_EXIT"]);
+        Assert.False(MonadoEnvironment.Build(Inherited(), new MonadoSettings(), Custom(), []).ContainsKey("LH_STANDBY_ON_EXIT"));
+    }
+
+    [Fact]
     public void Default_settings_map_to_monado_variables()
     {
         var env = MonadoEnvironment.Build(Inherited(), new MonadoSettings(), Custom(), []);

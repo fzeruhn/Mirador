@@ -47,7 +47,7 @@ public sealed class ApprovedBuildsTests : IDisposable
         Assert.Equal(Path.Combine(App, "builds", Finn, "p1", Commit), build.Folder);
         Assert.Equal("service v1", File.ReadAllText(Path.Combine(build.ServerDir, "monado-service.exe")));
         Assert.Equal(3, build.Files.Count);
-        Assert.Contains("./bin/openxr_monado.dll", File.ReadAllText(build.Manifest));
+        Assert.Equal(@"bin\openxr_monado.dll", LibraryPathOf(build.Manifest));
         Assert.Same(build, store.Get(Finn, "p1"));
         Assert.Null(ApprovedBuilds.Verify(build, App));
         Assert.True(ApprovedBuilds.Matches(build, source));
@@ -60,12 +60,13 @@ public sealed class ApprovedBuildsTests : IDisposable
         Directory.CreateDirectory(Path.Combine(source, "bin", "service"));
         File.WriteAllText(Path.Combine(source, "bin", "service", "monado-service.exe"), "the build's own");
         Directory.CreateDirectory(Path.Combine(App, "standin"));
-        File.WriteAllText(Path.Combine(App, "standin", "monado-service.exe"), "mirador's stand-in");
+        File.WriteAllText(Path.Combine(App, "standin", "mirador-standin.exe"), "mirador's stand-in");
 
         var build = ApprovedBuilds.Approve(Finn, "p1", Commit, source, App, store);
 
         Assert.Equal(Path.Combine(build.ServerDir, "service"), build.StandInDir);
         Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "monado-service.exe")));
+        Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "mirador-standin.exe")));
         Assert.Null(ApprovedBuilds.Verify(build, App));
     }
 
@@ -73,12 +74,13 @@ public sealed class ApprovedBuildsTests : IDisposable
     public void A_build_without_a_stand_in_gets_one_in_its_copy()
     {
         Directory.CreateDirectory(Path.Combine(App, "standin"));
-        File.WriteAllText(Path.Combine(App, "standin", "monado-service.exe"), "mirador's stand-in");
+        File.WriteAllText(Path.Combine(App, "standin", "mirador-standin.exe"), "mirador's stand-in");
 
         var build = ApprovedBuilds.Approve(Finn, "p1", Commit, MakeInstall(), App, store);
 
+        Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "mirador-standin.exe")));
         Assert.Equal("mirador's stand-in", File.ReadAllText(Path.Combine(build.StandInDir, "monado-service.exe")));
-        Assert.Equal(4, build.Files.Count);
+        Assert.Equal(5, build.Files.Count);
     }
 
     [Fact]
@@ -229,6 +231,60 @@ public sealed class ApprovedBuildsTests : IDisposable
     }
 
     [Fact]
+    public void A_copy_whose_manifest_names_its_dll_with_forward_slashes_must_be_approved_again()
+    {
+        // What an older Mirador wrote: the loader can't load the DLL from that path (its DLLs beside it aren't found).
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, MakeInstall(), App, store);
+        File.WriteAllText(build.Manifest, """{"runtime":{"library_path":"./bin/openxr_monado.dll"}}""");
+        var rehashed = build with { Files = new Dictionary<string, string>(build.Files) { ["openxr_monado.json"] = ApprovedBuilds.HashOf(build.Manifest) } };
+
+        Assert.Contains("Approve the build again", ApprovedBuilds.Verify(rehashed, App));
+        Assert.False(ApprovedBuilds.NamesOwnDll(rehashed));
+        Assert.True(ApprovedBuilds.NamesOwnDll(ApprovedBuilds.Approve(Finn, "p2", Commit, MakeInstall("other"), App, store)));
+    }
+
+    /// <summary>
+    /// A real Monado install, approved, then its runtime DLL loaded from the copy's manifest the way the OpenXR loader
+    /// loads it. Runs when <c>MIRADOR_TEST_MONADO_INSTALL</c> names an install (Monado's layout: <c>openxr_monado.json</c>
+    /// and <c>bin\</c>, as Mirador's branch builds are); skipped otherwise.
+    /// </summary>
+    [MonadoInstallFact]
+    public void The_copys_manifest_loads_its_dll_as_the_openxr_loader_does()
+    {
+        var source = Environment.GetEnvironmentVariable(MonadoInstallFactAttribute.Variable)!;
+
+        var build = ApprovedBuilds.Approve(Finn, "p1", Commit, source, App, store);
+
+        // The loader joins a relative library_path to the manifest's folder, tries LoadLibraryW, and on a missing
+        // module tries again with the DLL's own folder searched (OpenXR-SDK-Source, loader_platform.hpp).
+        var path = Path.GetDirectoryName(build.Manifest) + "\\" + LibraryPathOf(build.Manifest);
+        var handle = NativeLoad.LoadLibraryW(path);
+        if (handle == IntPtr.Zero && System.Runtime.InteropServices.Marshal.GetLastPInvokeError() == NativeLoad.ModNotFound)
+        {
+            handle = NativeLoad.LoadLibraryExW(path, IntPtr.Zero, NativeLoad.SearchDefaultDirs | NativeLoad.SearchDllLoadDir);
+        }
+
+        var error = System.Runtime.InteropServices.Marshal.GetLastPInvokeError();
+        try
+        {
+            Assert.True(handle != IntPtr.Zero, $"{path} didn't load (error {error}).");
+        }
+        finally
+        {
+            if (handle != IntPtr.Zero)
+            {
+                NativeLoad.FreeLibrary(handle);
+            }
+        }
+    }
+
+    private static string? LibraryPathOf(string manifest)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+        return doc.RootElement.GetProperty("runtime").GetProperty("library_path").GetString();
+    }
+
+    [Fact]
     public void Approvals_are_per_user()
     {
         ApprovedBuilds.Approve(Finn, "custom", Commit, MakeInstall(), App, store);
@@ -248,4 +304,22 @@ public sealed class ApprovedBuildsTests : IDisposable
     {
         Assert.Throws<InvalidOperationException>(() => ApprovedBuilds.Approve(owner, "p1", Commit, MakeInstall(), App, store));
     }
+}
+
+/// <summary>The calls the OpenXR loader makes to load a runtime DLL.</summary>
+internal static class NativeLoad
+{
+    public const int ModNotFound = 126;
+    public const uint SearchDllLoadDir = 0x100;
+    public const uint SearchDefaultDirs = 0x1000;
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr LoadLibraryW(string fileName);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr LoadLibraryExW(string fileName, IntPtr file, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    public static extern bool FreeLibrary(IntPtr module);
 }

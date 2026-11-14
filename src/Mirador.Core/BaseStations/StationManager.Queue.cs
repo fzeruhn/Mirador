@@ -786,7 +786,7 @@ public sealed partial class StationManager
                 _settling = false;
             }
 
-            UpdateWatch();
+            Follow();
         }
         catch (Exception e)
         {

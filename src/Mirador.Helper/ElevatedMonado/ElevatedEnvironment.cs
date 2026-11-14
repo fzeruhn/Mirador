@@ -46,17 +46,20 @@ public sealed record UserFolders(string UserProfile, string AppData, string Loca
 /// Builds the environment the elevated <c>monado-service</c> is started with (Mirador.md section 4.10 item 46). The
 /// helper builds it from scratch: Windows' machine-wide variables (from the helper's own SYSTEM environment), the
 /// caller's own folders and temp, a <c>PATH</c> of System32, Windows and the server folder only, <c>STEAMVR_PATH</c>,
-/// <c>IPC_RELAXED_CONNECTION_SECURITY</c>, the range-checked settings and the module's fixed table. Nothing from the request becomes a path, and no <c>VK_*</c> (beyond the module's <c>VK_LOADER_LAYERS_ALLOW</c>)
-/// or <c>XR_*</c> variable, nor the profile's own variables, ever reaches it.
+/// <c>IPC_RELAXED_CONNECTION_SECURITY</c> (only when needed: <see cref="ElevatedStart.ElevationFix"/>), the
+/// range-checked settings and the module's fixed table. Nothing from the request becomes a path, and no <c>VK_*</c>
+/// (beyond the module's <c>VK_LOADER_LAYERS_ALLOW</c>) or <c>XR_*</c> variable, nor the profile's own variables, ever
+/// reaches it.
 /// </summary>
 public static class ElevatedEnvironment
 {
     /// <summary>The default when Windows hasn't set <c>PATHEXT</c> (a bare SYSTEM environment can lack it).</summary>
     private const string DefaultPathExt = ".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.WSF;.MSC";
 
+    /// <param name="administratorProtection">Whether Windows' Administrator protection is on (<see cref="AdministratorProtection.IsOn"/>).</param>
     /// <exception cref="ArgumentException">A setting is out of range, or the module name is unknown.</exception>
     public static IReadOnlyDictionary<string, string> Build(
-        ElevatedStart start, UserFolders folders, string serverDir, string steamVrPath)
+        ElevatedStart start, UserFolders folders, string serverDir, string steamVrPath, bool administratorProtection = false)
     {
         if (MonadoSettingsEnvironment.OutOfRange(start.LighthouseWaitMs, start.RenderScalePercent, start.CompositorMinTimeMs) is { } bad)
         {
@@ -94,11 +97,16 @@ public static class ElevatedEnvironment
         Set(env, "PATH", $"{system32};{windows};{wbem};{serverDir}");
 
         Set(env, "STEAMVR_PATH", steamVrPath);
-        Set(env, "IPC_RELAXED_CONNECTION_SECURITY", "1");
+        // Without the elevation fix, apps running as the user can't open an elevated Monado's pipe unless any signed-in
+        // user's may; with it, they can, except under Administrator protection.
+        if (!start.ElevationFix || administratorProtection)
+        {
+            Set(env, "IPC_RELAXED_CONNECTION_SECURITY", "1");
+        }
 
         MonadoSettingsEnvironment.Write(
             (name, value) => Set(env, name, value),
-            start.LighthouseWaitMs, start.RenderScalePercent, start.CompositorMinTimeMs, start.ExitOnDisconnect);
+            start.LighthouseWaitMs, start.RenderScalePercent, start.CompositorMinTimeMs, start.ExitOnDisconnect, start.StandbyOnExit);
 
         foreach (var (name, value) in moduleFixed)
         {

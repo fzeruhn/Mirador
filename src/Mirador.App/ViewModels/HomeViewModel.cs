@@ -45,11 +45,6 @@ public sealed partial class HomeViewModel : ObservableObject
             Notices.Add(new NoticeItem("startup", "Settings", notice, InfoBarSeverity.Warning, IsClosable: true));
         }
 
-        if (host.OpenCompositeNotice is { } openComposite)
-        {
-            Notices.Add(new NoticeItem("opencomposite", "OpenVR runtime", openComposite, InfoBarSeverity.Warning, IsClosable: true));
-        }
-
         // A headset plugged in or out: the checks say so at once, not at the next visit to Home.
         host.DevicesChanged += () => ui.TryEnqueue(() => _ = RunChecksAsync());
 
@@ -169,7 +164,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanSetOpenComposite { get; set; }
 
-    /// <summary>Whether "Get OpenComposite" shows: there is no OpenComposite to copy yet.</summary>
+    /// <summary>Whether "Get OpenComposite" shows: OpenComposite isn't installed.</summary>
     [ObservableProperty]
     public partial bool CanGetOpenComposite { get; set; }
 
@@ -274,7 +269,7 @@ public sealed partial class HomeViewModel : ObservableObject
         if (newerOpenComposite is { } openComposite)
         {
             OpenCompositeUpdateText = $"OpenComposite {UpdateReport.Plain(openComposite.Tag)} is out.";
-            CanUpdateOpenComposite = App.Current.Updates.CanUpdateOpenComposite && openComposite.WindowsZipUrl is not null;
+            CanUpdateOpenComposite = App.Current.Updates.CanUpdateOpenComposite && openComposite.InstallerUrl is not null;
         }
         else
         {
@@ -289,7 +284,7 @@ public sealed partial class HomeViewModel : ObservableObject
         UpdateUrl = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    /// <summary>"Update" on OpenComposite's notice: download, check and swap, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
+    /// <summary>"Update" on OpenComposite's notice: its installer, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
     [RelayCommand]
     private async Task UpdateOpenCompositeAsync()
     {
@@ -306,7 +301,7 @@ public sealed partial class HomeViewModel : ObservableObject
         catch (Exception e)
         {
             AppLog.Write("Updating OpenComposite failed", e);
-            ShowNotice("opencomposite-update", "OpenComposite", $"Updating OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.", InfoBarSeverity.Error);
+            ShowNotice("opencomposite-update", "OpenComposite", $"Updating OpenComposite failed: {e.Message.Trim()}", InfoBarSeverity.Error);
         }
     }
 
@@ -363,7 +358,7 @@ public sealed partial class HomeViewModel : ObservableObject
         {
             var profile = SelectedSet().Selected;
             RuntimeProblem = await RuntimeSwitch.SetAsync(
-                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null, profile.RunAsAdministrator);
+                install, host.Helper, host.Runtime, host.ApprovedBuildCurrent(profile) ? profile.Id : null, host.HasApproval(profile));
         }
         catch (Exception e)
         {
@@ -672,18 +667,8 @@ public sealed partial class HomeViewModel : ObservableObject
     /// </summary>
     private void RefreshOpenVr(bool openXrIsMonado, string? activeOpenXr)
     {
-        // Without OpenComposite yet the row says so and offers "Get OpenComposite" (Mirador.md §4.11 item 56).
         ShowOpenVr = true;
         CanGetOpenComposite = !host.OpenVr.Available;
-        if (CanGetOpenComposite)
-        {
-            OpenVrRow = new StatusItem("OpenVR runtime", "OpenComposite isn't downloaded yet", StatusLevel.Info);
-            CanSetOpenComposite = false;
-            OpenVrWarning = null;
-            OpenVrProblem = openCompositeProblem;
-            return;
-        }
-
         OpenVrView view;
         try
         {
@@ -702,16 +687,18 @@ public sealed partial class HomeViewModel : ObservableObject
             openCompositeProblem = null;
         }
 
-        var level = view.Problem is not null ? StatusLevel.Error : view.OffersOpenComposite ? StatusLevel.Info : StatusLevel.Ok;
-        OpenVrRow = new StatusItem("OpenVR runtime", view.Runtime, level);
-        CanSetOpenComposite = view.OffersOpenComposite;
+        // Without OpenComposite the row says so and offers "Get OpenComposite"; one uninstalled while OpenVR games still
+        // go to it is a problem.
+        var level = view.Problem is not null ? StatusLevel.Error : view.OffersOpenComposite || CanGetOpenComposite ? StatusLevel.Info : StatusLevel.Ok;
+        OpenVrRow = new StatusItem("OpenVR runtime", CanGetOpenComposite && view.Problem is null ? "OpenComposite isn't installed yet" : view.Runtime, level);
+        CanSetOpenComposite = view.OffersOpenComposite && !CanGetOpenComposite;
         OpenVrWarning = view.Warning;
         OpenVrProblem = openCompositeProblem ?? view.Problem;
     }
 
     /// <summary>
-    /// "Get OpenComposite": the fork's latest release, downloaded and checked into the per-user copy (Mirador.md §4.11
-    /// item 56). It doesn't switch OpenVR games: "Set OpenComposite" then does.
+    /// "Get OpenComposite": the fork's latest release, installed with its own installer. It doesn't switch OpenVR games:
+    /// "Set OpenComposite" then does.
     /// </summary>
     [RelayCommand]
     private async Task GetOpenCompositeAsync()
@@ -726,7 +713,7 @@ public sealed partial class HomeViewModel : ObservableObject
         catch (Exception e)
         {
             AppLog.Write("Getting OpenComposite failed", e);
-            openCompositeProblem = $"Getting OpenComposite failed ({e.Message.Trim().TrimEnd('.')}).";
+            openCompositeProblem = $"Getting OpenComposite failed: {e.Message.Trim()}";
         }
 
         RefreshRuntime();

@@ -25,7 +25,6 @@ public class AppPathsTests
         Assert.Equal(@"C:\data\Mirador\logs", p.LogsDir);
         Assert.Equal(@"C:\data\Mirador\geometry", p.GeometryDir);
         Assert.Equal(@"C:\data\Mirador\checks", p.ChecksDir);
-        Assert.Equal(@"C:\data\Mirador\OpenComposite", p.OpenCompositeDir);
     }
 
     [Fact]

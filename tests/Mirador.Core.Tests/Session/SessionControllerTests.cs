@@ -44,6 +44,78 @@ public class SessionControllerTests
         Assert.Equal(1, h.Launcher.Starts);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_elevated_start_says_whether_verify_found_the_elevation_fix(bool found)
+    {
+        await using var h = new Harness(installedCopy: true, elevationFix: (_, _) => found);
+        h.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
+
+        await h.StartRunningAsync();
+
+        Assert.True(h.ElevatedStarts.TryDequeue(out var start));
+        Assert.Equal(found, start.ElevationFix);
+    }
+
+    [Fact]
+    public async Task A_stop_lets_monado_end_by_itself_before_any_kill()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        h.Launcher.Last!.EndsCleanly = true;
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.False(h.Launcher.Last.Killed);
+        Assert.Contains("end cleanly", h.Steps.All);
+    }
+
+    [Fact]
+    public async Task A_restart_kills_monado_at_once_so_its_controllers_stay_on()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+        h.Launcher.Last!.EndsCleanly = true;
+
+        await h.Controller.StopAsync(CancellationToken.None, restart: true).WaitAsync(Limit);
+
+        Assert.True(h.Launcher.Last.Killed);
+        Assert.DoesNotContain("end cleanly", h.Steps.All);
+    }
+
+    [Fact]
+    public async Task A_monado_that_does_not_end_by_itself_is_killed()
+    {
+        await using var h = new Harness();
+        await h.StartRunningAsync();
+
+        await h.Controller.StopAsync(CancellationToken.None).WaitAsync(Limit);
+
+        Assert.True(h.Launcher.Last!.Killed);
+        var steps = h.Steps.All.ToList();
+        Assert.Contains("end cleanly", steps);
+        Assert.True(steps.IndexOf("end cleanly") < steps.IndexOf("kill"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Controllers_off_at_stop_asks_monado_for_standby_as_you_and_as_administrator(bool on)
+    {
+        await using (var h = new Harness(controllersOffAtStop: on))
+        {
+            await h.StartRunningAsync();
+            Assert.Equal(on, h.Launcher.Spec.Environment.TryGetValue("LH_STANDBY_ON_EXIT", out var value) && value == "1");
+        }
+
+        await using var elevated = new Harness(installedCopy: true, controllersOffAtStop: on);
+        elevated.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
+        await elevated.StartRunningAsync();
+        Assert.True(elevated.ElevatedStarts.TryDequeue(out var start));
+        Assert.Equal(on, start.StandbyOnExit);
+    }
+
     [Fact]
     public async Task A_profile_without_run_as_administrator_runs_as_you_whatever_the_consent()
     {
@@ -876,6 +948,7 @@ public class SessionControllerTests
         await h.StartRunningAsync();
 
         Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(copy));
+        Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(Path.Combine(standInDir, "mirador-standin.exe")));
         var server = Path.Combine(folder, "src", "xrt", "targets", "service", "monado-service.exe");
         Assert.Equal(server, h.Launcher.Spec.FileName);
         Assert.Equal(Path.GetDirectoryName(server), h.Launcher.Spec.WorkingDirectory);
@@ -887,6 +960,22 @@ public class SessionControllerTests
         await h.Controller.StartAsync(StartReason.Button, CancellationToken.None).WaitAsync(Limit);
 
         Assert.Equal(File.ReadAllBytes(h.StandInExe), File.ReadAllBytes(copy));
+    }
+
+    [Fact]
+    public async Task An_approved_build_runs_as_the_user_from_its_approved_copy()
+    {
+        var approvedDir = Path.Combine(Path.GetTempPath(), "Program Files", "Mirador", "builds", "S-1-5-21-1", "p1", "0123abc");
+        var approved = new Mirador.Ipc.ApprovedBuild("S-1-5-21-1", "p1", "0123abc", approvedDir, new Dictionary<string, string>());
+        await using var h = new Harness(approvedCopy: (_, _) => approved);
+        var folder = Path.Combine(h.Root, "monado build");
+        Harness.MakeBuild(folder);
+        h.UseProfile(Harness.DreamAir with { Monado = new BuildSource(SourceKind.Folder, folder), RunAsAdministrator = false });
+
+        await h.StartRunningAsync();
+
+        Assert.Equal(Path.Combine(approvedDir, "bin", "monado-service.exe"), h.Launcher.Spec.FileName);
+        Assert.Equal(Path.Combine(approvedDir, "bin"), h.Launcher.Spec.WorkingDirectory);
     }
 
     [Fact]
@@ -937,6 +1026,8 @@ public class SessionControllerTests
     [Theory]
     [InlineData("XRT_SERVICE_EXECUTABLE:UNINITIALIZED=monado-service\n", false)]
     [InlineData("XRT_SERVICE_EXECUTABLE:STRING=monado-service\n", false)]
+    [InlineData("XRT_SERVICE_EXECUTABLE:STRING=mirador-standin\n", false)]
+    [InlineData("XRT_SERVICE_EXECUTABLE:STRING=other-service\n", true)]
     [InlineData("CMAKE_BUILD_TYPE:STRING=RelWithDebInfo\n", true)]
     [InlineData("XRT_SERVICE_EXECUTABLE:UNINITIALIZED=\n", true)]
     public async Task A_build_that_doesnt_start_its_service_says_games_cant_start_it(string cache, bool warned)

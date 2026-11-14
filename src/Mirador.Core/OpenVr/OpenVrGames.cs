@@ -6,24 +6,21 @@ namespace Mirador.Core.OpenVr;
 /// <param name="Runtime">The active OpenVR runtime, in plain words.</param>
 /// <param name="OffersOpenComposite">Whether Home offers "Set OpenComposite".</param>
 /// <param name="Warning">Something to know: the OpenXR runtime isn't Monado while OpenComposite is in front.</param>
-/// <param name="Problem">The paths file can't be read, or Mirador's copy is gone.</param>
+/// <param name="Problem">The paths file can't be read, or OpenComposite was uninstalled while OpenVR games still go to it.</param>
 public sealed record OpenVrView(string Runtime, bool OffersOpenComposite, string? Warning, string? Problem);
 
 /// <summary>
-/// Home's "OpenVR runtime" row (Mirador.md §4.6 items 20–22): OpenComposite, Mirador's copy, or whatever the paths file
-/// names. One way, like the OpenXR runtime: "Set OpenComposite" puts the copy first, and nothing in Mirador switches it
-/// back or forth by itself. SteamVR puts itself first again whenever it starts.
+/// Home's "OpenVR runtime" row: OpenComposite as its installer put it, or whatever the paths file names. One way, like
+/// the OpenXR runtime: "Set OpenComposite" puts it first, and nothing in Mirador switches
+/// it back or forth by itself. SteamVR puts itself first again whenever it starts.
 /// </summary>
-public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeCopy copy)
+public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeInstall install)
 {
     /// <summary>Home's button for <see cref="UseMonado"/>.</summary>
     public const string SetOpenCompositeLabel = "Set OpenComposite";
 
-    /// <summary>
-    /// Whether there is OpenComposite to offer: a copy, a download or an older install's bundle. Without one, Home offers
-    /// "Get OpenComposite" (Mirador.md §4.11 item 56).
-    /// </summary>
-    public bool Available => copy.HasCopy || copy.HasSomethingToCopy;
+    /// <summary>Whether OpenComposite is installed. Without it, Home offers "Get OpenComposite".</summary>
+    public bool Available => install.IsInstalled;
 
     /// <summary>Home's "OpenVR runtime" row, from the paths file as it is now.</summary>
     /// <param name="openXrIsMonado">Whether the profile's Monado is the active OpenXR runtime.</param>
@@ -38,13 +35,13 @@ public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeCopy copy)
 
         if (state.Target == OpenVrTarget.Monado)
         {
-            if (!copy.HasCopy)
+            if (!install.IsInstalled)
             {
                 return new OpenVrView(
                     "OpenComposite",
-                    true,
+                    false,
                     null,
-                    $"Mirador's copy of OpenComposite is missing, so OpenVR games can't start. Press \"{SetOpenCompositeLabel}\" to copy it again.");
+                    "OpenComposite isn't installed any more, so OpenVR games can't start. Press \"Get OpenComposite\" to install it again.");
             }
 
             return new OpenVrView(
@@ -66,59 +63,10 @@ public sealed class OpenVrGames(OpenVrPaths paths, OpenCompositeCopy copy)
     }
 
     /// <summary>
-    /// "Set OpenComposite": copies OpenComposite where games can use it, then puts it first in the paths file. The
-    /// file is written only once a copy is in place: it never names a DLL that isn't there.
+    /// "Set OpenComposite": puts the installed OpenComposite first in the paths file, which never names a DLL that
+    /// isn't there.
     /// </summary>
     /// <returns>Null when done, else why nothing changed.</returns>
-    public string? UseMonado()
-    {
-        CopyOutcome outcome;
-        try
-        {
-            outcome = copy.Update();
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return CouldNotCopy(e);
-        }
-
-        if (outcome == CopyOutcome.NoneYet)
-        {
-            return "Mirador has no OpenComposite yet: press \"Get OpenComposite\" first.";
-        }
-
-        if (!copy.HasCopy)
-        {
-            return CouldNotCopy(null);
-        }
-
-        return paths.UseMonado();
-    }
-
-    /// <summary>
-    /// At Mirador's launch: brings an existing copy up to date with the bundle, and makes it again when the paths file
-    /// names it but it is gone (a virus scanner, a reset of Mirador's folder). It never switches OpenVR games.
-    /// </summary>
-    /// <returns>A notice for Home when that has to wait, else null.</returns>
-    public string? UpdateAtLaunch()
-    {
-        if (!copy.HasCopy && paths.Read().Target != OpenVrTarget.Monado)
-        {
-            return null;
-        }
-
-        try
-        {
-            return copy.Update() == CopyOutcome.InUse ? "OpenComposite will be updated when no game uses it." : null;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-        {
-            return $"Mirador couldn't update its copy of OpenComposite ({Reason(e)}); OpenVR games use the old one.";
-        }
-    }
-
-    private static string CouldNotCopy(Exception? e) =>
-        $"Mirador couldn't copy OpenComposite ({(e is null ? "a game may be using it" : Reason(e))}); OpenVR games are unchanged.";
-
-    private static string Reason(Exception e) => e.Message.Trim().TrimEnd('.');
+    public string? UseMonado() =>
+        install.IsInstalled ? paths.UseMonado() : "OpenComposite isn't installed yet: press \"Get OpenComposite\" first.";
 }

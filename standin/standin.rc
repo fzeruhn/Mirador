@@ -20,7 +20,7 @@ BEGIN
             VALUE "FileVersion", "0.1.0"
             VALUE "InternalName", "standin"
             VALUE "LegalCopyright", "Copyright 2026, Finn Zeruhn. Boost Software License 1.0."
-            VALUE "OriginalFilename", "monado-service.exe"
+            VALUE "OriginalFilename", "mirador-standin.exe"
             VALUE "ProductName", "Mirador"
             VALUE "ProductVersion", "0.1.0"
         END

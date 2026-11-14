@@ -11,7 +11,7 @@ public enum OpenVrTarget
     /// <summary>No file, an empty list, or a file Mirador can't read.</summary>
     None,
 
-    /// <summary>Mirador's OpenComposite copy, so OpenXR and Monado.</summary>
+    /// <summary>The installed OpenComposite, so OpenXR and Monado.</summary>
     Monado,
 
     /// <summary>SteamVR's own folder.</summary>
@@ -34,7 +34,7 @@ public sealed record OpenVrState(OpenVrTarget Target, string? First, string? Pro
 /// couldn't read.
 /// </summary>
 /// <param name="file">The paths file.</param>
-/// <param name="ourRuntimeDir">Mirador's OpenComposite copy: the runtime folder, with <c>bin\</c> below it.</param>
+/// <param name="ourRuntimeDir">The installed OpenComposite: the runtime folder, with <c>bin\</c> below it.</param>
 public sealed class OpenVrPaths(string file, string ourRuntimeDir)
 {
     private static readonly JsonWriterOptions WriterOptions = new()
@@ -62,14 +62,7 @@ public sealed class OpenVrPaths(string file, string ourRuntimeDir)
         return first is null ? new OpenVrState(OpenVrTarget.None, null, null) : new OpenVrState(Classify(first), first, null);
     }
 
-    /// <summary>Whether Mirador's copy is anywhere in the <c>runtime</c> list; false when the file can't be read.</summary>
-    public bool NamesOurs()
-    {
-        var (doc, problem) = Load();
-        return problem is null && doc is not null && RuntimeList(doc).Any(entry => SamePath(entry, ourRuntimeDir));
-    }
-
-    /// <summary>Puts Mirador's copy first; every other entry follows in its order.</summary>
+    /// <summary>Puts the installed OpenComposite first; every other entry follows in its order.</summary>
     /// <returns>Null when written, else why nothing was written.</returns>
     public string? UseMonado()
     {
@@ -82,28 +75,6 @@ public sealed class OpenVrPaths(string file, string ourRuntimeDir)
         doc ??= new JsonObject { ["jsonid"] = "vrpathreg", ["runtime"] = new JsonArray(), ["version"] = 1 };
         var others = RuntimeList(doc).Where(entry => !SamePath(entry, ourRuntimeDir));
         return Save(doc, [Path.TrimEndingDirectorySeparator(Full(ourRuntimeDir)), .. others]);
-    }
-
-    /// <summary>Removes Mirador's copy and puts SteamVR's folder first, when the list has one.</summary>
-    /// <returns>Null when written (or with no file, nothing to do), else why nothing was written.</returns>
-    public string? UseSteamVr()
-    {
-        var (doc, problem) = Load();
-        if (problem is not null || doc is null)
-        {
-            return problem;
-        }
-
-        var rest = RuntimeList(doc).Where(entry => !SamePath(entry, ourRuntimeDir)).ToList();
-        var steamVr = rest.FindIndex(entry => Classify(entry) == OpenVrTarget.SteamVr);
-        if (steamVr > 0)
-        {
-            var entry = rest[steamVr];
-            rest.RemoveAt(steamVr);
-            rest.Insert(0, entry);
-        }
-
-        return Save(doc, rest);
     }
 
     /// <summary>

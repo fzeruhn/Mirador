@@ -68,7 +68,7 @@ public sealed class ToolsInstaller(HttpClient http, ICommandRunner runner, strin
             {
                 if (hadOld && !TryMove(old, final))
                 {
-                    throw new MiradorException($"Mirador couldn't put {pin.Name} in place, nor its old copy back: it is in {old}. Try \"Install what's missing\" again.");
+                    throw new MiradorException($"Mirador couldn't put {pin.Name} in place, nor its old copy back: it is in {old}.");
                 }
 
                 throw new MiradorException($"Mirador couldn't put {pin.Name} in place (another program may be holding it): try again.");

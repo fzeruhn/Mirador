@@ -24,7 +24,12 @@ public sealed record VerifyStep(string Name, VerifyOutcome Outcome, string Detai
 /// when the step didn't run or couldn't tell.
 /// </param>
 /// <param name="LogFile">The run's own log (every line it wrote), which Diagnostics shows; null for an older result.</param>
-public sealed record VerifyResult(string Key, DateTimeOffset At, IReadOnlyList<VerifyStep> Steps, bool? HasElevationFix = null, string? LogFile = null)
+/// <param name="StrictPipe">
+/// Whether the elevated step ran without the relaxed pipe, so that <paramref name="HasElevationFix"/> also says an
+/// elevated Start of this build can do without it; false for an older result.
+/// </param>
+public sealed record VerifyResult(
+    string Key, DateTimeOffset At, IReadOnlyList<VerifyStep> Steps, bool? HasElevationFix = null, string? LogFile = null, bool StrictPipe = false)
 {
     /// <summary>Whether a step failed.</summary>
     public bool HasFailure() => Steps.Any(s => s.Outcome == VerifyOutcome.Failed);
@@ -114,7 +119,11 @@ public sealed record XrCheckReport(string Api, bool Ok, int Frames, string Runti
 
 /// <summary>An elevated, headless Monado for the verify run, or why there isn't one.</summary>
 /// <param name="Failed">Whether it was tried and failed (the step fails), rather than not possible here (skipped).</param>
-public sealed record ElevatedVerify(IAsyncDisposable? Running, string? WhyNot, bool Failed = false);
+/// <param name="PipeRelaxed">
+/// Whether it runs with the relaxed pipe all the same (Windows' Administrator protection is on): a game running as the
+/// user then connects with or without the elevation fix, so the run can't tell whether the build has it.
+/// </param>
+public sealed record ElevatedVerify(IAsyncDisposable? Running, string? WhyNot, bool Failed = false, bool PipeRelaxed = false);
 
 /// <summary>What a verify run needs from Mirador: Monado started headless three ways. Disposing stops each.</summary>
 public interface IVerifyServices
@@ -262,8 +271,8 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
         }
 
         // 2. A game's start: no service runs; the runtime starts the stand-in, which asks Mirador.
-        var standIn = Path.Combine(install.StandInDir, StandIn.FileName);
-        if (!File.Exists(standIn))
+        var standIn = StandIn.FileNames.Select(name => Path.Combine(install.StandInDir, name)).FirstOrDefault(File.Exists);
+        if (standIn is null)
         {
             steps.Add(new VerifyStep(StandInStep, VerifyOutcome.Failed,
                 $"There is no stand-in below this runtime ({install.StandInDir}), so games can't start Monado through Mirador."));
@@ -307,7 +316,11 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
             {
                 var step = await SessionStepAsync(ElevatedStep, "d3d11", ShortFrames, install, onLine, ct).ConfigureAwait(false);
                 var ranAsYou = steps.Any(s => s.Name == D3D11Step && s.Outcome == VerifyOutcome.Passed);
-                if (step.Outcome == VerifyOutcome.Passed)
+                if (step.Outcome == VerifyOutcome.Passed && elevated.PipeRelaxed)
+                {
+                    steps.Add(step with { Detail = "A game running as you connected to Monado running as administrator. Whether this build has the elevation fix can't be told while Windows' Administrator protection is on: Monado then runs with its pipe open to every signed-in user." });
+                }
+                else if (step.Outcome == VerifyOutcome.Passed)
                 {
                     hasFix = true;
                     steps.Add(step with { Detail = "A game running as you connected to Monado running as administrator: this build has the elevation fix." });
@@ -329,7 +342,7 @@ public sealed class VerifyBuild(ICommandRunner runner, string xrCheck, TimeProvi
             onLine($"{step.Name}: {step.Outcome}. {step.Detail}");
         }
 
-        return new VerifyResult(key, time.GetUtcNow(), steps, hasFix);
+        return new VerifyResult(key, time.GetUtcNow(), steps, hasFix, StrictPipe: elevated is { Running: not null, PipeRelaxed: false });
     }
 
     private async Task<VerifyStep> SessionStepAsync(string name, string api, int frames, MonadoInstall install, Action<string> onLine, CancellationToken ct)

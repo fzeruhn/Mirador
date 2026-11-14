@@ -17,6 +17,7 @@ internal sealed class RunningProcess : IRunningProcess
 
     private readonly Process process;
     private readonly Action<Process> terminate;
+    private readonly Func<int, bool>? exitKey;
 
     /// <summary>
     /// The launcher's job, held so that it stays open as long as this object is reachable. The launcher alone owning the
@@ -33,9 +34,11 @@ internal sealed class RunningProcess : IRunningProcess
     /// <param name="started">A process that was started with its standard output and error redirected.</param>
     /// <param name="job">The job the process is in.</param>
     /// <param name="terminate">How to end the process and its children; the default ends the whole tree. Replaced in tests.</param>
-    public RunningProcess(Process started, SafeHandle job, Action<Process>? terminate = null)
+    /// <param name="exitKey">Writes the key that ends the process cleanly into its console; null: it is only ever killed.</param>
+    public RunningProcess(Process started, SafeHandle job, Action<Process>? terminate = null, Func<int, bool>? exitKey = null)
     {
         this.job = job;
+        this.exitKey = exitKey;
         this.terminate = terminate ?? (p => p.Kill(entireProcessTree: true));
         process = started;
         Id = started.Id;
@@ -92,6 +95,37 @@ internal sealed class RunningProcess : IRunningProcess
             {
                 KillCore();
             }
+        }
+    }
+
+    public async Task<bool> EndCleanlyAsync(TimeSpan limit)
+    {
+        lock (lifecycle)
+        {
+            if (disposed || exitKey is null)
+            {
+                return Exited.IsCompleted;
+            }
+        }
+
+        if (Exited.IsCompleted)
+        {
+            return true;
+        }
+
+        try
+        {
+            if (!await Task.Run(() => exitKey(Id)).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            await Exited.WaitAsync(limit).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception e) when (e is TimeoutException or InvalidOperationException or Win32Exception)
+        {
+            return Exited.IsCompleted;
         }
     }
 
