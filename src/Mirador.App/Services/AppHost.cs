@@ -600,6 +600,7 @@ public sealed class AppHost : IAsyncDisposable
             return AllowElevatedCommand.CurrentUser()?.Value is { } owner
                 && new RegistryApprovedBuildStore().Get(owner, profile.Id) is { } approved
                 && Ipc.ApprovedBuilds.Matches(approved, Path.GetDirectoryName(install.Manifest)!, buildHashes.HashOf)
+                && Ipc.ApprovedBuilds.NamesOwnDll(approved)
                 ? approved
                 : null;
         }
