@@ -185,7 +185,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSwitch), nameof(CanDelete), nameof(PickerDescription))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RevertCommand), nameof(ApproveCommand))]
     public partial bool IsDirty { get; set; }
 
     [ObservableProperty]
@@ -507,13 +507,15 @@ public sealed partial class ProfilesViewModel : ObservableObject
 
     partial void OnRunAsAdministratorChanged(bool value) => Changed();
 
-    /// <summary>"Approve": one UAC prompt copies the saved profile's build where only administrators can change it.</summary>
-    [RelayCommand]
+    /// <summary>
+    /// "Approve": one UAC prompt copies the saved profile's build where only administrators can change it. Greyed out
+    /// until the profile is saved: the build approved is the saved profile's.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanApproveNow))]
     private async Task ApproveAsync()
     {
-        if (editing is null || IsDirty)
+        if (editing is null)
         {
-            ApprovalStatus = "Save the profile first.";
             return;
         }
 
@@ -521,6 +523,8 @@ public sealed partial class ProfilesViewModel : ObservableObject
         var problem = await host.ApproveBuildAsync(editing);
         RefreshApproval(problem);
     }
+
+    private bool CanApproveNow() => editing is not null && !IsDirty;
 
     private void RefreshApproval(string? problem = null)
     {
@@ -642,6 +646,7 @@ public sealed partial class ProfilesViewModel : ObservableObject
         }
 
         IsDirty = false;
+        ApproveCommand.NotifyCanExecuteChanged();
         Verify.Show(p);
         Verify.Unsaved = false;
         RefreshApproval();
