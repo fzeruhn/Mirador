@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
         ["MonadoSettings"] = typeof(MonadoSettingsPage),
         ["Profiles"] = typeof(ProfilesPage),
         ["Diagnostics"] = typeof(DiagnosticsPage),
+        ["Installed"] = typeof(InstalledPage),
         ["Settings"] = typeof(SettingsPage),
     };
 
@@ -323,9 +324,6 @@ public sealed partial class MainWindow : Window
     {
         NavView.SelectedItem = PaneItems.FirstOrDefault(i => (string)i.Tag == tag);
     }
-
-    /// <summary>Shows "Check build tools" over the current page (it has no place in the sidebar); its Back returns.</summary>
-    public void ShowBuildTools() => ContentFrame.Navigate(typeof(BuildToolsPage));
 
     /// <summary>Closing hides the window when Mirador stays in the tray; otherwise it quits, asking first while Monado runs.</summary>
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)

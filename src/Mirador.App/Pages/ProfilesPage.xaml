@@ -129,7 +129,6 @@
                             Width="20"
                             Height="20"
                             IsActive="{x:Bind ViewModel.Build.IsBuilding, Mode=OneWay}" />
-                        <Button Click="OnCheckBuildTools" Content="Check build tools" />
                         <Button Command="{x:Bind ViewModel.Build.CancelCommand}" Content="Cancel" />
                         <Button Command="{x:Bind ViewModel.Build.OpenLogCommand}" Content="Open log" />
                         <Button

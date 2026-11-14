@@ -143,7 +143,7 @@ public sealed class BuildToolsSetup(
     /// the others.
     /// </summary>
     /// <returns>What failed, one plain sentence per part; empty when everything was installed.</returns>
-    public async Task<IReadOnlyList<string>> InstallMissingAsync(BuildToolsReport report, Action<string> onLine, CancellationToken ct)
+    internal async Task<IReadOnlyList<string>> InstallMissingAsync(BuildToolsReport report, Action<string> onLine, CancellationToken ct)
     {
         var failures = new List<string>();
         var installer = new ToolsInstaller(http, runner, toolsDir, vcpkgCommit);

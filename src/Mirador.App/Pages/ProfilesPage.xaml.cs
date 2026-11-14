@@ -99,8 +99,6 @@ public sealed partial class ProfilesPage : Page
 
     private void OnMessageClosed(InfoBar sender, InfoBarClosedEventArgs args) => ViewModel.DismissMessage();
 
-    private void OnCheckBuildTools(object sender, RoutedEventArgs e) => App.Current.MainWindow.ShowBuildTools();
-
     private void OnOpenDiagnostics(object sender, RoutedEventArgs e)
     {
         DiagnosticsPage.VerifyNext = (ViewModel.Verify.ProfileId, ViewModel.Verify.LastLogFile);

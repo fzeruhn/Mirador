@@ -68,7 +68,7 @@ public sealed class Builds(MonadoBuilder builder)
         }
     }
 
-    /// <summary>Whether any profile's build is running (the build tools aren't changed meanwhile).</summary>
+    /// <summary>Whether any profile's build is running.</summary>
     public bool AnyRunning
     {
         get
