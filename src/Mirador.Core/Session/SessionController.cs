@@ -1151,7 +1151,8 @@ public sealed class SessionController(SessionDeps deps)
             settings.CompositorMinTimeMs,
             settings.StopWhenLastAppCloses,
             module?.ElevatedModuleId ?? "",
-            approvedBuild ? profile.Id : "");
+            approvedBuild ? profile.Id : "",
+            ElevationFix: deps.ElevationFixVerified?.Invoke(profile, install) == true);
         return deps.ElevatedLauncher!(start);
     }
 

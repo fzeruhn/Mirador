@@ -44,6 +44,20 @@ public class SessionControllerTests
         Assert.Equal(1, h.Launcher.Starts);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_elevated_start_says_whether_verify_found_the_elevation_fix(bool found)
+    {
+        await using var h = new Harness(installedCopy: true, elevationFix: (_, _) => found);
+        h.UseProfile(Harness.DreamAir with { RunAsAdministrator = true });
+
+        await h.StartRunningAsync();
+
+        Assert.True(h.ElevatedStarts.TryDequeue(out var start));
+        Assert.Equal(found, start.ElevationFix);
+    }
+
     [Fact]
     public async Task A_profile_without_run_as_administrator_runs_as_you_whatever_the_consent()
     {

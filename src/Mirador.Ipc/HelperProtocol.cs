@@ -120,6 +120,12 @@ public enum HelperCommand
 /// (<c>XRT_COMPOSITOR_NULL=1</c>, <c>SIMULATED_ENABLE=1</c>), so it opens sessions without touching a headset or a
 /// display. Only with no module.
 /// </param>
+/// <param name="ElevationFix">
+/// Whether the build has Monado's elevation fix, as Verify found (an app running as the user connected to it running as
+/// administrator): it then admits its own user's apps by itself, and the helper leaves out
+/// <c>IPC_RELAXED_CONNECTION_SECURITY</c>, which lets any signed-in user's apps connect, unless Windows' Administrator
+/// protection is on (elevation then runs as another account, which the fix can't tell from the user).
+/// </param>
 public sealed record ElevatedStart(
     [property: JsonRequired] int LighthouseWaitMs,
     [property: JsonRequired] int RenderScalePercent,
@@ -127,7 +133,8 @@ public sealed record ElevatedStart(
     [property: JsonRequired] bool ExitOnDisconnect,
     [property: JsonRequired] string Module,
     string Build = "",
-    bool Headless = false);
+    bool Headless = false,
+    bool ElevationFix = false);
 
 /// <summary>
 /// A request: a command, the typed <see cref="Start"/> only with <see cref="HelperCommand.StartMonadoElevated"/>, and

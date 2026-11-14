@@ -40,6 +40,31 @@ public class ElevatedEnvironmentTests
         Assert.Throws<ArgumentException>(() => Build(Start(module: PimaxEnvironment.ModuleId) with { Headless = true }));
     }
 
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, true)]
+    public void The_relaxed_pipe_only_without_the_elevation_fix_or_under_administrator_protection(bool fix, bool protection, bool relaxed)
+    {
+        var env = ElevatedEnvironment.Build(Start() with { ElevationFix = fix }, Folders, ServerDir, SteamVrPath, protection);
+
+        Assert.Equal(relaxed, env.TryGetValue("IPC_RELAXED_CONNECTION_SECURITY", out var value));
+        if (relaxed)
+        {
+            Assert.Equal("1", value);
+        }
+    }
+
+    [Theory]
+    [InlineData(2, true)]
+    [InlineData(1, false)]
+    [InlineData(0, false)]
+    [InlineData(null, false)]
+    [InlineData("2", false)]
+    public void Administrator_protection_is_mode_two(object? value, bool on) =>
+        Assert.Equal(on, AdministratorProtection.IsOn(value));
+
     [Fact]
     public void No_user_path()
     {

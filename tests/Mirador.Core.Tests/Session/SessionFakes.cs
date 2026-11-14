@@ -527,7 +527,10 @@ internal sealed class Harness : IAsyncDisposable
     /// Mirador is the installed one; the elevated launcher then records its starts in <see cref="ElevatedStarts"/>
     /// and runs them through <see cref="Launcher"/>.</param>
     /// <param name="approvedCopy">The locator's lookup of a build's approved copy; null: no build is approved.</param>
-    public Harness(ISessionHook? hook = null, bool? installedCopy = null, Func<Profile, MonadoInstall, Mirador.Ipc.ApprovedBuild?>? approvedCopy = null)
+    /// <param name="elevationFix">Whether Verify found the elevation fix in a build; null: never.</param>
+    public Harness(
+        ISessionHook? hook = null, bool? installedCopy = null, Func<Profile, MonadoInstall, Mirador.Ipc.ApprovedBuild?>? approvedCopy = null,
+        Func<Profile, MonadoInstall, bool>? elevationFix = null)
     {
         Root = Path.Combine(dir.Path, "Zoë's data");
         Paths = new AppPaths(Path.Combine(Root, "Mirador"));
@@ -580,7 +583,8 @@ internal sealed class Harness : IAsyncDisposable
                     return Launcher;
                 },
                 ElevatedInstalledCopy: installedCopy is { } installed ? () => installed : null,
-                BundledLayerDir: BundledLayer),
+                BundledLayerDir: BundledLayer,
+                ElevationFixVerified: elevationFix),
             isStandIn: path => path.StartsWith(StandInImages, StringComparison.OrdinalIgnoreCase));
 
         Controller.Changed += () => Changes.Enqueue(Controller.State);

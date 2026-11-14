@@ -158,10 +158,12 @@ public sealed class VerifyServices(AppHost host, Profile profile, Action<string>
             return new ElevatedVerify(null, "Windows hasn't been asked yet for Monado to run as administrator: Home's Allow asks, then verify again.");
         }
 
+        // Checked as a Start with the elevation fix runs it, without the relaxed pipe: a build that passes has the fix,
+        // and its Starts then leave the pipe as Monado makes it.
         var settings = host.MonadoSettings.Load();
         var start = new ElevatedStart(
             settings.LighthouseWaitMs, settings.RenderScalePercent, settings.CompositorMinTimeMs,
-            ExitOnDisconnect: false, Module: "", Build: build, Headless: true);
+            ExitOnDisconnect: false, Module: "", Build: build, Headless: true, ElevationFix: true);
         var env = new Dictionary<string, string>(host.InheritedEnvironment, StringComparer.OrdinalIgnoreCase);
         var pipeName = host.Pipe.NameFor(env);
         if (host.Pipe.Exists(pipeName))
@@ -185,7 +187,7 @@ public sealed class VerifyServices(AppHost host, Profile profile, Action<string>
         {
             await WaitForPipeAsync(process, pipeName, ct);
             onLine("Monado is up as administrator.");
-            return new ElevatedVerify(running, null);
+            return new ElevatedVerify(running, null, PipeRelaxed: AdministratorProtection.IsOn());
         }
         catch (MiradorException e)
         {

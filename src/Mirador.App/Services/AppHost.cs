@@ -118,7 +118,8 @@ public sealed class AppHost : IAsyncDisposable
                 SteamVrChecked = OnSteamVrChecked,
             },
             ElevatedInstalledCopy: () => IsInstalledCopy(askHelper: true),
-            BundledLayerDir: Path.Combine(appDir, "layer")));
+            BundledLayerDir: Path.Combine(appDir, "layer"),
+            ElevationFixVerified: ElevationFixVerified));
     }
 
     /// <summary>Home's line when an elevated Start ran as the user because SteamVR changed (Mirador.md §4.10 item 46).</summary>
@@ -589,6 +590,13 @@ public sealed class AppHost : IAsyncDisposable
             return false;
         }
     }
+
+    /// <summary>
+    /// Whether Verify's last run for <paramref name="profile"/>, on this very build, saw an app running as the user
+    /// connect to it running as administrator: the build has the elevation fix.
+    /// </summary>
+    public bool ElevationFixVerified(Profile profile, MonadoInstall install) =>
+        VerifyResult.Load(VerifyResultFile(profile.Id)) is { HasElevationFix: true, StrictPipe: true } result && result.Key == VerifyBuild.KeyFor(install);
 
     /// <summary>
     /// Whether <paramref name="profile"/> has an approval at all, of this build or an earlier one: then a build that isn't

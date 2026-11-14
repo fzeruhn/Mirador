@@ -205,7 +205,7 @@ public sealed class ElevatedMonadoRunner : IElevatedMonado, IDisposable
                 IReadOnlyDictionary<string, string> env;
                 try
                 {
-                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath);
+                    env = ElevatedEnvironment.Build(start, folders, serverDir, steamVrPath, AdministratorProtection.IsOn());
                 }
                 catch (ArgumentException e)
                 {

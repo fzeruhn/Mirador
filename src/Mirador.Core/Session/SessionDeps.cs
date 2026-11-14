@@ -22,6 +22,7 @@ namespace Mirador.Core.Session;
 /// <param name="ElevatedLauncher">Builds the launcher that starts Monado as administrator through the helper for the given settings; null: no elevated path.</param>
 /// <param name="ApprovedBuildCurrent">Whether the profile's current build is the approved one; null: none is.</param>
 /// <param name="ElevatedInstalledCopy">Whether this Mirador is the installed one the helper starts Monado as administrator for (asked once consent is on); null: never.</param>
+/// <param name="ElevationFixVerified">Whether Verify found the elevation fix in the profile's build as it is now (<see cref="ElevatedStart.ElevationFix"/>); null: never.</param>
 public sealed record SessionDeps(
     ProfileStore Profiles,
     MonadoSettingsStore MonadoSettings,
@@ -38,4 +39,5 @@ public sealed record SessionDeps(
     Func<ElevatedStart, IProcessLauncher>? ElevatedLauncher = null,
     Func<bool>? ElevatedInstalledCopy = null,
     Func<Profile, bool>? ApprovedBuildCurrent = null,
-    string? BundledLayerDir = null);
+    string? BundledLayerDir = null,
+    Func<Profile, MonadoInstall, bool>? ElevationFixVerified = null);
