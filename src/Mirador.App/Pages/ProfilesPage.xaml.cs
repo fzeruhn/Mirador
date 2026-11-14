@@ -20,6 +20,43 @@ public sealed partial class ProfilesPage : Page
 
     public ProfilesViewModel ViewModel { get; }
 
+    /// <summary>
+    /// The build log shows its newest lines as they come (the box keeps the last few hundred, oldest first), so that a
+    /// running build looks like one, and a finished one shows how it ended.
+    /// </summary>
+    private void OnBuildLogChanged(object sender, TextChangedEventArgs e) => ShowBuildLogEnd();
+
+    /// <summary>Opened, the log shows its end.</summary>
+    private void OnBuildLogExpanding(Expander sender, ExpanderExpandingEventArgs args) => ShowBuildLogEnd();
+
+    private ScrollViewer? buildLogViewer;
+
+    private void ShowBuildLogEnd() =>
+        // After the layout that measures the new text (and, the first time it opens, makes the box's scroller).
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if ((buildLogViewer ??= FindChild<ScrollViewer>(BuildLog)) is { } viewer)
+            {
+                viewer.UpdateLayout();
+                viewer.ChangeView(null, viewer.ScrollableHeight, null, disableAnimation: true);
+            }
+        });
+
+    private static T? FindChild<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+            if ((child as T ?? FindChild<T>(child)) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);

@@ -127,7 +127,7 @@ public sealed partial class BuildViewModel : ObservableObject
         BuildLabel = info is null ? "Build" : "Pull and rebuild";
         if (IsBuilding)
         {
-            Status = "Building… This takes a while the first time: vcpkg builds Monado's libraries too.";
+            Status = "Building. This takes longer the first time.";
             return;
         }
 

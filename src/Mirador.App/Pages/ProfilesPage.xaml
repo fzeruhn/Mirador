@@ -142,15 +142,19 @@
                     Margin="0,0,0,4"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Stretch"
+                    Expanding="OnBuildLogExpanding"
                     Header="Build log"
                     Visibility="{x:Bind ViewModel.Build.IsVisible, Mode=OneWay}">
                     <TextBox
-                        MaxHeight="320"
+                        x:Name="BuildLog"
+                        Height="240"
                         FontFamily="Consolas"
                         FontSize="12"
                         IsReadOnly="True"
+                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
                         ScrollViewer.VerticalScrollBarVisibility="Auto"
                         Text="{x:Bind ViewModel.Build.Log, Mode=OneWay}"
+                        TextChanged="OnBuildLogChanged"
                         TextWrapping="NoWrap" />
                 </Expander>
                 <toolkit:SettingsCard
