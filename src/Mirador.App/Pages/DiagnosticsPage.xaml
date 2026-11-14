@@ -25,7 +25,7 @@
             Grid.Row="1"
             SizeChanged="FitLogs"
             Spacing="4">
-            <toolkit:SettingsExpander Description="Mirador, Windows, Monado, OpenComposite and the profile." Header="Versions">
+            <toolkit:SettingsExpander Description="Mirador, Windows, Monado, OpenLamina and the profile." Header="Versions">
                 <toolkit:SettingsExpander.Items>
                     <toolkit:SettingsCard ContentAlignment="Left">
                         <TextBlock

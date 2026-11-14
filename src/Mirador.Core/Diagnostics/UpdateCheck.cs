@@ -6,18 +6,18 @@ namespace Mirador.Core.Diagnostics;
 /// <summary>A full release from GitHub's <c>releases/latest</c>.</summary>
 /// <param name="Tag">The release's tag, such as <c>v0.2.0</c>.</param>
 /// <param name="Url">The release's page.</param>
-/// <param name="InstallerUrl">The download of the asset <c>OpenComposite-Setup.exe</c>; null when the release has none or no digest.</param>
+/// <param name="InstallerUrl">The download of the asset <c>OpenLamina-Setup.exe</c>; null when the release has none or no digest.</param>
 /// <param name="InstallerSha256">That asset's SHA-256 from GitHub's <c>digest</c>, lower case without <c>sha256:</c>; null likewise.</param>
 public sealed record Release(string Tag, string Url, string? InstallerUrl, string? InstallerSha256);
 
-/// <summary>Asks GitHub for the latest release of Mirador and of OpenComposite, to say so on Home. It never installs anything (Mirador.md §4.4 item 13).</summary>
+/// <summary>Asks GitHub for the latest release of Mirador and of OpenLamina, to say so on Home. It never installs anything (Mirador.md §4.4 item 13).</summary>
 public static class UpdateCheck
 {
     public const string MiradorRepository = "fzeruhn/mirador";
 
-    public const string OpenCompositeRepository = "fzeruhn/OpenComposite";
+    public const string OpenCompositeRepository = "fzeruhn/OpenLamina";
 
-    private const string Installer = "OpenComposite-Setup.exe";
+    private const string Installer = "OpenLamina-Setup.exe";
 
     private const string DigestPrefix = "sha256:";
 

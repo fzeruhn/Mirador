@@ -669,7 +669,7 @@ public sealed class SessionController(SessionDeps deps)
             return Fail(OtherMonado(gameStandIn, install, profile));
         }
 
-        // A game that only asks whether a headset is there starts Monado (OpenComposite does, Mirador.md §4.6 item 25):
+        // A game that only asks whether a headset is there starts Monado (OpenLamina does, Mirador.md §4.6 item 25):
         // with the headset unplugged, refuse before any step, so the headset's own software is never touched and the game goes on without VR.
         if (run.ForGame && module is not null && !module.IsPresent(deps.Context.Usb.Present()))
         {

@@ -10,7 +10,7 @@ public sealed record InstalledItem(string Name, string Detail);
 
 /// <summary>
 /// The Installed page: what Mirador has installed and at which version: Mirador itself, the bundled Monado,
-/// OpenComposite and the direct-mode layer, then the build tools a branch build installs when it needs them.
+/// OpenLamina and the direct-mode layer, then the build tools a branch build installs when it needs them.
 /// </summary>
 public sealed partial class InstalledViewModel(AppHost host) : ObservableObject
 {
@@ -40,7 +40,7 @@ public sealed partial class InstalledViewModel(AppHost host) : ObservableObject
             : versions.Previous is { } previous ? $"{current} (can roll back to {previous})"
             : current));
         Parts.Add(new InstalledItem(
-            "OpenComposite",
+            "OpenLamina",
             host.OpenComposite.Source is { } source && source.Describe() is { Length: > 0 } described ? described
             : host.OpenComposite.IsInstalled ? "Installed, version unknown"
             : "Not installed: Home's OpenVR card gets it."));

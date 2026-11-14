@@ -527,10 +527,10 @@ public sealed class AppHost : IAsyncDisposable
     /// <summary>What went wrong while Mirador started that the user should read on Home: settings reset, files it couldn't read.</summary>
     public IReadOnlyList<string> StartupNotices => notices;
 
-    /// <summary>Home's "OpenVR runtime" row and its "Set OpenComposite" (Mirador.md §4.6).</summary>
+    /// <summary>Home's "OpenVR runtime" row and its "Set OpenLamina" (Mirador.md §4.6).</summary>
     public OpenVrGames OpenVr { get; }
 
-    /// <summary>Mirador's OpenComposite: OpenComposite as its installer put it.</summary>
+    /// <summary>Mirador's OpenLamina: OpenLamina as its installer put it.</summary>
     public OpenCompositeInstall OpenComposite { get; }
 
     /// <summary>

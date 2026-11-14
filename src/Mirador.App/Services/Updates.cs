@@ -11,8 +11,8 @@ namespace Mirador.App.Services;
 /// <param name="Reached">Whether GitHub answered for both repositories.</param>
 /// <param name="Mirador">This Mirador's version.</param>
 /// <param name="NewerMirador">Mirador's latest full release when it is newer; null otherwise (also when GitHub couldn't be asked).</param>
-/// <param name="OpenComposite">The OpenComposite in use: its release version (or commit); null when this build has none.</param>
-/// <param name="NewerOpenComposite">OpenComposite's latest full release when it is newer; null otherwise.</param>
+/// <param name="OpenComposite">The OpenLamina in use: its release version (or commit); null when this build has none.</param>
+/// <param name="NewerOpenComposite">OpenLamina's latest full release when it is newer; null otherwise.</param>
 /// <param name="NewerMonado">
 /// Mirador's Monado's newest weekly build when it isn't the one installed (Mirador.md §4.11 item 50); null otherwise, and when
 /// no profile runs Mirador's Monado.
@@ -40,11 +40,11 @@ public sealed record UpdateReport(
         };
         if (NewerOpenComposite is { } o)
         {
-            parts.Add($"OpenComposite {Plain(o.Tag)} is out.");
+            parts.Add($"OpenLamina {Plain(o.Tag)} is out.");
         }
         else if (OpenComposite is not null)
         {
-            parts.Add($"OpenComposite {OpenComposite} is up to date.");
+            parts.Add($"OpenLamina {OpenComposite} is up to date.");
         }
 
         if (NewerMonado is { } monado)
@@ -61,7 +61,7 @@ public sealed record UpdateReport(
 }
 
 /// <summary>
-/// The check for newer releases of Mirador and of OpenComposite (Mirador.md §4.8 items 37–38): once a day at most at
+/// The check for newer releases of Mirador and of OpenLamina (Mirador.md §4.8 items 37–38): once a day at most at
 /// launch when it is on, and "Check now". It only asks and reports; Mirador installs nothing by itself.
 /// </summary>
 public sealed class Updates(AppHost host)
@@ -78,14 +78,14 @@ public sealed class Updates(AppHost host)
     /// <summary>Raised, on whichever thread made the check, when <see cref="Last"/> changed.</summary>
     public event Action? Changed;
 
-    /// <summary>The OpenComposite installed for this user (the one place that says so).</summary>
+    /// <summary>The OpenLamina installed for this user (the one place that says so).</summary>
     private OpenCompositeSource? Installed() => host.OpenComposite.Source;
 
-    /// <summary>Whether OpenComposite can be updated from the notice and the Updates card.</summary>
+    /// <summary>Whether OpenLamina can be updated from the notice and the Updates card.</summary>
     public bool CanUpdateOpenComposite => true;
 
     /// <summary>
-    /// The "Update" buttons and "Get OpenComposite": downloads <paramref name="release"/>'s installer, checks it against
+    /// The "Update" buttons and "Get OpenLamina": downloads <paramref name="release"/>'s installer, checks it against
     /// <see cref="Release.InstallerSha256"/> and runs it silently, then asks GitHub again.
     /// </summary>
     /// <returns>What happened, in words for the user.</returns>
@@ -96,17 +96,17 @@ public sealed class Updates(AppHost host)
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"Mirador/{AppInfo.Version}");
         if (await host.OpenComposite.InstallAsync(http, release, host.Paths.DownloadDir, CancellationToken.None) == InstallOutcome.InUse)
         {
-            throw new MiradorException("A game is using OpenComposite, so it wasn't changed. Close the game and try again.");
+            throw new MiradorException("A game is using OpenLamina, so it wasn't changed. Close the game and try again.");
         }
 
-        var message = $"OpenComposite {UpdateReport.Plain(release.Tag)} is installed.";
+        var message = $"OpenLamina {UpdateReport.Plain(release.Tag)} is installed.";
         AppLog.Write(message);
         await CheckAsync();
         return message;
     }
 
     /// <summary>
-    /// "Get OpenComposite" (Mirador.md §4.11 item 56): the fork's latest release, downloaded and checked like an update.
+    /// "Get OpenLamina" (Mirador.md §4.11 item 56): the fork's latest release, downloaded and checked like an update.
     /// </summary>
     /// <returns>What happened, in words for the user.</returns>
     /// <exception cref="MiradorException">Why nothing changed.</exception>
@@ -120,7 +120,7 @@ public sealed class Updates(AppHost host)
         }
 
         return latest is null
-            ? throw new MiradorException("The OpenComposite fork has no release yet.")
+            ? throw new MiradorException("OpenLamina has no release yet.")
             : await UpdateOpenCompositeAsync(latest);
     }
 
@@ -204,7 +204,7 @@ public sealed class Updates(AppHost host)
 
         if (report.NewerOpenComposite is { } newerOpenComposite)
         {
-            AppLog.Write($"OpenComposite {newerOpenComposite.Tag} is out: {newerOpenComposite.Url}");
+            AppLog.Write($"OpenLamina {newerOpenComposite.Tag} is out: {newerOpenComposite.Url}");
         }
 
         if (!report.Reached)

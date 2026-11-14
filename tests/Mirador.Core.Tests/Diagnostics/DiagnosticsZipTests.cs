@@ -83,7 +83,24 @@ public class DiagnosticsZipTests
     }
 
     [Fact]
-    public async Task Adds_paths_file_and_opencomposite_log()
+    public async Task Adds_paths_file_and_openlamina_log()
+    {
+        await using var h = new Harness();
+        var pathsFile = Path.Combine(h.Root, "openvrpaths.vrpath");
+        var log = Path.Combine(h.Root, "openlamina.log");
+        File.WriteAllText(pathsFile, "{ \"runtime\": [] }");
+        File.WriteAllText(log, "Initializing OpenLamina");
+        var zipPath = Path.Combine(h.Root, "diagnostics.zip");
+
+        DiagnosticsZip.Collect(h.Paths, Harness.DreamAir, null, "Mirador 0.1.0\n", h.Module, Context(h), new OpenVrFiles(pathsFile, log)).Save(zipPath);
+
+        var entries = Read(zipPath);
+        Assert.Equal("{ \"runtime\": [] }", entries["openvrpaths.vrpath"]);
+        Assert.Equal("Initializing OpenLamina", entries["openlamina.log"]);
+    }
+
+    [Fact]
+    public async Task An_older_opencomposite_log_keeps_its_name()
     {
         await using var h = new Harness();
         var pathsFile = Path.Combine(h.Root, "openvrpaths.vrpath");
@@ -95,12 +112,12 @@ public class DiagnosticsZipTests
         DiagnosticsZip.Collect(h.Paths, Harness.DreamAir, null, "Mirador 0.1.0\n", h.Module, Context(h), new OpenVrFiles(pathsFile, log)).Save(zipPath);
 
         var entries = Read(zipPath);
-        Assert.Equal("{ \"runtime\": [] }", entries["openvrpaths.vrpath"]);
         Assert.Equal("Initializing OpenComposite", entries["opencomposite.log"]);
+        Assert.False(entries.ContainsKey("openlamina.log"));
     }
 
     [Fact]
-    public async Task Notes_missing_opencomposite_log()
+    public async Task Notes_missing_openlamina_log()
     {
         await using var h = new Harness();
         var zipPath = Path.Combine(h.Root, "diagnostics.zip");
@@ -110,9 +127,9 @@ public class DiagnosticsZipTests
             new OpenVrFiles(Path.Combine(h.Root, "none.vrpath"), Path.Combine(h.Root, "none.log"))).Save(zipPath);
 
         var entries = Read(zipPath);
-        Assert.False(entries.ContainsKey("opencomposite.log"));
+        Assert.False(entries.ContainsKey("openlamina.log"));
         Assert.False(entries.ContainsKey("openvrpaths.vrpath"));
-        Assert.Contains("opencomposite.log: ", entries["missing.txt"]);
+        Assert.Contains("openlamina.log: ", entries["missing.txt"]);
         Assert.Contains("openvrpaths.vrpath: ", entries["missing.txt"]);
     }
 

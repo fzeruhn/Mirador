@@ -6,7 +6,7 @@ using Mirador.Core.Profiles;
 
 namespace Mirador.Core.Diagnostics;
 
-/// <summary>The OpenVR files the zip takes: the user's paths file and OpenComposite's log.</summary>
+/// <summary>The OpenVR files the zip takes: the user's paths file and OpenLamina's log.</summary>
 public sealed record OpenVrFiles(string PathsFile, string LogFile);
 
 /// <summary>
@@ -39,8 +39,8 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
     /// </summary>
     /// <param name="lastEnvironment">The session's <c>LastMiradorEnvironment</c>; null before the first Start.</param>
     /// <param name="versions">Mirador's, Windows' and the profile's Monado's versions, one a line.</param>
-    /// <param name="openVr">The OpenVR paths file and OpenComposite's log, added as <c>openvrpaths.vrpath</c> and
-    /// <c>opencomposite.log</c> (Mirador.md §4.6 item 23); null leaves them out.</param>
+    /// <param name="openVr">The OpenVR paths file and OpenLamina's log, added as <c>openvrpaths.vrpath</c> and
+    /// under the log's own name, <c>openlamina.log</c> (Mirador.md §4.6 item 23); null leaves them out.</param>
     public static DiagnosticsZip Collect(
         AppPaths paths, Profile profile, IReadOnlyDictionary<string, string>? lastEnvironment, string versions, IHeadsetModule? module, ModuleContext ctx,
         OpenVrFiles? openVr = null)
@@ -72,7 +72,11 @@ public sealed class DiagnosticsZip : IDiagnosticsSink
         if (openVr is not null)
         {
             zip.AddFile("openvrpaths.vrpath", openVr.PathsFile);
-            zip.AddFile("opencomposite.log", openVr.LogFile);
+            // Named as the log is: an older OpenComposite's is opencomposite.log, and isn't passed off as OpenLamina's
+            var logName = string.Equals(Path.GetFileName(openVr.LogFile), "opencomposite.log", StringComparison.OrdinalIgnoreCase)
+                ? "opencomposite.log"
+                : "openlamina.log";
+            zip.AddFile(logName, openVr.LogFile);
         }
 
         module?.AddDiagnostics(ctx, profile, zip);

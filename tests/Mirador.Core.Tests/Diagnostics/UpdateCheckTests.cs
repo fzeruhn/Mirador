@@ -28,19 +28,19 @@ public class UpdateCheckTests
 
     private const string WithAsset = """
         {
-          "html_url": "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20",
+          "html_url": "https://github.com/fzeruhn/OpenLamina/releases/tag/v2026.11.20",
           "tag_name": "v2026.11.20",
           "draft": false,
           "prerelease": false,
           "assets": [
             {
               "name": "SOURCE.txt",
-              "browser_download_url": "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/SOURCE.txt",
+              "browser_download_url": "https://github.com/fzeruhn/OpenLamina/releases/download/v2026.11.20/SOURCE.txt",
               "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
             },
             {
-              "name": "OpenComposite-Setup.exe",
-              "browser_download_url": "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-Setup.exe",
+              "name": "OpenLamina-Setup.exe",
+              "browser_download_url": "https://github.com/fzeruhn/OpenLamina/releases/download/v2026.11.20/OpenLamina-Setup.exe",
               "digest": "sha256:ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789"
             }
           ]
@@ -55,8 +55,8 @@ public class UpdateCheckTests
         Assert.Equal(
             new Release(
                 "v2026.11.20",
-                "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20",
-                "https://github.com/fzeruhn/OpenComposite/releases/download/v2026.11.20/OpenComposite-Setup.exe",
+                "https://github.com/fzeruhn/OpenLamina/releases/tag/v2026.11.20",
+                "https://github.com/fzeruhn/OpenLamina/releases/download/v2026.11.20/OpenLamina-Setup.exe",
                 "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"),
             release);
     }
@@ -67,7 +67,7 @@ public class UpdateCheckTests
         var json = WithAsset.Replace("\"digest\": \"sha256:ABCDEF0123456789abcdef0123456789ABCDEF0123456789abcdef0123456789\"", "\"digest\": null");
 
         // Without a digest the zip can't be checked, so neither part is offered.
-        Assert.Equal(new Release("v2026.11.20", "https://github.com/fzeruhn/OpenComposite/releases/tag/v2026.11.20", null, null), UpdateCheck.ParseLatest(json));
+        Assert.Equal(new Release("v2026.11.20", "https://github.com/fzeruhn/OpenLamina/releases/tag/v2026.11.20", null, null), UpdateCheck.ParseLatest(json));
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class UpdateCheckTests
         var handler = new Answer(HttpStatusCode.NotFound, "{}");
 
         Assert.Equal((true, null), await UpdateCheck.LatestAsync(new HttpClient(handler), UpdateCheck.OpenCompositeRepository, "0.1.0", CancellationToken.None));
-        Assert.Equal("https://api.github.com/repos/fzeruhn/OpenComposite/releases/latest", handler.Asked!.RequestUri!.ToString());
+        Assert.Equal("https://api.github.com/repos/fzeruhn/OpenLamina/releases/latest", handler.Asked!.RequestUri!.ToString());
     }
 
     [Fact]

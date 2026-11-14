@@ -153,7 +153,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanSetRuntime { get; set; }
 
-    /// <summary>Whether the "OpenVR runtime" row shows: not in a dev run without OpenComposite.</summary>
+    /// <summary>Whether the "OpenVR runtime" row shows: not in a dev run without OpenLamina.</summary>
     [ObservableProperty]
     public partial bool ShowOpenVr { get; set; }
 
@@ -164,7 +164,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanSetOpenComposite { get; set; }
 
-    /// <summary>Whether "Get OpenComposite" shows: OpenComposite isn't installed.</summary>
+    /// <summary>Whether "Get OpenLamina" shows: OpenLamina isn't installed.</summary>
     [ObservableProperty]
     public partial bool CanGetOpenComposite { get; set; }
 
@@ -187,12 +187,12 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     public partial Uri? UpdateUrl { get; set; }
 
-    /// <summary>"OpenComposite 2026.11.20 is out." from the update check; null when there is none.</summary>
+    /// <summary>"OpenLamina 2026.11.20 is out." from the update check; null when there is none.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOpenCompositeUpdate))]
     public partial string? OpenCompositeUpdateText { get; set; }
 
-    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenComposite and the release has a zip to check.</summary>
+    /// <summary>Whether the notice's "Update" button shows: when Mirador can update OpenLamina and the release has a zip to check.</summary>
     [ObservableProperty]
     public partial bool CanUpdateOpenComposite { get; set; }
 
@@ -268,7 +268,7 @@ public sealed partial class HomeViewModel : ObservableObject
         newerOpenComposite = report.NewerOpenComposite;
         if (newerOpenComposite is { } openComposite)
         {
-            OpenCompositeUpdateText = $"OpenComposite {UpdateReport.Plain(openComposite.Tag)} is out.";
+            OpenCompositeUpdateText = $"OpenLamina {UpdateReport.Plain(openComposite.Tag)} is out.";
             CanUpdateOpenComposite = App.Current.Updates.CanUpdateOpenComposite && openComposite.InstallerUrl is not null;
         }
         else
@@ -284,7 +284,7 @@ public sealed partial class HomeViewModel : ObservableObject
         UpdateUrl = Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    /// <summary>"Update" on OpenComposite's notice: its installer, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
+    /// <summary>"Update" on OpenLamina's notice: its installer, through <see cref="Updates.UpdateOpenCompositeAsync"/>.</summary>
     [RelayCommand]
     private async Task UpdateOpenCompositeAsync()
     {
@@ -296,12 +296,12 @@ public sealed partial class HomeViewModel : ObservableObject
         try
         {
             var message = await App.Current.Updates.UpdateOpenCompositeAsync(release);
-            ShowNotice("opencomposite-update", "OpenComposite", message, InfoBarSeverity.Informational);
+            ShowNotice("opencomposite-update", "OpenLamina", message, InfoBarSeverity.Informational);
         }
         catch (Exception e)
         {
-            AppLog.Write("Updating OpenComposite failed", e);
-            ShowNotice("opencomposite-update", "OpenComposite", $"Updating OpenComposite failed: {e.Message.Trim()}", InfoBarSeverity.Error);
+            AppLog.Write("Updating OpenLamina failed", e);
+            ShowNotice("opencomposite-update", "OpenLamina", $"Updating OpenLamina failed: {e.Message.Trim()}", InfoBarSeverity.Error);
         }
     }
 
@@ -687,18 +687,18 @@ public sealed partial class HomeViewModel : ObservableObject
             openCompositeProblem = null;
         }
 
-        // Without OpenComposite the row says so and offers "Get OpenComposite"; one uninstalled while OpenVR games still
+        // Without OpenLamina the row says so and offers "Get OpenLamina"; one uninstalled while OpenVR games still
         // go to it is a problem.
         var level = view.Problem is not null ? StatusLevel.Error : view.OffersOpenComposite || CanGetOpenComposite ? StatusLevel.Info : StatusLevel.Ok;
-        OpenVrRow = new StatusItem("OpenVR runtime", CanGetOpenComposite && view.Problem is null ? "OpenComposite isn't installed yet" : view.Runtime, level);
+        OpenVrRow = new StatusItem("OpenVR runtime", CanGetOpenComposite && view.Problem is null ? "OpenLamina isn't installed yet" : view.Runtime, level);
         CanSetOpenComposite = view.OffersOpenComposite && !CanGetOpenComposite;
         OpenVrWarning = view.Warning;
         OpenVrProblem = openCompositeProblem ?? view.Problem;
     }
 
     /// <summary>
-    /// "Get OpenComposite": the fork's latest release, installed with its own installer. It doesn't switch OpenVR games:
-    /// "Set OpenComposite" then does.
+    /// "Get OpenLamina": the fork's latest release, installed with its own installer. It doesn't switch OpenVR games:
+    /// "Set OpenLamina" then does.
     /// </summary>
     [RelayCommand]
     private async Task GetOpenCompositeAsync()
@@ -708,18 +708,18 @@ public sealed partial class HomeViewModel : ObservableObject
         {
             var message = await App.Current.Updates.GetOpenCompositeAsync();
             openCompositeProblem = null;
-            ShowNotice("opencomposite-update", "OpenComposite", message, InfoBarSeverity.Informational);
+            ShowNotice("opencomposite-update", "OpenLamina", message, InfoBarSeverity.Informational);
         }
         catch (Exception e)
         {
-            AppLog.Write("Getting OpenComposite failed", e);
-            openCompositeProblem = $"Getting OpenComposite failed: {e.Message.Trim()}";
+            AppLog.Write("Getting OpenLamina failed", e);
+            openCompositeProblem = $"Getting OpenLamina failed: {e.Message.Trim()}";
         }
 
         RefreshRuntime();
     }
 
-    /// <summary>"Set OpenComposite": OpenComposite first for OpenVR games, until the owner or SteamVR changes it.</summary>
+    /// <summary>"Set OpenLamina": OpenLamina first for OpenVR games, until the owner or SteamVR changes it.</summary>
     [RelayCommand]
     private async Task SetOpenCompositeAsync()
     {
@@ -730,13 +730,13 @@ public sealed partial class HomeViewModel : ObservableObject
         }
         catch (Exception e)
         {
-            AppLog.Write("Setting OpenComposite failed", e);
-            openCompositeProblem = $"Setting OpenComposite failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
+            AppLog.Write("Setting OpenLamina failed", e);
+            openCompositeProblem = $"Setting OpenLamina failed ({e.Message.Trim().TrimEnd('.')}); nothing changed.";
         }
 
         if (openCompositeProblem is not null)
         {
-            AppLog.Write("Setting OpenComposite: " + openCompositeProblem);
+            AppLog.Write("Setting OpenLamina: " + openCompositeProblem);
         }
 
         // Through null, so that the same problem again opens the bar again after it was closed.

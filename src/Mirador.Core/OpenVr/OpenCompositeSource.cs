@@ -3,8 +3,9 @@ using System.Text.RegularExpressions;
 namespace Mirador.Core.OpenVr;
 
 /// <summary>
-/// Which OpenComposite is installed, from the first line of its <c>SOURCE.txt</c>: the fork's release writes
-/// <c>OpenComposite 2026.11.06, commit &lt;40 hex&gt;</c>; a build of the commit alone has the 40 hex alone.
+/// Which OpenLamina is installed, from the first line of its <c>SOURCE.txt</c>: the fork's release writes
+/// <c>OpenLamina 2026.11.06, commit &lt;40 hex&gt;</c> (<c>OpenComposite …</c> in releases before the rename); a build of
+/// the commit alone has the 40 hex alone.
 /// </summary>
 /// <param name="Version">The release's date version, or null when SOURCE.txt names only the commit.</param>
 /// <param name="Commit">The 40-hex commit.</param>
@@ -63,7 +64,7 @@ public sealed partial record OpenCompositeSource(string? Version, string? Commit
     private static long[] Numbers(string version) =>
         [.. version.Split('.').Select(part => long.TryParse(part, out var n) ? n : 0)];
 
-    [GeneratedRegex(@"^OpenComposite (\d+(?:\.\d+)+), commit ([0-9a-f]{40})$")]
+    [GeneratedRegex(@"^(?:OpenLamina|OpenComposite) (\d+(?:\.\d+)+), commit ([0-9a-f]{40})$")]
     private static partial Regex ReleaseLine();
 
     [GeneratedRegex(@"^[0-9a-f]{40}$")]
